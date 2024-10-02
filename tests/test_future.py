@@ -45,10 +45,13 @@ class TestFuture(unittest.TestCase):
 
     def test_state(self):
         with Client(address=self.address) as client:
-            fut = client.submit(noop_sleep, 1.0)
+            fut = client.submit(noop_sleep, 0.5)
             self.assertTrue(fut.running())
+            self.assertFalse(fut.done())
 
-            fut.result()
+            time.sleep(1.5)
+
+            self.assertFalse(fut.running())
             self.assertTrue(fut.done())
 
     def test_cancel(self):
