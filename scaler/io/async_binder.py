@@ -5,6 +5,7 @@ from collections import defaultdict
 from typing import Awaitable, Callable, List, Optional, Dict
 
 import zmq.asyncio
+from zmq import Frame
 
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
@@ -38,18 +39,18 @@ class AsyncBinder(Looper, Reporter):
         self._callback = callback
 
     async def routine(self):
-        frames = await self._socket.recv_multipart()
+        frames: List[Frame] = await self._socket.recv_multipart(copy=False)
         if not self.__is_valid_message(frames):
             return
 
         source, payload = frames
-        message: Optional[Message] = deserialize(payload)
+        message: Optional[Message] = deserialize(payload.bytes)
         if message is None:
-            logging.error(f"received unknown message from {source!r}: {payload!r}")
+            logging.error(f"received unknown message from {source.bytes!r}: {payload!r}")
             return
 
         self.__count_received(message.__class__.__name__)
-        await self._callback(source, message)
+        await self._callback(source.bytes, message)
 
     async def send(self, to: bytes, message: Message):
         self.__count_sent(message.__class__.__name__)
@@ -63,7 +64,7 @@ class AsyncBinder(Looper, Reporter):
         self._socket.setsockopt(zmq.SNDHWM, 0)
         self._socket.setsockopt(zmq.RCVHWM, 0)
 
-    def __is_valid_message(self, frames: List[bytes]) -> bool:
+    def __is_valid_message(self, frames: List[Frame]) -> bool:
         if len(frames) < 2:
             logging.error(f"{self.__get_prefix()} received unexpected frames {frames}")
             return False
