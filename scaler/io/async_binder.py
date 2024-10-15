@@ -15,14 +15,14 @@ from scaler.utility.zmq_config import ZMQConfig
 
 
 class AsyncBinder(Looper, Reporter):
-    def __init__(self, name: str, address: ZMQConfig, io_threads: int, identity: Optional[bytes] = None):
+    def __init__(self, context: zmq.asyncio.Context, name: str, address: ZMQConfig, identity: Optional[bytes] = None):
         self._address = address
 
         if identity is None:
             identity = f"{os.getpid()}|{name}|{uuid.uuid4()}".encode()
         self._identity = identity
 
-        self._context = zmq.asyncio.Context(io_threads=io_threads)
+        self._context = context
         self._socket = self._context.socket(zmq.ROUTER)
         self.__set_socket_options()
         self._socket.bind(self._address.to_address())
