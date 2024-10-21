@@ -56,11 +56,13 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             # already sent heartbeat, expecting heartbeat echo, so not sending
             return
 
-        if self._worker_process.status() in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
-            await self._processor_manager.on_failing_task(self._worker_process.status())
-
         processors = self._processor_manager.processors()
         num_suspended_processors = self._processor_manager.num_suspended_processors()
+
+        for processor_holder in processors:
+            status = processor_holder.process().status()
+            if status in {psutil.STATUS_ZOMBIE, psutil.STATUS_DEAD}:
+                await self._processor_manager.on_failing_processor(processor_holder.processor_id(), status)
 
         await self._connector_external.send(
             WorkerHeartbeat.new_msg(
@@ -68,7 +70,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 psutil.virtual_memory().available,
                 self._worker_task_manager.get_queued_size() - num_suspended_processors,
                 self._latency_us,
-                self._processor_manager.task_lock(),
+                self._processor_manager.can_accept_task(),
                 [self.__get_processor_status_from_holder(processor) for processor in processors],
             )
         )
