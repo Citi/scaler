@@ -33,7 +33,7 @@ class VanillaTaskManager(Looper, TaskManager):
         task_priority = self.__get_task_priority(task)
 
         self._queued_task_id_to_task[task.task_id] = task
-        await self._queued_task_ids.put(((task_priority, _QUEUED_TASKS_PRIORITY), task.task_id))
+        self._queued_task_ids.put_nowait(((task_priority, _QUEUED_TASKS_PRIORITY), task.task_id))
 
         await self.__suspend_if_priority_is_lower(task_priority)
 
@@ -103,10 +103,10 @@ class VanillaTaskManager(Looper, TaskManager):
         if new_task_priority >= current_task_priority:
             return
 
-        self._processor_manager.on_suspend_task(current_task.task_id)
-
-        await self._queued_task_ids.put(((current_task_priority, _SUSPENDED_TASKS_PRIORITY), current_task.task_id))
+        self._queued_task_ids.put_nowait(((current_task_priority, _SUSPENDED_TASKS_PRIORITY), current_task.task_id))
         self._queued_task_id_to_task[current_task.task_id] = current_task
+
+        await self._processor_manager.on_suspend_task(current_task.task_id)
 
     @staticmethod
     def __get_task_priority(task: Task) -> int:

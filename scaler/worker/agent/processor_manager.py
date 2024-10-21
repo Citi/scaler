@@ -109,14 +109,15 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
     async def on_task(self, task: Task) -> bool:
         assert self._current_holder is not None
-        assert self.current_task() is None
+        holder = self._current_holder
 
-        await self._current_holder.wait_initialized()
+        assert holder.task() is None
+        holder.set_task(task)
 
-        self._current_holder.set_task(task)
+        await holder.wait_initialized()
 
-        await self._binder_internal.send(self._current_holder.processor_id(), task)
-        self._profiling_manager.on_task_start(self._current_holder.pid(), task.task_id)
+        await self._binder_internal.send(holder.processor_id(), task)
+        self._profiling_manager.on_task_start(holder.pid(), task.task_id)
 
         return True
 
@@ -165,18 +166,21 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         self.restart_current_processor(f"process died {process_status=}")
 
-    def on_suspend_task(self, task_id: bytes) -> bool:
+    async def on_suspend_task(self, task_id: bytes) -> bool:
         assert self._current_holder is not None
+        holder = self._current_holder
 
-        current_task = self.current_task()
+        current_task = holder.task()
 
         if current_task is None or current_task.task_id != task_id:
             return False
 
-        self._current_holder.suspend()
-        self._suspended_holders_by_task_id[task_id] = self._current_holder
+        await holder.wait_initialized()
 
-        logging.info(f"Worker[{os.getpid()}]: suspend Processor[{self._current_holder.pid()}]")
+        holder.suspend()
+        self._suspended_holders_by_task_id[task_id] = holder
+
+        logging.info(f"Worker[{os.getpid()}]: suspend Processor[{holder.pid()}]")
 
         self.__start_new_processor()
 

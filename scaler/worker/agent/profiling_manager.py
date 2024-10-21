@@ -93,7 +93,6 @@ class VanillaProfilingManager(ProfilingManager, Looper):
                     )
                 except psutil.ZombieProcess:
                     logging.warning(f"profiling zombie process: pid={process_profiler.process.pid}")
-                    pass
 
     @staticmethod
     def __process_time():

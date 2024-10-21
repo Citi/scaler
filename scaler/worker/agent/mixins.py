@@ -74,7 +74,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_suspend_task(self, task_id: bytes) -> bool:
+    async def on_suspend_task(self, task_id: bytes) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
