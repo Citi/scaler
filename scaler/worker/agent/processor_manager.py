@@ -164,7 +164,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             profile_result = None
 
         reason = f"process died {process_status=}"
-
         if holder == self._current_holder:
             self.__restart_current_processor(reason)
         else:
@@ -188,8 +187,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             await self._task_manager.on_task_result(
                 TaskResult.new_msg(task_id, TaskStatus.Failed, profile_result.serialize(), [result_object_id])
             )
-
-        self.restart_current_processor(f"process died {process_status=}")
 
     async def on_suspend_task(self, task_id: bytes) -> bool:
         assert self._current_holder is not None
@@ -225,8 +222,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         self._current_holder = suspended_holder
         suspended_holder.resume()
-
-        self._heartbeat.set_processor_pid(suspended_holder.pid())
 
         logging.info(f"Worker[{os.getpid()}]: resume Processor[{self._current_holder.pid()}]")
 
@@ -271,14 +266,12 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         processor_pid = self._current_holder.pid()
 
-        self._heartbeat.set_processor_pid(processor_pid)
         self._profiling_manager.on_process_start(processor_pid)
 
         logging.info(f"Worker[{os.getpid()}]: start Processor[{processor_pid}]")
 
     def __kill_processor(self, reason: str, holder: ProcessorHolder):
         processor_pid = holder.pid()
-        assert processor_pid is not None
 
         self._profiling_manager.on_process_end(processor_pid)
 

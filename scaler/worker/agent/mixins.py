@@ -16,10 +16,6 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 
 class HeartbeatManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def set_processor_pid(self, process_id: int):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
     async def on_heartbeat_echo(self, heartbeat: WorkerHeartbeatEcho):
         raise NotImplementedError()
 
