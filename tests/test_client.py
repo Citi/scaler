@@ -3,6 +3,7 @@ import os
 import random
 import time
 import unittest
+from concurrent.futures import CancelledError
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.exceptions import ProcessorDiedError
@@ -287,3 +288,22 @@ class TestClient(unittest.TestCase):
             disconnect_start_time = time.time()
             client.disconnect()
             self.assertLess(time.time() - disconnect_start_time, MAX_DELAY_SECONDS)
+
+    def test_clear(self):
+        with Client(self.address) as client:
+            arg_reference = client.send_object(0.5)
+            future = client.submit(noop_sleep, arg_reference)
+
+            client.clear()
+
+            # clear() cancels all futures
+            with self.assertRaises(CancelledError):
+                future.result()
+            self.assertTrue(future.cancelled())
+
+            # using an old reference should fail
+            with self.assertRaises(KeyError):
+                client.submit(noop_sleep, arg_reference)
+
+            # but new tasks should work fine
+            self.assertEqual(client.submit(round, 3.14).result(), 3.0)
