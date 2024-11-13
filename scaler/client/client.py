@@ -310,10 +310,12 @@ class Client:
 
     def clear(self):
         """
-        clear the resources used by the client, this will cancel all running futures and invalidate all existing object
+        clear all resources used by the client, this will cancel all running futures and invalidate all existing object
         references
         """
-        ...
+
+        self._future_manager.cancel_all_futures()
+        self._object_buffer.clear()
 
     def disconnect(self):
         """

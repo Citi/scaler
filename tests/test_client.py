@@ -6,7 +6,7 @@ import unittest
 from concurrent.futures import CancelledError
 
 from scaler import Client, SchedulerClusterCombo
-from scaler.utility.exceptions import ProcessorDiedError
+from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
 from tests.utility import get_available_tcp_port, logging_test_name
@@ -302,8 +302,8 @@ class TestClient(unittest.TestCase):
             self.assertTrue(future.cancelled())
 
             # using an old reference should fail
-            with self.assertRaises(KeyError):
-                client.submit(noop_sleep, arg_reference)
+            with self.assertRaises(MissingObjects):
+                client.submit(noop_sleep, arg_reference).result()
 
             # but new tasks should work fine
             self.assertEqual(client.submit(round, 3.14).result(), 3.0)
