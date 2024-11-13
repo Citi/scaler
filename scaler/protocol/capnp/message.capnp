@@ -107,6 +107,9 @@ struct DisconnectResponse {
     worker @0 :Data;
 }
 
+struct ClientClearRequest {
+}
+
 struct ClientDisconnect {
     disconnectType @0 :DisconnectType;
 
@@ -200,9 +203,11 @@ struct Message {
         stateTask @19 :StateTask;
         stateGraphTask @20 :StateGraphTask;
 
-        clientDisconnect @21 :ClientDisconnect;
-        clientShutdownResponse @22 :ClientShutdownResponse;
+        clientClearRequest @21 :ClientClearRequest;
 
-        processorInitialized @23 :ProcessorInitialized;
+        clientDisconnect @22 :ClientDisconnect;
+        clientShutdownResponse @23 :ClientShutdownResponse;
+
+        processorInitialized @24 :ProcessorInitialized;
     }
 }
