@@ -395,6 +395,15 @@ class DisconnectResponse(Message):
         return DisconnectResponse(_message.DisconnectResponse(worker=worker))
 
 
+class ClientClearRequest(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @staticmethod
+    def new_msg() -> "ClientClearRequest":
+        return ClientClearRequest(_message.ClientClearRequest())
+
+
 class ClientDisconnect(Message):
     class DisconnectType(enum.Enum):
         Disconnect = _message.ClientDisconnect.DisconnectType.disconnect
@@ -637,6 +646,7 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "stateWorker": StateWorker,
         "stateTask": StateTask,
         "stateGraphTask": StateGraphTask,
+        "clientClearRequest": ClientClearRequest,
         "clientDisconnect": ClientDisconnect,
         "clientShutdownResponse": ClientShutdownResponse,
         "processorInitialized": ProcessorInitialized,

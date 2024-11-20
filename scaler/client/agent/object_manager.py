@@ -3,12 +3,19 @@ from typing import Optional, Set
 from scaler.client.agent.mixins import ObjectManager
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import ObjectContent
-from scaler.protocol.python.message import ObjectInstruction, ObjectRequest
+from scaler.protocol.python.message import (
+    ClientClearRequest,
+    ObjectInstruction,
+    ObjectRequest,
+    TaskResult,
+)
 
 
 class ClientObjectManager(ObjectManager):
     def __init__(self, identity: bytes):
         self._sent_object_ids: Set[bytes] = set()
+        self._sent_serializer_id: Optional[bytes] = None
+
         self._identity = identity
 
         self._connector_internal: Optional[AsyncConnector] = None
@@ -28,18 +35,34 @@ class ClientObjectManager(ObjectManager):
         assert object_request.request_type == ObjectRequest.ObjectRequestType.Get
         await self._connector_external.send(object_request)
 
-    def record_task_result(self, task_id: bytes, object_id: bytes):
-        self._sent_object_ids.add(object_id)
+    def on_task_result(self, task_result: TaskResult):
+        # TODO: received result objects should be deleted from the scheduler when no longer needed.
+        # This requires to not delete objects that are required by not-yet-computed dependent graph tasks.
+        # For now, we just remove the objects when the client makes a clear request, or on client shutdown.
+        # https://github.com/Citi/scaler/issues/43
 
-    async def clean_all_objects(self):
+        self._sent_object_ids.update(task_result.results)
+
+    async def on_client_clear_request(self, client_clear_request: ClientClearRequest):
+        await self.clear_all_objects(clear_serializer=False)
+
+    async def clear_all_objects(self, clear_serializer):
+        cleared_object_ids = self._sent_object_ids.copy()
+
+        if clear_serializer:
+            self._sent_serializer_id = None
+        elif self._sent_serializer_id is not None:
+            cleared_object_ids.remove(self._sent_serializer_id)
+
+        self._sent_object_ids.difference_update(cleared_object_ids)
+
         await self._connector_external.send(
             ObjectInstruction.new_msg(
                 ObjectInstruction.ObjectInstructionType.Delete,
                 self._identity,
-                ObjectContent.new_msg(tuple(self._sent_object_ids)),
+                ObjectContent.new_msg(tuple(cleared_object_ids)),
             )
         )
-        self._sent_object_ids = set()
 
     async def __send_object_creation(self, instruction: ObjectInstruction):
         assert instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Create
@@ -47,6 +70,13 @@ class ClientObjectManager(ObjectManager):
         new_object_ids = set(instruction.object_content.object_ids) - self._sent_object_ids
         if not new_object_ids:
             return
+
+        if b"serializer" in instruction.object_content.object_names:
+            if self._sent_serializer_id is not None:
+                raise ValueError("trying to send multiple serializers.")
+
+            serializer_index = instruction.object_content.object_names.index(b"serializer")
+            self._sent_serializer_id = instruction.object_content.object_ids[serializer_index]
 
         new_object_content = ObjectContent.new_msg(
             *zip(
@@ -71,5 +101,10 @@ class ClientObjectManager(ObjectManager):
 
     async def __delete_objects(self, instruction: ObjectInstruction):
         assert instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete
+
+        if self._sent_serializer_id in instruction.object_content.object_ids:
+            raise ValueError("trying to delete serializer.")
+
         self._sent_object_ids.difference_update(instruction.object_content.object_ids)
+
         await self._connector_external.send(instruction)
