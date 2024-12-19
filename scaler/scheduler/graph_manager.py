@@ -188,6 +188,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             task = Task.new_msg(
                 task_id=task_info.task.task_id,
                 source=task_info.task.source,
+                tags=set(),
                 metadata=task_info.task.metadata,
                 func_object_id=task_info.task.func_object_id,
                 function_args=[self.__get_argument(graph_task_id, arg) for arg in task_info.task.function_args],

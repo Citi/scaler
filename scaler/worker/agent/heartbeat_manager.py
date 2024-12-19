@@ -64,6 +64,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
 
         await self._connector_external.send(
             WorkerHeartbeat.new_msg(
+                set(),
                 Resource.new_msg(int(self._agent_process.cpu_percent() * 10), self._agent_process.memory_info().rss),
                 psutil.virtual_memory().available,
                 self._worker_task_manager.get_queued_size() - num_suspended_processors,
