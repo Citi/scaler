@@ -290,6 +290,7 @@ class ObjectInstruction(Message):
     class ObjectInstructionType(enum.Enum):
         Create = _message.ObjectInstruction.ObjectInstructionType.create
         Delete = _message.ObjectInstruction.ObjectInstructionType.delete
+        Clear = _message.ObjectInstruction.ObjectInstructionType.clear
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -393,15 +394,6 @@ class DisconnectResponse(Message):
     @staticmethod
     def new_msg(worker: bytes) -> "DisconnectResponse":
         return DisconnectResponse(_message.DisconnectResponse(worker=worker))
-
-
-class ClientClearRequest(Message):
-    def __init__(self, msg):
-        super().__init__(msg)
-
-    @staticmethod
-    def new_msg() -> "ClientClearRequest":
-        return ClientClearRequest(_message.ClientClearRequest())
 
 
 class ClientDisconnect(Message):
@@ -646,7 +638,6 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "stateWorker": StateWorker,
         "stateTask": StateTask,
         "stateGraphTask": StateGraphTask,
-        "clientClearRequest": ClientClearRequest,
         "clientDisconnect": ClientDisconnect,
         "clientShutdownResponse": ClientShutdownResponse,
         "processorInitialized": ProcessorInitialized,

@@ -61,7 +61,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
         logging.error(
             f"received unknown object response type instruction_type={instruction.instruction_type} from "
-            f"source={instruction.object_user}"
+            f"source={instruction.object_user!r}"
         )
 
     async def on_object_request(self, source: bytes, request: ObjectRequest):

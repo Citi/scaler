@@ -13,7 +13,6 @@ from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.message import (
-    ClientClearRequest,
     ClientDisconnect,
     ClientHeartbeatEcho,
     ClientShutdownResponse,
@@ -139,10 +138,6 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, GraphTaskCancel):
             await self._task_manager.on_cancel_graph_task(message)
-            return
-
-        if isinstance(message, ClientClearRequest):
-            await self._object_manager.on_client_clear_request(message)
             return
 
         raise TypeError(f"Unknown {message=}")

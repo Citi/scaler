@@ -77,6 +77,7 @@ struct ObjectInstruction {
     enum ObjectInstructionType {
         create @0;
         delete @1;
+        clear @2;
     }
 }
 
@@ -105,9 +106,6 @@ struct DisconnectRequest {
 
 struct DisconnectResponse {
     worker @0 :Data;
-}
-
-struct ClientClearRequest {
 }
 
 struct ClientDisconnect {
@@ -203,11 +201,9 @@ struct Message {
         stateTask @19 :StateTask;
         stateGraphTask @20 :StateGraphTask;
 
-        clientClearRequest @21 :ClientClearRequest;
+        clientDisconnect @21 :ClientDisconnect;
+        clientShutdownResponse @22 :ClientShutdownResponse;
 
-        clientDisconnect @22 :ClientDisconnect;
-        clientShutdownResponse @23 :ClientShutdownResponse;
-
-        processorInitialized @24 :ProcessorInitialized;
+        processorInitialized @23 :ProcessorInitialized;
     }
 }

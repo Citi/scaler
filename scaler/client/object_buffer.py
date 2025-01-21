@@ -8,7 +8,7 @@ from scaler.client.serializer.mixins import Serializer
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.utility import chunk_to_list_of_bytes
 from scaler.protocol.python.common import ObjectContent
-from scaler.protocol.python.message import ClientClearRequest, ObjectInstruction
+from scaler.protocol.python.message import ObjectInstruction
 from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id
 
 
@@ -83,13 +83,19 @@ class ObjectBuffer:
 
     def clear(self):
         """
-        remove all commited and pending objects.
+        remove all committed and pending objects.
         """
 
         self._pending_delete_objects.clear()
         self._pending_objects.clear()
 
-        self._connector.send(ClientClearRequest.new_msg())
+        self._connector.send(
+            ObjectInstruction.new_msg(
+                ObjectInstruction.ObjectInstructionType.Clear,
+                self._identity,
+                ObjectContent.new_msg(tuple()),
+            )
+        )
 
     def __construct_serializer(self) -> ObjectCache:
         serializer_bytes = cloudpickle.dumps(self._serializer, protocol=pickle.HIGHEST_PROTOCOL)

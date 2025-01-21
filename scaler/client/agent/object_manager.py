@@ -4,7 +4,6 @@ from scaler.client.agent.mixins import ObjectManager
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import ObjectContent
 from scaler.protocol.python.message import (
-    ClientClearRequest,
     ObjectInstruction,
     ObjectRequest,
     TaskResult,
@@ -30,6 +29,8 @@ class ClientObjectManager(ObjectManager):
             await self.__send_object_creation(instruction)
         elif instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
             await self.__delete_objects(instruction)
+        elif instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Clear:
+            await self.clear_all_objects(clear_serializer=False)
 
     async def on_object_request(self, object_request: ObjectRequest):
         assert object_request.request_type == ObjectRequest.ObjectRequestType.Get
@@ -42,9 +43,6 @@ class ClientObjectManager(ObjectManager):
         # https://github.com/Citi/scaler/issues/43
 
         self._sent_object_ids.update(task_result.results)
-
-    async def on_client_clear_request(self, client_clear_request: ClientClearRequest):
-        await self.clear_all_objects(clear_serializer=False)
 
     async def clear_all_objects(self, clear_serializer):
         cleared_object_ids = self._sent_object_ids.copy()
