@@ -1,5 +1,4 @@
 import asyncio
-import concurrent.futures
 import logging
 import uuid
 from concurrent.futures import Future
@@ -35,14 +34,14 @@ from scaler.worker.symphony.session_callback import SessionCallback, SoamMessage
 
 
 class SymphonyTaskManager(Looper, TaskManager):
-    def __init__(self, max_concurrency: int, service_name: str):
-        if isinstance(max_concurrency, int) and max_concurrency <= 0:
-            raise ValueError(f"max_concurrency must be a possible integer, got {max_concurrency}")
+    def __init__(self, base_concurrency: int, service_name: str):
+        if isinstance(base_concurrency, int) and base_concurrency <= 0:
+            raise ValueError(f"base_concurrency must be a possible integer, got {base_concurrency}")
 
-        self._max_concurrency = max_concurrency
+        self._base_concurrency = base_concurrency
         self._service_name = service_name
 
-        self._executor_semaphore = asyncio.Semaphore(value=self._max_concurrency)
+        self._executor_semaphore = asyncio.Semaphore(value=self._base_concurrency)
 
         self._task_id_to_task: Dict[bytes, Task] = dict()
         self._task_id_to_future: bidict[bytes, asyncio.Future] = bidict()
@@ -244,33 +243,38 @@ class SymphonyTaskManager(Looper, TaskManager):
         """
         async with self._process_task_lock:
 
+            awaited_locks = []
+            request_ids = []
+
             serializer_id = generate_serializer_object_id(task.source)
             if serializer_id not in self._serializers:
-                lock = asyncio.Lock()
-                await lock.acquire()
-                self._serializers_lock[serializer_id] = lock
-                await self._connector_external.send(
-                    ObjectRequest.new_msg(ObjectRequest.ObjectRequestType.Get, (serializer_id,))
-                )
-                await lock.acquire()
-                self._serializers_lock.pop(serializer_id)
-
-            serializer = self._serializers[serializer_id]
+                serializer_lock = asyncio.Lock()
+                await serializer_lock.acquire()
+                self._serializers_lock[serializer_id] = serializer_lock
+                awaited_locks.append(serializer_lock)
+                request_ids.append(serializer_id)
 
             object_ids = (task.func_object_id, *(arg.data for arg in task.function_args))
             for object_id in object_ids:
-                lock = asyncio.Lock()
-                await lock.acquire()
-                self._object_cache_lock[object_id] = lock
+                object_lock = asyncio.Lock()
+                await object_lock.acquire()
+                self._object_cache_lock[object_id] = object_lock
+                awaited_locks.append(object_lock)
+                request_ids.append(object_id)
 
-            await self._connector_external.send(ObjectRequest.new_msg(ObjectRequest.ObjectRequestType.Get, object_ids))
-            await asyncio.gather(*[self._object_cache_lock[object_id].acquire() for object_id in object_ids])
+            await self._connector_external.send(
+                ObjectRequest.new_msg(ObjectRequest.ObjectRequestType.Get, tuple(request_ids))
+            )
+            await asyncio.gather(*[awaited_lock.acquire() for awaited_lock in awaited_locks])
+
+            serializer = self._serializers[serializer_id]
 
             function = serializer.deserialize(self._object_cache[task.func_object_id])
             args = [serializer.deserialize(self._object_cache[arg.data]) for arg in task.function_args]
 
             self._object_cache.clear()
             self._object_cache_lock.clear()
+            self._serializers_lock.clear()
 
         """
         SOAM specific code

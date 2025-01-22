@@ -40,7 +40,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         address: ZMQConfig,
         io_threads: int,
         service_name: str,
-        max_concurrency: int,
+        base_concurrency: int,
         heartbeat_interval_seconds: int,
         death_timeout_seconds: int,
     ):
@@ -52,7 +52,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._io_threads = io_threads
 
         self._service_name = service_name
-        self._max_concurrency = max_concurrency
+        self._base_concurrency = base_concurrency
 
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._death_timeout_seconds = death_timeout_seconds
@@ -86,7 +86,9 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         )
 
         self._heartbeat_manager = SymphonyHeartbeatManager()
-        self._task_manager = SymphonyTaskManager(max_concurrency=self._max_concurrency, service_name=self._service_name)
+        self._task_manager = SymphonyTaskManager(
+            base_concurrency=self._base_concurrency, service_name=self._service_name
+        )
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
 
         # register

@@ -21,7 +21,7 @@ def get_args():
         "standalone symphony worker", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
-        "--max-concurrency", "-n", type=int, default=DEFAULT_NUMBER_OF_WORKER, help="maximum task concurrency"
+        "--base-concurrency", "-n", type=int, default=DEFAULT_NUMBER_OF_WORKER, help="base task concurrency"
     )
     parser.add_argument(
         "--worker-name", "-w", type=str, default=None, help="worker name, if not specified, it will be hostname"
@@ -84,7 +84,7 @@ def main():
         address=args.address,
         name=args.worker_name,
         service_name=args.service_name,
-        max_concurrency=args.max_concurrency,
+        base_concurrency=args.base_concurrency,
         heartbeat_interval_seconds=args.heartbeat_interval,
         death_timeout_seconds=args.death_timeout_seconds,
         event_loop=args.event_loop,
