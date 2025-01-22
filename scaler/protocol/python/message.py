@@ -50,6 +50,10 @@ class Task(Message):
         return self._msg.source
 
     @property
+    def tags(self) -> Set[str]:
+        return set(self._msg.tags)
+
+    @property
     def metadata(self) -> bytes:
         return self._msg.metadata
 
@@ -66,12 +70,18 @@ class Task(Message):
 
     @staticmethod
     def new_msg(
-        task_id: bytes, source: bytes, metadata: bytes, func_object_id: bytes, function_args: List[Argument]
+        task_id: bytes,
+        source: bytes,
+        tags: Set[str],
+        metadata: bytes,
+        func_object_id: bytes,
+        function_args: List[Argument]
     ) -> "Task":
         return Task(
             _message.Task(
                 taskId=task_id,
                 source=source,
+                tags=list(tags),
                 metadata=metadata,
                 funcObjectId=func_object_id,
                 functionArgs=[_message.Task.Argument(type=arg.type.value, data=arg.data) for arg in function_args],
@@ -233,6 +243,10 @@ class WorkerHeartbeat(Message):
         super().__init__(msg)
 
     @property
+    def tags(self) -> Set[str]:
+        return set(self._msg.tags)
+
+    @property
     def agent(self) -> Resource:
         return Resource(self._msg.agent)
 
@@ -258,6 +272,7 @@ class WorkerHeartbeat(Message):
 
     @staticmethod
     def new_msg(
+        tags: Set[str],
         agent: Resource,
         rss_free: int,
         queued_tasks: int,
@@ -267,6 +282,7 @@ class WorkerHeartbeat(Message):
     ) -> "WorkerHeartbeat":
         return WorkerHeartbeat(
             _message.WorkerHeartbeat(
+                tags=list(tags),
                 agent=agent.get_message(),
                 rssFree=rss_free,
                 queuedTasks=queued_tasks,

@@ -6,9 +6,10 @@ using Status = import "status.capnp";
 struct Task {
     taskId @0 :Data;
     source @1 :Data;
-    metadata @2 :Data;
-    funcObjectId @3 :Data;
-    functionArgs @4 :List(Argument);
+    tags @2 :List(Text);
+    metadata @3 :Data;
+    funcObjectId @4 :Data;
+    functionArgs @5 :List(Argument);
 
     struct Argument {
         type @0 :ArgumentType;
@@ -58,12 +59,13 @@ struct ClientHeartbeatEcho {
 }
 
 struct WorkerHeartbeat {
-    agent @0 :Status.Resource;
-    rssFree @1 :UInt64;
-    queuedTasks @2 :UInt32;
-    latencyUS @3 :UInt32;
-    taskLock @4 :Bool;
-    processors @5 :List(Status.ProcessorStatus);
+    tags @0 :List(Text);
+    agent @1 :Status.Resource;
+    rssFree @2 :UInt64;
+    queuedTasks @3 :UInt32;
+    latencyUS @4 :UInt32;
+    taskLock @5 :Bool;
+    processors @6 :List(Status.ProcessorStatus);
 }
 
 struct WorkerHeartbeatEcho {

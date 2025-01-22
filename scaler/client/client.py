@@ -258,6 +258,7 @@ class Client:
                 task=Task.new_msg(
                     task_id=graph_task.task_id,
                     source=self._identity,
+                    tags=set(),
                     metadata=b"",
                     func_object_id=b"",
                     function_args=[],
@@ -370,6 +371,7 @@ class Client:
         task = Task.new_msg(
             task_id=task_id,
             source=self._identity,
+            tags=set(),
             metadata=task_flags_bytes,
             func_object_id=function_object_id,
             function_args=arguments,
@@ -486,6 +488,7 @@ class Client:
             task_id_to_tasks[task_id] = Task.new_msg(
                 task_id=task_id,
                 source=self._identity,
+                tags=set(),
                 metadata=task_flags_bytes,
                 func_object_id=function_cache.object_id,
                 function_args=arguments,
@@ -506,7 +509,12 @@ class Client:
                 argument, data = node_name_to_arguments[key]
                 future: ScalerFuture = self._future_factory(
                     task=Task.new_msg(
-                        task_id=argument.data, source=self._identity, metadata=b"", func_object_id=b"", function_args=[]
+                        task_id=argument.data,
+                        source=self._identity,
+                        tags=set(),
+                        metadata=b"",
+                        func_object_id=b"",
+                        function_args=[],
                     ),
                     is_delayed=False,
                     group_task_id=graph_task_id,
