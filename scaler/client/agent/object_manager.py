@@ -69,11 +69,11 @@ class ClientObjectManager(ObjectManager):
         if not new_object_ids:
             return
 
-        if b"serializer" in instruction.object_content.object_names:
+        if ObjectContent.ObjectContentType.Serializer in instruction.object_content.object_types:
             if self._sent_serializer_id is not None:
                 raise ValueError("trying to send multiple serializers.")
 
-            serializer_index = instruction.object_content.object_names.index(b"serializer")
+            serializer_index = instruction.object_content.object_types.index(ObjectContent.ObjectContentType.Serializer)
             self._sent_serializer_id = instruction.object_content.object_ids[serializer_index]
 
         new_object_content = ObjectContent.new_msg(
@@ -82,6 +82,7 @@ class ClientObjectManager(ObjectManager):
                     lambda object_pack: object_pack[0] in new_object_ids,
                     zip(
                         instruction.object_content.object_ids,
+                        instruction.object_content.object_types,
                         instruction.object_content.object_names,
                         instruction.object_content.object_bytes,
                     ),
