@@ -4,7 +4,11 @@ import threading
 from typing import Dict
 
 import cloudpickle
-import soamapi
+
+try:
+    import soamapi
+except ImportError:
+    raise ImportError("IBM Spectrum Symphony API not found, please install it with 'pip install soamapi'.")
 
 
 class SoamMessage(soamapi.Message):

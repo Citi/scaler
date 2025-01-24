@@ -18,7 +18,7 @@ from scaler.worker.symphony.worker import SymphonyWorker
 
 def get_args():
     parser = argparse.ArgumentParser(
-        "standalone symphony worker", formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        "standalone symphony cluster", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
         "--base-concurrency", "-n", type=int, default=DEFAULT_NUMBER_OF_WORKER, help="base task concurrency"

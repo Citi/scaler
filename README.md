@@ -210,7 +210,7 @@ with Client(address="tcp://127.0.0.1:2345") as client:
 A Scaler scheduler can interface with IBM Spectrum Symphony to provide distributed computing across Symphony clusters.
 
 ```bash
-$ scaler_symphony_worker tcp://127.0.0.1:2345 ScalerService --base-concurrency 4
+$ scaler_symphony_cluster tcp://127.0.0.1:2345 ScalerService --base-concurrency 4
 ```
 
 This will start a Scaler worker that connects to the Scaler scheduler at `tcp://127.0.0.1:2345` and uses the Symphony
@@ -266,6 +266,15 @@ class ServiceContainer(soamapi.ServiceContainer):
         return
 ```
 </details>
+
+### Nested tasks
+
+Nested task originating from Symphony workers must be able to reach the Scaler scheduler. This might require
+modifications to the network configuration.
+
+Nested tasks can also have unpredictable resource usage and runtimes, which can cause Symphony to prematurely kill
+tasks. It is recommended to be conservative when provisioning resources and limits, and monitor the cluster status
+closely for any abnormalities.
 
 ### Base concurrency
 

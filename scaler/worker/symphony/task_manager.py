@@ -5,7 +5,6 @@ from concurrent.futures import Future
 from typing import Dict, Optional, Set, cast
 
 import cloudpickle
-import soamapi
 from bidict import bidict
 
 from scaler import Serializer
@@ -22,15 +21,15 @@ from scaler.protocol.python.message import (
 )
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
-from scaler.utility.object_utility import (
-    generate_object_id,
-    generate_serializer_object_id,
-    is_object_id_serializer,
-    serialize_failure,
-)
+from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id, serialize_failure
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
 from scaler.worker.agent.mixins import TaskManager
 from scaler.worker.symphony.session_callback import SessionCallback, SoamMessage
+
+try:
+    import soamapi
+except ImportError:
+    raise ImportError("IBM Spectrum Symphony API not found, please install it with 'pip install soamapi'.")
 
 
 class SymphonyTaskManager(Looper, TaskManager):
@@ -98,13 +97,17 @@ class SymphonyTaskManager(Looper, TaskManager):
 
         object_content = response.object_content
 
-        for object_id, object_bytes in zip(object_content.object_ids, object_content.object_bytes):
-            if is_object_id_serializer(object_id):
+        for object_type, object_id, object_bytes in zip(
+            object_content.object_types, object_content.object_ids, object_content.object_bytes
+        ):
+            if object_type == ObjectContent.ObjectContentType.Serializer:
                 self._serializers[object_id] = cloudpickle.loads(concat_list_of_bytes(object_bytes))
                 self._serializers_lock[object_id].release()
-            else:
+            elif object_type == ObjectContent.ObjectContentType.Object:
                 self._object_cache[object_id] = concat_list_of_bytes(object_bytes)
                 self._object_cache_lock[object_id].release()
+            else:
+                raise ValueError(f"invalid object type received: {object_type}")
 
     async def on_task_new(self, task: Task):
         task_priority = self.__get_task_priority(task)
@@ -203,9 +206,10 @@ class SymphonyTaskManager(Looper, TaskManager):
                         ObjectInstruction.ObjectInstructionType.Create,
                         task.source,
                         ObjectContent.new_msg(
-                            (result_object_id,),
-                            (f"<res {result_object_id.hex()[:6]}>".encode(),),
-                            (chunk_to_list_of_bytes(result_bytes),),
+                            object_ids=(result_object_id,),
+                            object_types=(ObjectContent.ObjectContentType.Object,),
+                            object_names=(f"<res {result_object_id.hex()[:6]}>".encode(),),
+                            object_bytes=(chunk_to_list_of_bytes(result_bytes),),
                         ),
                     )
                 )
