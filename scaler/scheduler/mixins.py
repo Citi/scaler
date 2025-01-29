@@ -134,7 +134,7 @@ class WorkerManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_result(self, task_result: TaskResult):
+    async def on_task_result(self, worker: bytes, task_result: TaskResult):
         raise NotImplementedError()
 
     @abc.abstractmethod

@@ -11,6 +11,7 @@ class TaskStatus(enum.Enum):
     Success = _common.TaskStatus.success  # if submit and task is done and get result
     Failed = _common.TaskStatus.failed  # if submit and task is failed on worker
     Canceled = _common.TaskStatus.canceled  # if submit and task is canceled
+    CancelFailed = _common.TaskStatus.cancelFailed  # if submit and cancel request failed as the task was running
     NotFound = _common.TaskStatus.notFound  # if submit and task is not found in scheduler
     WorkerDied = (
         _common.TaskStatus.workerDied

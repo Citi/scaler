@@ -134,8 +134,13 @@ class SymphonyTaskManager(Looper, TaskManager):
         task_queued = task_cancel.task_id in self._queued_task_ids
         task_processing = task_cancel.task_id in self._processing_task_ids
 
-        if (not task_queued and not task_processing) or (task_processing and not task_cancel.flags.force):
+        if not task_queued and not task_processing:
             result = TaskResult.new_msg(task_cancel.task_id, TaskStatus.NotFound)
+            await self._connector_external.send(result)
+            return
+
+        if task_processing and not task_cancel.flags.force:
+            result = TaskResult.new_msg(task_cancel.task_id, TaskStatus.CancelFailed)
             await self._connector_external.send(result)
             return
 

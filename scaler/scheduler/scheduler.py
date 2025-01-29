@@ -130,7 +130,7 @@ class Scheduler:
 
         # receive task result from downstream
         if isinstance(message, TaskResult):
-            await self._worker_manager.on_task_result(message)
+            await self._worker_manager.on_task_result(source, message)
             return
 
         # scheduler receives worker disconnect request from downstream
