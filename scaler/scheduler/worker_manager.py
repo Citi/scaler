@@ -44,6 +44,8 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         self._worker_alive_since: Dict[bytes, Tuple[float, WorkerHeartbeat]] = dict()
         self._allocator = QueuedAllocator(per_worker_queue_size)
 
+        self._cancelling_tasks: Set[bytes] = set()
+
         self._last_balance_advice: Dict[bytes, List[bytes]] = dict()
         self._load_balance_advice_same_count = 0
 
@@ -69,25 +71,51 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
         await self._binder.send(worker, TaskCancel.new_msg(task_cancel.task_id))
 
-    async def on_task_result(self, task_result: TaskResult):
-        worker = self._allocator.remove_task(task_result.task_id)
+    async def on_task_result(self, worker: bytes, task_result: TaskResult):
+        valid_statuses = [
+            TaskStatus.Canceled, TaskStatus.CancelFailed, TaskStatus.Failed, TaskStatus.NotFound, TaskStatus.Success
+        ]
 
-        if task_result.status in {TaskStatus.Canceled, TaskStatus.NotFound}:
-            if worker is not None:
-                # The worker canceled the task, but the scheduler still had it queued. Re-route the task to another
-                # worker.
-                await self.__reroute_tasks([task_result.task_id])
-            else:
-                await self._task_manager.on_task_done(task_result)
-
+        if task_result.status not in valid_statuses:
+            logging.error(
+                f"received invalid task status={task_result.status} for task_id={task_result.task_id.hex()} from "
+                f"worker={worker!r}")
             return
 
-        if worker is None:
+        assigned_worker = self._allocator.get_assigned_worker(task_result.task_id)
+
+        if assigned_worker is None:
             logging.error(
-                f"received unknown task result for task_id={task_result.task_id.hex()}, status={task_result.status} "
+                f"received task result for unknown task_id={task_result.task_id.hex()}, status={task_result.status} "
                 f"might due to worker get disconnected or canceled"
             )
             return
+
+        if worker != assigned_worker:
+            # Assigned worker might be different from the received message's worker if the task previously got rerouted
+            # to another worker.
+            logging.warning(
+                f"received task result from invalid worker for task_id={task_result.task_id.hex()}, "
+                f"status={task_result.status} might be due to cancelled or re-routed task"
+            )
+            return
+
+        if task_result.status == TaskStatus.CancelFailed:
+            # Cancel failures occur when a task cancellation was requested on an actively running task, with the `force`
+            # parameter set to `False` (i.e. during balancing).
+            # We can safely ignore these messages. In the future, we might want to stop considering these tasks for
+            # balancing.
+            return
+
+        self._allocator.remove_task(task_result.task_id)
+
+        if task_result.status == TaskStatus.Canceled:
+            # The worker canceled the task, but the scheduler still had it assigned to this worker. Re-route the task to
+            # another worker.
+            await self.__reroute_tasks([task_result.task_id])
+            return
+
+        assert task_result.status in [TaskStatus.Failed, TaskStatus.NotFound, TaskStatus.Success]
 
         await self._task_manager.on_task_done(task_result)
 
@@ -190,7 +218,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         for worker, task_ids in current_advice.items():
             await self._binder_monitor.send(StateBalanceAdvice.new_msg(worker, task_ids))
 
-        task_cancel_flags = TaskCancel.TaskCancelFlags(force=True, retrieve_task_object=False)
+        task_cancel_flags = TaskCancel.TaskCancelFlags(force=False, retrieve_task_object=False)
 
         self._last_balance_advice = current_advice
         for worker, task_ids in current_advice.items():

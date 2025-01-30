@@ -48,10 +48,16 @@ class VanillaTaskManager(Looper, TaskManager):
         task_id = task_cancel.task_id
 
         task_not_found = task_id not in self._processing_task_ids and task_id not in self._queued_task_id_to_task
+
+        if task_not_found:
+            result = TaskResult.new_msg(task_id, TaskStatus.NotFound)
+            await self._connector_external.send(result)
+            return
+
         task_is_processing = task_id in self._processing_task_ids
 
-        if task_not_found or (task_is_processing and not task_cancel.flags.force):
-            result = TaskResult.new_msg(task_id, TaskStatus.NotFound)
+        if task_is_processing and not task_cancel.flags.force:
+            result = TaskResult.new_msg(task_id, TaskStatus.CancelFailed)
             await self._connector_external.send(result)
             return
 
