@@ -92,7 +92,8 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         await self._task_manager.on_task_done(task_result)
 
     async def on_heartbeat(self, worker: bytes, info: WorkerHeartbeat):
-        if await self._allocator.add_worker(worker):
+        # Set worker queue size here
+        if await self._allocator.add_worker_with_max_tasks(worker, info.queue_size):
             logging.info(f"worker {worker!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker, b"connected"))
 
