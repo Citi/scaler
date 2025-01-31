@@ -14,6 +14,8 @@ class QueuedAllocator(TaskAllocator):
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
+        self._workers_max_tasks: Dict[bytes, int] = dict()
+
     async def add_worker(self, worker: bytes) -> bool:
         if worker in self._workers_to_task_ids:
             return False
@@ -21,6 +23,12 @@ class QueuedAllocator(TaskAllocator):
         self._workers_to_task_ids[worker] = IndexedQueue()
         await self._worker_queue.put([0, worker])
         return True
+
+    async def add_worker_with_max_tasks(self, worker: bytes, max_tasks: int) -> bool:
+        res = await self.add_worker(worker)
+        if res:
+            self._workers_max_tasks[worker] = max_tasks
+        return res
 
     def remove_worker(self, worker: bytes) -> List[bytes]:
         if worker not in self._workers_to_task_ids:
@@ -112,6 +120,20 @@ class QueuedAllocator(TaskAllocator):
         await self._worker_queue.put([count + 1, worker])
         return worker
 
+    async def assign_task_with_max_tasks(self, task_id: bytes) -> Optional[bytes]:
+        if task_id in self._task_id_to_worker:
+            return self._task_id_to_worker[task_id]
+
+        count, worker = await self._worker_queue.get()
+        if count == self._workers_max_tasks[worker]:
+            await self._worker_queue.put([count, worker])
+            return None
+
+        self._workers_to_task_ids[worker].put(task_id)
+        self._task_id_to_worker[task_id] = worker
+        await self._worker_queue.put([count + 1, worker])
+        return worker
+
     def remove_task(self, task_id: bytes) -> Optional[bytes]:
         if task_id not in self._task_id_to_worker:
             return None
@@ -138,8 +160,28 @@ class QueuedAllocator(TaskAllocator):
 
         return True
 
+    def has_available_worker_with_max_tasks(self) -> bool:
+        if not len(self._worker_queue):
+            return False
+
+        count = self._worker_queue.max_priority()
+        max_tasks = 0
+        for _, max_task in self._workers_max_tasks:
+            max_tasks = max(max_tasks, max_task)
+
+        if count == max_tasks:
+            return False
+
+        return True
+
     def statistics(self) -> Dict:
         return {
             worker: {"free": self._max_tasks_per_worker - len(tasks), "sent": len(tasks)}
+            for worker, tasks in self._workers_to_task_ids.items()
+        }
+
+    def statistics_with_max_tasks(self) -> Dict:
+        return {
+            worker: {"free": self._workers_max_tasks[worker] - len(tasks), "sent": len(tasks)}
             for worker, tasks in self._workers_to_task_ids.items()
         }
