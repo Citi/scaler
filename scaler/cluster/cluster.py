@@ -56,7 +56,6 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         logging.info(f"{self.__get_prefix()} received signal, shutting down")
         for worker in self._workers:
             logging.info(f"{self.__get_prefix()} shutting down worker[{worker.pid}]")
-            # os.kill(worker.pid, signal.SIGINT)
             worker.terminate()
 
     def __register_signal(self):

@@ -1,20 +1,17 @@
 import asyncio
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
+
+from tests.utility import logging_test_name
 
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.queues.async_priority_queue import AsyncPriorityQueue
-from tests.utility import logging_test_name
 
 
 class TestAsyncPriorityQueue(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_async_priority_queue(self):
         async def async_test():
             queue = AsyncPriorityQueue()

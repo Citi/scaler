@@ -95,7 +95,6 @@ class Client:
             identity=self._identity,
             client_agent_address=self._client_agent_address,
             scheduler_address=self._scheduler_address,
-            # context=self._context,
             session=self._session,
             future_manager=self._future_manager,
             stop_event=self._stop_event,
@@ -159,7 +158,7 @@ class Client:
         """
 
         return {
-            "address": self._scheduler_address,
+            "address": str(self._scheduler_address),
             "profiling": self._profiling,
             "timeout_seconds": self._timeout_seconds,
             "heartbeat_interval_seconds": self._heartbeat_interval_seconds,
@@ -308,6 +307,15 @@ class Client:
 
         cache = self._object_buffer.buffer_send_object(obj, name)
         return ObjectReference(cache.object_name, cache.object_id, sum(map(len, cache.object_bytes)))
+
+    def clear(self):
+        """
+        clear all resources used by the client, this will cancel all running futures and invalidate all existing object
+        references
+        """
+
+        self._future_manager.cancel_all_futures()
+        self._object_buffer.clear()
 
     def disconnect(self):
         """

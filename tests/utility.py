@@ -1,8 +1,6 @@
 import logging
 import socket
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
 
 
 def get_available_tcp_port(hostname: str = "127.0.0.1") -> int:

@@ -171,8 +171,6 @@ class Scheduler:
             logging.info(f"{self.__class__.__name__}: {e}")
             pass
 
-        print("scheduler ;; to destroy binder and binder monitor")
-
         self._binder.destroy()
         self._binder_monitor.destroy()
         self._session.destroy()

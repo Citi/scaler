@@ -1,14 +1,13 @@
 import math
 import time
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
 from concurrent.futures import CancelledError, as_completed
 from threading import Event
 
+from tests.utility import get_available_tcp_port, logging_test_name
+
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def noop_sleep(sec: int):
@@ -16,7 +15,6 @@ def noop_sleep(sec: int):
 
 
 class TestFuture(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -24,14 +22,10 @@ class TestFuture(unittest.TestCase):
         self._workers = 3
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=self._workers, event_loop="builtin")
 
-    # ok
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def tearDown(self) -> None:
         self.cluster.shutdown()
         pass
 
-    # ok
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_callback(self):
         done_called_event = Event()
 
@@ -45,8 +39,6 @@ class TestFuture(unittest.TestCase):
             fut.add_done_callback(on_done_callback)
             done_called_event.wait()  # wait for the callback to be called, DO NOT call result().
 
-    # ok
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_as_completed(self):
         with Client(address=self.address) as client:
             fut = client.submit(math.sqrt, 100.0)
@@ -54,8 +46,6 @@ class TestFuture(unittest.TestCase):
             for finished in as_completed([fut], timeout=5):
                 self.assertAlmostEqual(finished.result(), 10.0)
 
-    # ok
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_state(self):
         with Client(address=self.address) as client:
             fut = client.submit(noop_sleep, 0.5)
@@ -67,8 +57,6 @@ class TestFuture(unittest.TestCase):
             self.assertFalse(fut.running())
             self.assertTrue(fut.done())
 
-    # ok
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_cancel(self):
         with Client(address=self.address) as client:
             fut = client.submit(math.sqrt, 100.0)
@@ -87,8 +75,6 @@ class TestFuture(unittest.TestCase):
             self.assertFalse(fut.cancel())
             self.assertFalse(fut.cancelled())
 
-    # ok
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_exception(self):
         with Client(address=self.address) as client:
             fut = client.submit(math.sqrt, "16")
@@ -100,8 +86,6 @@ class TestFuture(unittest.TestCase):
 
             self.assertIsInstance(fut.exception(), TypeError)
 
-    # ok
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_client_disconnected(self):
         with Client(address=self.address) as client:
             fut = client.submit(noop_sleep, 10.0)

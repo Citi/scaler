@@ -2,16 +2,14 @@ import enum
 import functools
 import random
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=None
 from typing import Any
 
 import cloudpickle
+from tests.utility import get_available_tcp_port, logging_test_name
 
 from scaler import Client, SchedulerClusterCombo, Serializer
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def noop(sec: int):
@@ -29,7 +27,6 @@ class ObjectType(enum.Enum):
 
 class MySerializer(Serializer):
     @staticmethod
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def serialize(obj: Any) -> bytes:
         print(f"MySerializer.serialize({MySerializer.trim_message_internal(obj)})")
         if isinstance(obj, int):
@@ -37,7 +34,6 @@ class MySerializer(Serializer):
         return ObjectType.Other.value + cloudpickle.dumps(obj)
 
     @staticmethod
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def deserialize(payload: bytes) -> Any:
         print(f"MySerializer.deserialize({MySerializer.trim_message_internal(payload)})")
         if payload[0] == ObjectType.Integer.value[0]:
@@ -46,7 +42,6 @@ class MySerializer(Serializer):
         return cloudpickle.loads(payload[1:])
 
     @staticmethod
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def trim_message_internal(message: Any) -> str:
         msg = str(message)
         if len(msg) > 30:
@@ -55,7 +50,6 @@ class MySerializer(Serializer):
 
 
 class TestSerializer(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -63,13 +57,10 @@ class TestSerializer(unittest.TestCase):
         self._workers = 3
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=self._workers, event_loop="builtin")
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def tearDown(self) -> None:
         self.cluster.shutdown()
         pass
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_one_task(self):
         client = Client(self.address, serializer=MySerializer())
 
@@ -82,7 +73,6 @@ class TestSerializer(unittest.TestCase):
         self.assertEqual(result, 1)
         print("done test_one_task")
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_heavy_function(self):
         with Client(self.address, serializer=MySerializer()) as client:
             size = 500_000_000

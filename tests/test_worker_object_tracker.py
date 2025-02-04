@@ -1,22 +1,18 @@
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
+
+from tests.utility import logging_test_name
 
 from scaler.protocol.python.common import ObjectContent
-from scaler.protocol.python.message import (ObjectInstruction, ObjectRequest,
-                                            ObjectResponse)
+from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, ObjectResponse
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker.agent.object_tracker import VanillaObjectTracker
-from tests.utility import logging_test_name
 
 
 class TestWorkerObjectTracker(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_object_tracker(self) -> None:
         tracker = VanillaObjectTracker()
 
@@ -60,6 +56,7 @@ class TestWorkerObjectTracker(unittest.TestCase):
                 b"client",
                 ObjectContent.new_msg(
                     (b"object_1", b"object_2", b"object_3"),
+                    tuple([ObjectContent.ObjectContentType.Object] * 3),
                     (b"name_1", b"name_2", b"name_3"),
                     ([b"content_1"], [b"content_2"], [b"content_3"]),
                 ),

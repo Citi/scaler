@@ -1,19 +1,16 @@
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
+
+from tests.utility import logging_test_name
 
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.queues.indexed_queue import IndexedQueue
-from tests.utility import logging_test_name
 
 
 class TestIndexedQueue(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_indexed_queue(self):
         queue = IndexedQueue()
         queue.put(1)

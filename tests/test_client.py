@@ -3,14 +3,14 @@ import os
 import random
 import time
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=None
+from concurrent.futures import CancelledError
+
+from tests.utility import get_available_tcp_port, logging_test_name
 
 from scaler import Client, SchedulerClusterCombo
-from scaler.utility.exceptions import ProcessorDiedError
+from scaler.utility.exceptions import MissingObjects, ProcessorDiedError
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def noop(sec: int):
@@ -32,7 +32,6 @@ def raise_exception(foo: int):
 
 
 class TestClient(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -40,13 +39,10 @@ class TestClient(unittest.TestCase):
         self._workers = 3
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=self._workers, event_loop="builtin")
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def tearDown(self) -> None:
         self.cluster.shutdown()
         pass
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_one_submit(self):
         with Client(self.address) as client:
             with ScopedLogger("submitting 1 task"):
@@ -54,8 +50,6 @@ class TestClient(unittest.TestCase):
 
             self.assertEqual(future1.result(), 1)
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_one_map(self):
         with Client(self.address) as client:
             with ScopedLogger("mapping 1 task"):
@@ -63,8 +57,6 @@ class TestClient(unittest.TestCase):
 
             self.assertEqual(result, [1, 2])
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_submit_and_map(self):
         with Client(self.address) as client:
             tasks = [random.randint(0, 100) for _ in range(100)]
@@ -79,8 +71,6 @@ class TestClient(unittest.TestCase):
 
             self.assertEqual(submit_results, tasks)
 
-    # no: seems to go forever
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_noop_submit(self):
         with Client(self.address) as client:
             tasks = [random.randint(0, 100) for _ in range(10000)]
@@ -92,8 +82,6 @@ class TestClient(unittest.TestCase):
 
             self.assertEqual(results, tasks)
 
-    # no: same as above
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_noop_map(self):
         with Client(self.address) as client:
             tasks = [random.randint(0, 100) for _ in range(10000)]
@@ -102,8 +90,6 @@ class TestClient(unittest.TestCase):
 
             self.assertEqual(results, tasks)
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_noop_cancel(self):
         with Client(self.address) as client:
             tasks = [10, 1, 1] * 10
@@ -118,8 +104,6 @@ class TestClient(unittest.TestCase):
 
         time.sleep(1)
 
-    # no
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_heavy_function(self):
         with Client(self.address) as client:
             size = 500_000_000
@@ -133,8 +117,6 @@ class TestClient(unittest.TestCase):
             expected = [task * size for task in tasks]
             self.assertEqual(results, expected)
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_very_large_payload(self):
         def func(data: bytes):
             return data
@@ -147,8 +129,6 @@ class TestClient(unittest.TestCase):
 
             self.assertTrue(payload == result)
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_sleep(self):
         with Client(self.address) as client:
             time.sleep(5)
@@ -166,8 +146,6 @@ class TestClient(unittest.TestCase):
 
             self.assertEqual(results, tasks)
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_raise_exception(self):
         with Client(self.address) as client:
             tasks = [i for i in range(100)]
@@ -177,8 +155,6 @@ class TestClient(unittest.TestCase):
             with self.assertRaises(ValueError), ScopedLogger(f"gather {len(futures)} results"):
                 _ = [future.result() for future in futures]
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_function(self):
         def func_args(a: int, b: int, c: int, d: int = 0):
             return a, b, c, d
@@ -208,8 +184,6 @@ class TestClient(unittest.TestCase):
             with ScopedLogger("test not allow keyword only arguments"), self.assertRaises(TypeError):
                 client.submit(func_args2, a=3, b=4).result()
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_map(self):
         def func(x, y):
             return x * y
@@ -218,8 +192,6 @@ class TestClient(unittest.TestCase):
             result = client.map(func, [(1, 2), (3, 4), (5, 6), (7, 8)])
             self.assertEqual(result, [2, 12, 30, 56])
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_more_tasks(self):
         def func(a):
             time.sleep(random.randint(10, 50))
@@ -228,20 +200,14 @@ class TestClient(unittest.TestCase):
         with Client(self.address) as client:
             client.map(func, [(i,) for i in range(self._workers * 2)])
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_context_manager(self):
         with Client(self.address) as client:
             self.assertEqual(client.submit(noop, 1).result(), 1)
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_no_disconnect(self):
         with Client(self.address) as client:
             self.assertEqual(client.submit(noop, 1).result(), 1)
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_extra_disconnects(self):
         with Client(self.address) as client:
             self.assertEqual(client.submit(noop, 1).result(), 1)
@@ -249,8 +215,6 @@ class TestClient(unittest.TestCase):
             client.disconnect()
             client.disconnect()
 
-    # yes: fickle?
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_processor_died(self):
         def func():
             time.sleep(1)
@@ -261,8 +225,6 @@ class TestClient(unittest.TestCase):
             with self.assertRaises(ProcessorDiedError):
                 client.submit(func).result()
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_non_hashable_client(self):
         def func(a):
             return a * 2
@@ -270,8 +232,6 @@ class TestClient(unittest.TestCase):
         with Client(self.address) as client:
             client.submit(func, [1, 2, 3, 4, 5])
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_send_object(self):
         def func(a):
             return len(a)
@@ -283,8 +243,6 @@ class TestClient(unittest.TestCase):
             ref2 = client.send_object("123456789")
             self.assertEqual(client.map(func, [(ref1,), (ref2,)]), [6, 9])
 
-    # yes
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_send_object2(self):
         def add(a, b):
             return a + b
@@ -295,8 +253,6 @@ class TestClient(unittest.TestCase):
             fut = client.submit(add, ref, [6])
             self.assertEqual(fut.result(), [1, 2, 3, 4, 5, 6])
 
-    # no: seems to hang
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_scheduler_crash(self):
         CLIENT_TIMEOUT_SECONDS = 5
 
@@ -310,8 +266,6 @@ class TestClient(unittest.TestCase):
             with self.assertRaises(TimeoutError):
                 future.result()
 
-    # no
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_responsiveness(self):
         MAX_DELAY_SECONDS = 0.25
 
@@ -335,3 +289,22 @@ class TestClient(unittest.TestCase):
             disconnect_start_time = time.time()
             client.disconnect()
             self.assertLess(time.time() - disconnect_start_time, MAX_DELAY_SECONDS)
+
+    def test_clear(self):
+        with Client(self.address) as client:
+            arg_reference = client.send_object(0.5)
+            future = client.submit(noop_sleep, arg_reference)
+
+            client.clear()
+
+            # clear() cancels all futures
+            with self.assertRaises(CancelledError):
+                future.result()
+            self.assertTrue(future.cancelled())
+
+            # using an old reference should fail
+            with self.assertRaises(MissingObjects):
+                client.submit(noop_sleep, arg_reference).result()
+
+            # but new tasks should work fine
+            self.assertEqual(client.submit(round, 3.14).result(), 3.0)

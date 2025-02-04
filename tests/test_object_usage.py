@@ -1,12 +1,10 @@
 import dataclasses
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
 
-from scaler.scheduler.object_usage.object_tracker import (ObjectTracker,
-                                                          ObjectUsage)
-from scaler.utility.logging.utility import setup_logger
 from tests.utility import logging_test_name
+
+from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
+from scaler.utility.logging.utility import setup_logger
 
 
 @dataclasses.dataclass
@@ -14,7 +12,6 @@ class Sample(ObjectUsage):
     key: str
     value: str
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def get_object_key(self) -> str:
         return self.key
 
@@ -24,12 +21,10 @@ def sample_ready(obj: Sample):
 
 
 class TestObjectUsage(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_object_usage(self):
         object_usage: ObjectTracker[str, Sample] = ObjectTracker("sample", sample_ready)
 

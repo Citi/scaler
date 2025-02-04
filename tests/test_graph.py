@@ -1,14 +1,13 @@
 import graphlib
 import time
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=180
+
+from tests.utility import get_available_tcp_port, logging_test_name
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def inc(i):
@@ -24,19 +23,16 @@ def minus(a, b):
 
 
 class TestGraph(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=3, event_loop="builtin")
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def tearDown(self) -> None:
         self.cluster.shutdown()
         pass
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_graph(self):
         graph = {"a": 2, "b": 2, "c": (inc, "a"), "d": (add, "a", "b"), "e": (minus, "d", "c")}
 
@@ -48,7 +44,6 @@ class TestGraph(unittest.TestCase):
             with self.assertRaises(graphlib.CycleError):
                 client.get({"b": (inc, "c"), "c": (inc, "b")}, ["b", "c"])
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_graph_fail(self):
         def inc_error(i):
             assert isinstance(i, int)
@@ -76,7 +71,6 @@ class TestGraph(unittest.TestCase):
                 futures = client.get(graph, ["e"], block=False)
                 futures["e"].result(timeout=15.0)
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_graph_return_order(self):
         graph = {
             "a": 2,
@@ -94,7 +88,6 @@ class TestGraph(unittest.TestCase):
                 results = client.get(graph, keys=["e", "d", "c"])
                 self.assertEqual(results, {"e": 1, "d": 4, "c": 3})
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_get_data_key(self):
         def func(a):
             return a
@@ -103,7 +96,6 @@ class TestGraph(unittest.TestCase):
             result = client.get({"a": (func, "b"), "b": [1]}, keys=["b"])
             self.assertEqual(result["b"], [1])
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_reference_data_key(self):
         with Client(address=self.address) as client:
             obj_ref = client.send_object(5, name="foobar")
@@ -120,7 +112,6 @@ class TestGraph(unittest.TestCase):
                 results = client.get(graph, keys=["e", "d", "c"])
                 self.assertEqual(results, {"e": 4, "d": 7, "c": 3})
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_none_value(self):
         def func(a, optional_param_can_be_none):
             return a
@@ -132,7 +123,6 @@ class TestGraph(unittest.TestCase):
                 results = client.get(graph, keys=["b"])
                 self.assertEqual(results, {"b": 1})
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_cancel(self):
         def func(a):
             time.sleep(10)
@@ -145,7 +135,6 @@ class TestGraph(unittest.TestCase):
             time.sleep(4)
             futures["b"].cancel()
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_client_quit(self):
         def func(a):
             time.sleep(10)
@@ -159,7 +148,6 @@ class TestGraph(unittest.TestCase):
 
         self.assertTrue(all(f.cancelled() for f in futures.values()))
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_cull_graph(self):
         graph = {
             "a": (lambda *_: None,),

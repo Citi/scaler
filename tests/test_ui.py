@@ -1,13 +1,12 @@
 import random
 import time
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
+
+from tests.utility import get_available_tcp_port, logging_test_name
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.scoped_logger import ScopedLogger
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import get_available_tcp_port, logging_test_name
 
 
 def noop(sec: int):
@@ -29,7 +28,6 @@ def noop_memory(length: int):
 
 
 class TestUI(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
@@ -37,13 +35,10 @@ class TestUI(unittest.TestCase):
         self._workers = 10
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=self._workers, event_loop="builtin")
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def tearDown(self) -> None:
         self.cluster.shutdown()
         pass
 
-    # no
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_noop(self):
         with Client(self.address) as client:
             tasks = [random.randint(2, 50) for _ in range(20)]
@@ -65,8 +60,6 @@ class TestUI(unittest.TestCase):
 
             self.assertEqual(results, tasks)
 
-    # no
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_memory_usage(self):
         with Client(self.address) as client:
             tasks = [0, 1, 100, 1024, 1024 * 2, 1024 * 1024, 1024 * 1024 * 2, 1024 * 1024 * 4]

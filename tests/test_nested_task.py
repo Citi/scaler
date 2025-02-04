@@ -1,10 +1,9 @@
 import unittest
-import timeout_decorator
-LOCAL_TIMEOUT=60
+
+from tests.utility import logging_test_name
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger
-from tests.utility import logging_test_name
 
 N_TASKS = 30
 N_WORKERS = 3
@@ -12,33 +11,25 @@ assert N_TASKS >= N_WORKERS
 
 
 class TestNestedTask(unittest.TestCase):
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
         self.address = "tcp://127.0.0.1:23456"
         self.cluster = SchedulerClusterCombo(address=self.address, n_workers=N_WORKERS, event_loop="builtin")
 
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def tearDown(self) -> None:
         self.cluster.shutdown()
 
-    # no
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_nested_task_arg_client(self) -> None:
         with Client(self.address) as client:
             result = client.submit(parent_task_arg_client, client).result()
             self.assertEqual(result, sum(nested_task(v) for v in range(0, N_TASKS)))
 
-    # no
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_recursive_task(self) -> None:
         with Client(self.address) as client:
             result = client.submit(factorial, client, 10).result()
             self.assertEqual(result, 3_628_800)
 
-    # no
-    @timeout_decorator.timeout(LOCAL_TIMEOUT)
     def test_multiple_recursive_task(self) -> None:
         with Client(self.address) as client:
             result = client.submit(fibonacci, client, 8).result()

@@ -8,6 +8,8 @@ from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
 from typing import Callable, List, Optional, Tuple
 
+import tblib.pickling_support
+
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.utility import chunk_to_list_of_bytes
@@ -86,11 +88,11 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         setup_logger(log_paths=tuple(logging_paths), logging_level=self._logging_level)
 
-        self._session = Session(1)
+        tblib.pickling_support.install()
 
+        self._session = Session(1)
         self._connector = SyncConnector(
-            session=self._session, type_=ConnectorType.Dealer, address=self._address, identity=None
-        )
+            session=self._session, type_=ConnectorType.Dealer, address=self._address, identity=None)
 
         self._object_cache = ObjectCache(
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
@@ -180,7 +182,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self.__process_task(task)
             return
 
-        print(f"!!! Task({task.task_id.hex()}): insufficient objects received from scheduler, task failed")
+        logging.error(f"Task({task.task_id.hex()}): insufficient objects received from scheduler, task failed")
         self.__send_result(
             task.source,
             task.task_id,
@@ -270,6 +272,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 source,
                 ObjectContent.new_msg(
                     (result_object_id,),
+                    (ObjectContent.ObjectContentType.Object,),
                     (f"<res {result_object_id.hex()[:6]}>".encode(),),
                     (chunk_to_list_of_bytes(result_bytes),),
                 ),

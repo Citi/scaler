@@ -56,8 +56,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         # self._address_path = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
         self._address = TcpAddr.localhost(random.randint(10000, 20000))
 
-        print(f"PROCESSOR MANAGER ADDR: {self._address}")
-
         self._heartbeat: Optional[HeartbeatManager] = None
         self._task_manager: Optional[TaskManager] = None
         self._profiling_manager: Optional[ProfilingManager] = None
@@ -186,7 +184,9 @@ class VanillaProcessorManager(Looper, ProcessorManager):
                 ObjectInstruction.new_msg(
                     ObjectInstruction.ObjectInstructionType.Create,
                     source,
-                    ObjectContent.new_msg((result_object_id,), (b"",), (result_object_bytes,)),
+                    ObjectContent.new_msg(
+                        (result_object_id,), (ObjectContent.ObjectContentType.Object,), (b"",), (result_object_bytes,)
+                    ),
                 )
             )
 
@@ -236,9 +236,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
     def destroy(self, reason: str):
         self.__kill_all_processors(reason)
         self._binder_internal.destroy()
-        self._connector_external.destroy()
-        self._session.destroy()
-        # os.remove(self._address_path)
+        os.remove(self._address_path)
 
     def initialized(self) -> bool:
         return self._current_holder is not None and self._current_holder.initialized()
