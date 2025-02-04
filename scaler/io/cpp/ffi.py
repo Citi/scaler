@@ -50,13 +50,6 @@ class LibType:
     def client_recv_sync(client: "FFITypes.CData", msg: "FFITypes.CData") -> None:
         (client, msg)
 
-    # void inproc_init(struct Session *session, struct Inproc *inproc);
-    # void inproc_recv_async(void *future, struct Inproc *inproc);
-    # void inproc_recv_sync(struct Inproc *inproc, struct Message *msg);
-    # void inproc_send(struct Inproc *inproc, uint8_t *data, size_t len);
-    # void inproc_connect(struct Inproc *inproc, const char *addr, size_t len);
-    # void inproc_bind(struct Inproc *inproc, const char *addr, size_t len);
-
     def inproc_init(session: "FFITypes.CData", inproc: "FFITypes.CData", identity: bytes, len: int) -> None:
         (session, inproc)
 
