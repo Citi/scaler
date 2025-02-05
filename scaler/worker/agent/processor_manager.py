@@ -28,7 +28,7 @@ from scaler.utility.object_utility import generate_object_id, serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, ObjectTracker, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
-from scaler.io.model import Session, TcpAddr
+from scaler.io.model import Session, TCPAddress
 
 import random
 
@@ -54,7 +54,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._logging_level = logging_level
 
         # self._address_path = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
-        self._address = TcpAddr.localhost(random.randint(10000, 20000))
+        self._address = TCPAddress.localhost(random.randint(10000, 20000))
 
         self._heartbeat: Optional[HeartbeatManager] = None
         self._task_manager: Optional[TaskManager] = None

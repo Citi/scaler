@@ -1,3 +1,6 @@
+
+#define COMPILE 1
+
 #include <sys/eventfd.h>
 #include <sys/epoll.h>
 #include <semaphore>
@@ -13,10 +16,6 @@
 #include <poll.h>
 #include <signal.h>
 #include <sys/un.h>
-
-// #include <print>
-
-#define REAL 1
 
 #include "main.h"
 
@@ -121,7 +120,7 @@ void deserialize_u32(const uint8_t buffer[4], uint32_t *x)
 WriteResult writeall(int fd, const uint8_t *data, size_t len)
 {
     size_t sent = 0;
-    for (;;)
+    while (sent < len)
     {
         ssize_t n = write(fd, data + sent, len - sent);
         if (n < 0)
@@ -144,18 +143,7 @@ WriteResult writeall(int fd, const uint8_t *data, size_t len)
             panic("failed to send to peer: " + std::to_string(errno) + "; " + strerror(errno));
         }
 
-        // std::cout << "writeall: wrote " << n << " bytes" << std::endl;
-
         sent += n;
-
-        if (sent == len)
-        {
-            break;
-        }
-        else if (sent > len)
-        {
-            panic("wrote too many bytes ??");
-        }
     }
 
     return WriteResult::Written;
@@ -176,22 +164,21 @@ char *to_hex(uint8_t *data, size_t len)
 ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data, int timeout)
 {
     size_t n_read = 0;
-    for (;;)
+    while (n_read < len)
     {
         ssize_t n = read(fd, data + n_read, len - n_read);
         if (n < 0)
         {
             if (errno == EWOULDBLOCK || errno == EAGAIN)
             {
-                // std::cout << "readexact(): read stalled; read: " << n_read << std::endl;
-
+                // if the socket had no data and we can stop early, return
                 if (stop_if_no_data && n_read == 0)
                     return ReadResult::NoData;
 
+                // otherwise, wait on fd to be readable
+                // this could be made more efficient by saving our state and going back to epoll
                 if (auto sig = fd_wait(fd, timeout, POLLIN))
                     panic("failed to wait on fd; signal: " + std::to_string(sig));
-
-                // std::cout << "readexact(): woke up" << std::endl;
 
                 continue;
             }
@@ -208,17 +195,6 @@ ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data, in
             return ReadResult::Disconnect;
 
         n_read += n;
-
-        // std::cout << "readexact(): read " << n_read << " bytes" << std::endl;
-
-        if (n_read == len)
-        {
-            break;
-        }
-        else if (n_read > len)
-        {
-            panic("read too many bytes ??");
-        }
     }
 
     return ReadResult::Read;
@@ -226,20 +202,8 @@ ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data, in
 
 WriteResult write_message(int fd, Bytes *bytes)
 {
-    std::cout << "write_message(): writing message ; HASH: " << easy_hash(bytes->data, bytes->len) << std::endl;
-
-    // if (bytes->len > MAX_MSG_SIZE)
-    //     panic("cannot write message; too large: " + std::to_string(bytes->len) + " bytes");
-
-    auto header_hex = to_hex(bytes->data, 4);
-    // std::cout << "write_message(): header: " << header_hex << std::endl;
-    free(header_hex);
-
-    // auto hex = to_hex(bytes->data, bytes->len);
-    // // std::cout << "write_message(): payload: " << hex << std::endl;
-    // free(hex);
-
-    // std::cout << "write_message(): payload len: " << bytes->len << " bytes" << std::endl;
+    if (bytes->len > MAX_MSG_SIZE)
+        panic("cannot write message; too large: " + std::to_string(bytes->len) + " bytes");
 
     uint8_t header[4];
     serialize_u32(htonl((uint32_t)bytes->len), header);
@@ -253,26 +217,19 @@ WriteResult write_message(int fd, Bytes *bytes)
         return status;
 
     return writeall(fd, bytes->data, bytes->len);
-    // writeall(fd, MAGIC, 4);
 }
 
 ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
 {
-    // std::cout << "read_message(): reading message" << std::endl;
-
     uint8_t magic[4];
     ReadResult status = readexact(fd, magic, 4, stop_if_no_data, timeout);
 
-    // the socket had no data to read and would block
-    if (status == ReadResult::NoData)
-        return ReadResult::NoData;
+    // bubble-up the error
+    if (status != ReadResult::Read)
+        return status;
 
-    if (status == ReadResult::Disconnect)
-        return ReadResult::Disconnect;
-
-    if (status == ReadResult::TimedOut)
-        return ReadResult::TimedOut;
-
+    // todo: handle this gracefully
+    // it probably means we need to reconnect
     if (memcmp(magic, MAGIC, 4) != 0)
     {
         panic("invalid start magic: " + std::string(to_hex(magic, 4)));
@@ -281,82 +238,24 @@ ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
     uint8_t header[4];
     status = readexact(fd, header, 4, false, timeout);
 
-    if (status == ReadResult::Disconnect)
-    {
-        std::cout << "read_message(): disconnect" << std::endl;
-        return ReadResult::Disconnect;
-    }
-
-    if (status == ReadResult::TimedOut)
-    {
-        std::cout << "read_message(): timed out" << std::endl;
-        return ReadResult::TimedOut;
-    }
+    if (status != ReadResult::Read)
+        return status;
 
     uint32_t len;
     deserialize_u32(header, &len);
     len = ntohl(len);
 
-    // auto header_hex = to_hex(header, 4);
-    // std::cout << "read_message(): header: " << header_hex << std::endl;
-    // free(header_hex);
-
-    // if (len > MAX_MSG_SIZE)
-    // {
-    //     panic("message too large: " + std::to_string(len) + " bytes;; " + std::to_string(htonl(len)));
-    // }
-    // else
-    // {
-    //     // std::cout << "read_message(): msg size: " << len << std::endl;
-    // }
-
     uint8_t *buffer = (uint8_t *)malloc(len * sizeof(uint8_t));
     status = readexact(fd, buffer, len, false, timeout);
 
-    if (status == ReadResult::Disconnect)
+    if (status != ReadResult::Read)
     {
         free(buffer);
-        // std::cout << "read_message(): disconnect" << std::endl;
-        panic("peer disconnected during message read");
-        return ReadResult::Disconnect;
+        return status;
     }
-
-    if (status == ReadResult::TimedOut)
-    {
-        free(buffer);
-        // std::cout << "read_message(): timed out" << std::endl;
-        panic("timed out during message read");
-        return ReadResult::TimedOut;
-    }
-
-    // status = readexact(fd, magic, 4, false, timeout);
-
-    // if (status == ReadResult::Disconnect)
-    // {
-    //     free(buffer);
-    //     std
-    //     return ReadResult::Disconnect;
-    // }
-
-    // if (status == ReadResult::TimedOut)
-    // {
-    //     free(buffer);
-    //     return ReadResult::TimedOut;
-    // }
-
-    // if (memcmp(magic, MAGIC, 4) != 0)
-    // {
-    //     panic("invalid end magic: " + std::string(to_hex(magic, 4)));
-    // }
 
     data->data = buffer;
     data->len = len;
-
-    // auto hex = to_hex(data->data, data->len);
-    // // std::cout << "read_message(): payload: " << hex << std::endl;
-    // free(hex);
-
-    std::cout << " read_message(): read message    ; HASH: " << easy_hash(data->data, data->len) << std::endl;
 
     return ReadResult::Read;
 }
@@ -377,37 +276,28 @@ bool epoll_data_by_fd(Session *session, int fd, EpollData **data)
 
 void io_thread_main(Session *session, [[maybe_unused]] size_t id)
 {
-    auto epfd = session->epoll_fd;
-
     for (;;)
     {
         epoll_event event;
-        auto n_events = epoll_wait(epfd, &event, 1, -1);
+        auto n_events = epoll_wait(session->epoll_fd, &event, 1, -1);
 
         if (n_events == 0)
         {
-            // std::cout << "io-thread[" << id << "]: epoll_wait() timed out" << std::endl;
-
             continue;
         }
-        else if (n_events < 0)
+
+        if (n_events < 0)
         {
+            // we were interrupted by a signal, wait again
             if (errno == EINTR)
                 continue;
 
+            // if the epoll fd is closed, we should exit
             if (errno == EBADF)
-            {
-                // we're done here
-                // std::cout << "io-thread[" << id << "]: epoll fd closed" << std::endl;
-                // std::cout << "epoll len: " << session->epoll_data.size() << std::endl;
-
                 return;
-            }
 
             panic("handle epoll error: " + std::to_string(errno) + "; " + strerror(errno));
         }
-
-        // std::cout << "io-thread[" << id << "]: epoll_wait() returned: " << n_events << std::endl;
 
         // Q: why does the session need its own mutex?
         // A:
@@ -416,31 +306,14 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
         //    **this can happen in the time between epoll_wait() returns and the event is processed
         // std::cout << "io-thread[" << id << "]: locking session" << std::endl;
         session->mutex.lock_shared();
-        // std::cout << "io-thread[" << id << "]: session locked" << std::endl;
 
         // note, the epoll data will only be valid while the shared lock is held
         EpollData *data;
         if (!epoll_data_by_fd(session, event.data.fd, &data))
         {
-            // std::cout << "io-thread[" << id << "]: failed to find epoll data for fd: " << event.data.fd << std::endl;
-
             session->mutex.unlock_shared();
             continue;
         }
-
-        if (data->dead)
-        {
-            panic("epoll data is dead");
-        }
-
-        // std::cout << "io-thread[" << id << "]: found epoll data: " << event_name(data->type) << " for fd: " << event.data.fd << std::endl;
-
-        // if (data->type == EpollType::ClientPeerRecv)
-        // {
-        // std::cout << "data->fd: " << data->fd << "\n"
-        // << "peer->fd: " << data->peer->fd << "\n"
-        // << "peer->identity: " << data->peer->identity.as_string() << std::endl;
-        // }
 
         // clang-format off
         switch (data->type)
@@ -451,10 +324,10 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
             // the client has issued a recv() call
             case EpollType::ClientRecv:      client_recv_event(data->client);            break;
 
-            // we are the client and one of our peers has a message
+            // we have received a message from a peer
             case EpollType::ClientPeerRecv:  client_peer_recv_event(data->peer);         break;
 
-            // we are the client and have a new connection to accept
+            // we are bound and have a connection to accept
             case EpollType::ClientListener:  client_listener_event(data->client);        break;
 
             // an inproc client has received a message
@@ -468,18 +341,14 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
         }
         // clang-format on
 
-        // client->mutex.unlock();
-        // // std::cout << "io_thread_main(): unlocked client->mutex" << std::endl;
-
         session->mutex.unlock_shared();
-        // std::cout << "io_thread_main(): unlocked session" << std::endl;
     }
 }
 
 void session_init(Session *session, size_t num_threads)
 {
     new (session) Session{
-        .threads = std::vector<ThreadCtx>(),
+        .threads = std::vector<std::thread>(),
         .clients = std::vector<Client *>(),
         .inprocs = std::vector<Inproc *>(),
         .mutex = std::shared_mutex(),
@@ -490,6 +359,8 @@ void session_init(Session *session, size_t num_threads)
         .id_counter = 0,
     };
 
+    // this epfd is used to signal the io threads to close
+    // unlike all others, it's level-triggered
     add_epoll_fd(session, session->epoll_close_efd, EpollType::EpollClosed, session, false);
 
     session->threads.reserve(num_threads);
@@ -505,21 +376,19 @@ void session_destroy(Session *session)
 {
     std::cout << "destroying session" << std::endl;
 
-    // std::unique_lock lock(session->mutex);
-
-    std::cout << "closing epoll" << std::endl;
-
+    // this will wake up the io threads and cause them to exit
     eventfd_write(session->epoll_close_efd, 1);
 
-    // these shut down once the epoll fd is closed
+    // wait for all threads to exit
     for (size_t i = 0; i < session->threads.size(); ++i)
     {
         std::cout << "joining thread " << i << std::endl;
-        session->threads[i].thread.join();
+        session->threads[i].join();
     }
 
     close(session->epoll_fd);
 
+    // call the destructor without freeing the memory (it's owned by the caller)
     session->~Session();
 }
 
@@ -543,7 +412,6 @@ void add_epoll_fd(Session *session, int fd, EpollType type, void *data, bool edg
     EpollData epoll_data{
         .fd = fd,
         .type = type,
-        .dead = false,
         .ptr = data,
     };
 
@@ -591,8 +459,6 @@ void remove_epoll_fd(Session *session, int fd)
         panic("failed to find epoll data for fd: " + std::to_string(fd));
     }
 
-    data->dead = true;
-
     // remove the epoll data
     auto n = std::erase_if(session->epoll_data, [fd](EpollData &data)
                            { return data.fd == fd; });
@@ -619,8 +485,13 @@ bool Client::peer_by_id(Bytes id, Peer **peer)
     return false;
 }
 
-void client_init(Session *session, Client *client, ClientTransport transport, uint8_t *identity, size_t len, ConnectorType type)
+void client_init(Session *session, Client *client, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
 {
+    // todo: error handling?
+    if (transport == Transport::InProcess) {
+        panic("InProcess transport has a separate API");
+    }
+
     // *identity is owned by the caller, we need our own copy
     uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
     memcpy(identity_dup, identity, len);

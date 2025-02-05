@@ -103,8 +103,9 @@ async def c_async(fn: Callable[Concatenate["FFITypes.CData", P], R], *args: P.ar
 P2 = ParamSpec("P")
 R2 = TypeVar("R")
 
-# c_async is a helper function to call async C functions
-# example: c_async(lib.async_binder_recv, binder)
+# c_async_wrapper works like c_async but it returns a function
+# that can be called rather than calling the function directly
+# example: wrapped = c_async_wrap(lib.async_binder_recv, binder)
 def c_async_wrapper(fn: Callable[Concatenate["FFITypes.CData", P2], R2]) -> Callable[P2, Coroutine[None, None, R2]]:
     async def inner(*args: P2.args, **kwargs: P2.kwargs) -> R2:
         future = asyncio.get_running_loop().create_future()
@@ -122,12 +123,17 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
     else:
         msg = ffi.cast("struct Message *", result)
 
+        # todo: look into doing this without copying the data
         source = bytes(ffi.buffer(msg.address.data, msg.address.len))
         data = bytes(ffi.buffer(msg.payload.data, msg.payload.len))
 
+        # this frees the payload
         lib.message_destroy(msg)
 
         result = (source, data)
 
     future: asyncio.Future = ffi.from_handle(future_handle)
+
+    # using `call_soon_threadsafe()` is very important:
+    # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
     future.get_loop().call_soon_threadsafe(future.set_result, result)

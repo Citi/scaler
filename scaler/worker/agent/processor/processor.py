@@ -29,7 +29,7 @@ from scaler.utility.object_utility import generate_object_id, generate_serialize
 from scaler.worker.agent.processor.object_cache import ObjectCache
 
 
-from scaler.io.model import Session, ConnectorType, TcpAddr
+from scaler.io.model import Session, ConnectorType, TCPAddress
 
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
@@ -41,7 +41,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
         self,
         event_loop: str,
-        address: TcpAddr,
+        address: TCPAddress,
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
         garbage_collect_interval_seconds: int,

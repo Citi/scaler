@@ -29,12 +29,12 @@ from scaler.scheduler.worker_manager import VanillaWorkerManager
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
 
-from scaler.io.model import Session, ConnectorType, TcpAddr
+from scaler.io.model import Session, ConnectorType, TCPAddress
 
 
 class Scheduler:
     def __init__(self, config: SchedulerConfig):
-        if not isinstance(config.address, TcpAddr):
+        if not isinstance(config.address, TCPAddress):
             raise TypeError(
                 f"{self.__class__.__name__}: scheduler address must be tcp type: {config.address}"
             )

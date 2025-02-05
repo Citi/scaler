@@ -1,5 +1,8 @@
-#include <cstdint>
+// C
 #include <cstddef>
+#include <cstdint>
+
+// C++
 #include <thread>
 #include <queue>
 #include <vector>
@@ -9,12 +12,20 @@
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
+
+// System
 #include <sys/socket.h>
 
+// Third-party
 #include "third_party/concurrentqueue.h"
 #include "third_party/blockingconcurrentqueue.h"
 
-#ifdef ACTUALLY_CPP_PLEASE
+// we need to change certain settings depending on if we're compiling as C or C++
+#ifdef COMPILE
+
+// 5ca1ab1e = scalable
+static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
+
 #define ENUM enum class
 #else
 #define ENUM enum
@@ -23,7 +34,8 @@
 using moodycamel::BlockingConcurrentQueue;
 using moodycamel::ConcurrentQueue;
 
-#define MAX_MSG_SIZE 10 * 1024 * 1024
+// max message size to receive or send in bytes
+#define MAX_MSG_SIZE 500 * 1024 * 1024 // 500M
 
 struct Client;
 struct Peer;
@@ -53,7 +65,7 @@ struct Bytes
         return true;
     }
 
-    // is empty
+    // same as empty()
     bool operator!() const
     {
         return len == 0 || data == nullptr;
@@ -64,6 +76,7 @@ struct Bytes
         return len == 0 || data == nullptr;
     }
 
+    // debugging utility
     std::string as_string() const
     {
         if (empty())
@@ -79,24 +92,15 @@ struct Message
 {
     // the address the message was received from, or to send to
     //
-    // the contained data is not owned by the message
-    // it's owned by the peer to which it belongs
+    // for received messages, the address data is
+    // owned by the peer it was received from
     Bytes address;
 
     // the payload of the message
     //
-    // the contained data is owned by the message
+    // for received messages, the payload data is owned
     // and must be freed when the message is destroyed
     Bytes payload;
-};
-
-struct ThreadCtx
-{
-    // the thread
-    std::thread thread;
-
-    // the thread's epoll fd
-    // int epoll_fd;
 };
 
 struct Session;
@@ -115,7 +119,6 @@ struct EpollData
 {
     int fd;
     EpollType type;
-    bool dead;
 
     union
     {
@@ -131,8 +134,6 @@ struct Inproc
 {
     size_t id;
     Session *session;
-
-    // std::mutex mutex;
 
     ConcurrentQueue<Message> queue;
     ConcurrentQueue<void *> recv;
@@ -150,7 +151,7 @@ struct Inproc
 struct Session
 {
     // the io threads
-    std::vector<ThreadCtx> threads;
+    std::vector<std::thread> threads;
     std::vector<Client *> clients;
 
     std::vector<Inproc *> inprocs;
@@ -249,16 +250,12 @@ ENUM ConnectorType{
     Router // only valid for binder interface
 };
 
-ENUM ConnectOrBind{
-    Uninit,
-    Connect,
-    Bind};
-
 // Clients are tcp or unix domain sockets (uds, ipc)
-// no variant for inproc because they're handled differently
-ENUM ClientTransport{
-    Tcp,
-    Uds};
+// no variant for in-process because they're handled separately
+ENUM Transport{
+    TCP,
+    IntraProcess,
+    InterProcess};
 
 ENUM SendResult{
     Sent,
@@ -269,7 +266,7 @@ struct Client
     size_t id;
 
     ConnectorType type;
-    ClientTransport transport;
+    Transport transport;
 
     // this mutex protects everything except thread-safe things
     // because we don't want multiple io threads modifying the same data
@@ -302,7 +299,7 @@ struct Client
 };
 
 // public API
-void client_init(Session *session, Client *binder, ClientTransport transport, uint8_t *identity, size_t len, ConnectorType type);
+void client_init(Session *session, Client *binder, Transport transport, uint8_t *identity, size_t len, ConnectorType type);
 void client_bind(Client *binder, const char *host, uint16_t port);
 void client_connect(Client *binder, const char *addr, uint16_t port);
 void client_send(void *future, Client *binder, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
@@ -335,9 +332,3 @@ void client_recv_event(Client *binder);
 void client_peer_recv_event(Peer *peer);
 void client_listener_event(Client *binder);
 void inproc_recv_event(Inproc *inproc);
-
-#ifdef REAL
-
-// 5ca1ab1e = scalable
-static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
-#endif

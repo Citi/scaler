@@ -55,49 +55,26 @@ class Message:
     @property
     def has_source(self) -> bool:
         return self.addr is not None
-    
-# todo: zero-copy?
-# class ObjMessage:
-#     _obj: "FFITypes.CData"
-
-#     def __init__(self, obj: "FFITypes.CData"):
-#         self._obj = obj
-
-#     def __del__(self):
-#         lib.message_destroy(self._obj)
-
-#     @property
-#     def source(self) -> "FFITypes.buffer":
-#         return ffi.buffer(self._obj.address.data, self._obj.address.len)
-    
-#     @property
-#     def payload(self) -> "FFITypes.buffer":
-#         return ffi.buffer(self._obj.payload.data, self._obj.payload.len)
-
 
 BinderCallback: TypeAlias = Callable[[bytes, Message], Awaitable[None]]
 ConnectorCallback: TypeAlias = Callable[[Message], Awaitable[None]]
-
 
 @unique
 class ConnectorType(IntEnum):
     Pair = lib.Pair
     Pub = lib.Pub
+    Sub = lib.Sub
     Dealer = lib.Dealer
     Router = lib.Router
 
 @unique
-class ClientTransport(IntEnum):
-    Tcp = lib.Tcp
-    Uds = lib.Uds
-
-@unique
-class Protocol(Enum):
-    Tcp = auto()
-    Inproc = auto()
-
+class Protocol(IntEnum):
+    TCP = lib.TCP
+    IntraProcess = lib.IntraProcess
+    InterProcess = lib.InterProcess
 
 class Addr(ABC):
+    @property
     @abstractmethod
     def protocol(self) -> Protocol: ...
 
@@ -108,14 +85,16 @@ class Addr(ABC):
         match protocol:
             case "tcp":
                 addr, port = addr.split(":")
-                return TcpAddr(host=addr, port=int(port))
-            case "inproc":
-                return InprocAddr(name=addr)
+                return TCPAddress(host=addr, port=int(port))
+            case "intraprocess":
+                return IntraProcessAddress(name=addr)
+            case "interprocess":
+                return InterProcessAddress(path=addr)
             case _:
                 raise ValueError(f"unknown protocol: {protocol}")
 
 
-class TcpAddr(Addr):
+class TCPAddress(Addr):
     __match_args__ = ("host", "port")
 
     host: str
@@ -134,36 +113,37 @@ class TcpAddr(Addr):
     def __str__(self) -> str:
         return f"tcp://{self.host}:{self.port}"
     
-    def copywith(self, host: str | None = None, port: int | None = None) -> "TcpAddr":
-        return TcpAddr(host=host or self.host, port=port or self.port)
+    def copywith(self, host: str | None = None, port: int | None = None) -> "TCPAddress":
+        return TCPAddress(host=host or self.host, port=port or self.port)
 
+    @property
     def protocol(self) -> Protocol:
-        return Protocol.Tcp
+        return Protocol.TCP
 
     @staticmethod
-    def bindall(port: int) -> "TcpAddr":
+    def bindall(port: int) -> "TCPAddress":
         if not isinstance(port, int):
             raise TypeError(f"port must be an integer; is {type(port)}")
 
-        return TcpAddr(host="*", port=port)
+        return TCPAddress(host="*", port=port)
 
     @staticmethod
-    def localhost(port: int) -> "TcpAddr":
+    def localhost(port: int) -> "TCPAddress":
         if not isinstance(port, int):
             raise TypeError(f"port must be an integer; is {type(port)}")
 
-        return TcpAddr(host="127.0.0.1", port=port)
+        return TCPAddress(host="127.0.0.1", port=port)
     
-    def from_str(addr: str) -> "TcpAddr":
+    def from_str(addr: str) -> "TCPAddress":
         addr = Addr.from_str(addr)
 
-        if not isinstance(addr, TcpAddr):
+        if not isinstance(addr, TCPAddress):
             raise ValueError(f"expected a tcp address, got: {addr}")
         
         return addr
 
 
-class InprocAddr(Addr):
+class IntraProcessAddress(Addr):
     __match_args__ = ("name",)
 
     name: str
@@ -171,12 +151,30 @@ class InprocAddr(Addr):
     def __init__(self, name: str):
         self.name = name
 
-    def protocol(self) -> Protocol:
-        return Protocol.Inproc
+    def __str__(self) -> str:
+        return f"intraprocess://{self.name}"
 
-class InprocClient:
+    @property
+    def protocol(self) -> Protocol:
+        return Protocol.IntraProcess
+    
+class InterProcessAddress(Addr):
+    __match_args__ = ("path",)
+
+    path: str
+
+    def __init__(self, path: str):
+        self.path = path
+
+    def __str__(self) -> str:
+        return f"interprocess://{self.path}"
+
+    @property
+    def protocol(self) -> Protocol:
+        return Protocol.InterProcess
+
+class InProcessClient:
     _obj: "FFITypes.CData"
-    # _destroyed: bool = False
 
     def __init__(self, session: Session, identity: bytes):
         self._obj = ffi.new("struct Inproc *")
@@ -236,11 +234,11 @@ class Client:
         if self._destroyed:
             raise ValueError("client is destroyed")
 
-    def bind(self, host: str | None = None, port: int | None = None, addr: TcpAddr | None = None) -> None:
+    def bind(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
         self.__check_destroyed()
 
         match (host, port, addr):
-            case (None, None, TcpAddr(host, port)):
+            case (None, None, TCPAddress(host, port)):
                 ...
             case (str(host), int(port), None):
                 ...
@@ -249,11 +247,11 @@ class Client:
             
         lib.client_bind(self._obj, host.encode(), port)
 
-    def connect(self, host: str | None = None, port: int | None = None, addr: TcpAddr | None = None) -> None:
+    def connect(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
         self.__check_destroyed()
 
         match (host, port, addr):
-            case (None, None, TcpAddr(host, port)):
+            case (None, None, TCPAddress(host, port)):
                 ...
             case (str(host), int(port), None):
                 ...
@@ -394,13 +392,13 @@ class Client:
 if __name__ == "__main__":
     session = Session(1)
     router = Client(session, b"router", ConnectorType.Router)
-    router.bind(addr=TcpAddr.bindall(5564))
+    router.bind(addr=TCPAddress.bindall(5564))
 
     c2 = Client(session, b"client-1", ConnectorType.Pair)
-    c2.connect(addr=TcpAddr.localhost(5564))
+    c2.connect(addr=TCPAddress.localhost(5564))
 
     c3 = Client(session, b"client-2", ConnectorType.Pair)
-    c3.connect(addr=TcpAddr.localhost(5564))
+    c3.connect(addr=TCPAddress.localhost(5564))
 
     router.send_sync(to=b"client-1", data=b"hello")
     router.send_sync(to=b"client-1", data=b"hello")

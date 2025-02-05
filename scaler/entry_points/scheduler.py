@@ -18,7 +18,7 @@ from scaler.scheduler.scheduler import scheduler_main
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
 
-from scaler.io.model import TcpAddr
+from scaler.io.model import TCPAddress
 
 
 def get_args():
@@ -103,7 +103,7 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-path",
     )
-    parser.add_argument("address", type=TcpAddr.from_str, help="scheduler address to connect to")
+    parser.add_argument("address", type=TCPAddress.from_str, help="scheduler address to connect to")
     return parser.parse_args()
 
 

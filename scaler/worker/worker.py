@@ -26,7 +26,7 @@ from scaler.worker.agent.profiling_manager import VanillaProfilingManager
 from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
-from scaler.io.model import Session, TcpAddr, ConnectorType
+from scaler.io.model import Session, TCPAddress, ConnectorType
 
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -34,7 +34,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self,
         event_loop: str,
         name: str,
-        address: TcpAddr,
+        address: TCPAddress,
         io_threads: int,
         heartbeat_interval_seconds: int,
         garbage_collect_interval_seconds: int,

@@ -26,7 +26,7 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.worker.agent.processor.processor import Processor
 
-from scaler.io.model import Session, ConnectorType, TcpAddr, InprocAddr
+from scaler.io.model import Session, ConnectorType, TCPAddress, IntraProcessAddress
 
 
 @dataclasses.dataclass
@@ -82,8 +82,8 @@ class Client:
         self._profiling = profiling
         self._identity = f"{os.getpid()}|Client|{uuid.uuid4().bytes.hex()}".encode()
 
-        self._client_agent_address = TcpAddr.localhost(random.randint(10000, 20000)) #InprocAddr(f"scaler_client_{uuid.uuid4().hex}")
-        self._scheduler_address = TcpAddr.from_str(address)
+        self._client_agent_address = TCPAddress.localhost(random.randint(10000, 20000)) #InprocAddr(f"scaler_client_{uuid.uuid4().hex}")
+        self._scheduler_address = TCPAddress.from_str(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 

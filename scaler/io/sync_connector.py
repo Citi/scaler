@@ -8,11 +8,11 @@ from typing import Optional
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorType, Session, Addr, TcpAddr, InprocAddr, Client, InprocClient, TcpAddr, InprocAddr
+from scaler.io.model import ConnectorType, Session, Addr, TCPAddress, IntraProcessAddress, Client, InProcessClient, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
-    _client: Client | InprocClient
+    _client: Client | InProcessClient
 
     def __init__(self,
                  session: Session,
@@ -22,9 +22,9 @@ class SyncConnector:
         self._address = address
 
         match address:
-            case TcpAddr():    
+            case TCPAddress():    
                 host = address.host
-            case InprocAddr():
+            case IntraProcessAddress():
                 host = address.name
 
         self._identity: bytes = (
@@ -34,15 +34,15 @@ class SyncConnector:
         )
 
         match address:
-            case TcpAddr():
+            case TCPAddress():
                 self._client = Client(session, self._identity, type_)
                 self._client.connect(addr=self._address)
                 host = address.host
-            case InprocAddr():
+            case IntraProcessAddress():
                 if type_ != ConnectorType.Pair:
                     raise ValueError(f"Inproc only supports pair type, got {type_}")
 
-                self._client = InprocClient(session, self._identity)
+                self._client = InProcessClient(session, self._identity)
                 self._client.connect(addr=address.name)
                 host = address.name
 
@@ -65,7 +65,7 @@ class SyncConnector:
             match self._client:
                 case Client():
                     self._client.send_sync(data=serialize(message))
-                case InprocClient():
+                case InProcessClient():
                     self._client.send(data=serialize(message))
 
     def receive(self) -> Optional[Message]:
@@ -73,7 +73,7 @@ class SyncConnector:
             match self._client:
                 case Client():
                     msg = self._client.recv_sync()
-                case InprocClient():
+                case InProcessClient():
                     msg = self._client.recv_sync()
 
         return self.__compose_message(msg.payload)

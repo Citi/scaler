@@ -7,12 +7,12 @@ from typing import Literal
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorCallback, Client, ConnectorType, Session, TcpAddr
+from scaler.io.model import ConnectorCallback, Client, ConnectorType, Session, TCPAddress
 
 
 class AsyncConnector:
     _client: Client
-    _address: TcpAddr
+    _address: TCPAddress
     _identity: bytes
     _callback: ConnectorCallback | None
 
@@ -21,7 +21,7 @@ class AsyncConnector:
         session: Session,
         name: str,
         type_: ConnectorType,
-        address: TcpAddr,
+        address: TCPAddress,
         bind_or_connect: Literal["bind", "connect"],
         callback: ConnectorCallback | None,
         identity: bytes | None,
