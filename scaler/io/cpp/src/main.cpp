@@ -1253,6 +1253,9 @@ void client_peer_recv_event(Peer *peer)
     auto session = client->session;
 
     std::cout << "client_peer_recv_event(): locking client->mutex" << std::endl;
+
+    // we need to make sure no other thread is working on this peer
+    // we could maybe have a per-peer lock, but it may not be necessary
     client->mutex.lock();
 
     for (;;)
@@ -1336,8 +1339,13 @@ void client_peer_recv_event(Peer *peer)
             return;
         }
 
+        auto identity_dup = datadup(peer->identity.data, peer->identity.len);
+
         auto msg = Message{
-            .address = peer->identity,
+            .address = Bytes{
+                .data = identity_dup,
+                .len = peer->identity.len,
+            },
             .payload = payload,
         };
 
@@ -1553,7 +1561,7 @@ void client_listener_event(Client *client)
 // lock-free
 void Client::recv_msg(Message &&msg)
 {
-    // std::cout << "Client::recv_msg(): recv: " << identity.as_string() << " ; from: " << msg.address.as_string() << " ; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
+    std::cout << "recv message from: " << msg.address.as_string() << std::endl;
 
     // try to dequeue a future from the recv queue
     // for sync clients this will never happen
@@ -1568,10 +1576,6 @@ void Client::recv_msg(Message &&msg)
             std::this_thread::yield();
         }
 
-        // std::cout << "dq'd future for completion" << std::endl;
-
-        // // std::cout << "msg len: " << msg.payload.len << std::endl;
-
         future_set_result(future, &msg);
     }
     else
@@ -1580,8 +1584,6 @@ void Client::recv_msg(Message &&msg)
         {
             panic("eventfd read error: " + std::to_string(errno) + "; " + strerror(errno));
         }
-
-        // std::cout << "enqueuing msg with len: " << msg.payload.len << std::endl;
 
         // no outstanding recvs, buffer the message
         this->recv_buffer.enqueue(msg);
