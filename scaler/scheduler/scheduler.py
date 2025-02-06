@@ -42,8 +42,7 @@ class Scheduler:
         self._address_monitor = config.address.copywith(port=config.address.port + 2)
 
         logging.info(f"{self.__class__.__name__}: monitor address is {self._address_monitor}")
-        # self._session = Session(config.io_threads)
-        self._session = Session(1)
+        self._session = Session(config.io_threads)
         self._binder = AsyncBinder(session=self._session, name="scheduler", address=config.address)
         self._binder_monitor = AsyncConnector(
             session=self._session,

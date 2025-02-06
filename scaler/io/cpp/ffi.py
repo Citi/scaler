@@ -50,22 +50,22 @@ class LibType:
     def client_recv_sync(client: "FFITypes.CData", msg: "FFITypes.CData") -> None:
         (client, msg)
 
-    def inproc_init(session: "FFITypes.CData", inproc: "FFITypes.CData", identity: bytes, len: int) -> None:
+    def intraprocess_init(session: "FFITypes.CData", inproc: "FFITypes.CData", identity: bytes, len: int) -> None:
         (session, inproc)
 
-    def inproc_recv_async(future: "FFITypes.CData", inproc: "FFITypes.CData") -> None:
+    def intraprocess_recv_async(future: "FFITypes.CData", inproc: "FFITypes.CData") -> None:
         (future, inproc)
 
-    def inproc_recv_sync(inproc: "FFITypes.CData", msg: "FFITypes.CData") -> None:
+    def intraprocess_recv_sync(inproc: "FFITypes.CData", msg: "FFITypes.CData") -> None:
         (inproc, msg)
 
-    def inproc_send(inproc: "FFITypes.CData", data: bytes, len: int) -> None:
+    def intraprocess_send(inproc: "FFITypes.CData", data: bytes, len: int) -> None:
         (inproc, data, len)
 
-    def inproc_connect(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
+    def intraprocess_connect(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
         (inproc, addr, len)
 
-    def inproc_bind(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
+    def intraprocess_bind(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
         (inproc, addr, len)
 
 

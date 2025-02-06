@@ -36,7 +36,7 @@ struct Client
     ...;
 };
 
-struct Inproc
+struct IntraProcessClient
 {
     ...;
 };
@@ -56,11 +56,11 @@ void client_recv(void *future, struct Client *binder);
 void client_recv_sync(struct Client *client, struct Message *msg);
 void client_destroy(struct Client *binder);
 
-void inproc_init(struct Session *session, struct Inproc *inproc, uint8_t *identity, size_t len);
-void inproc_bind(struct Inproc *inproc, const char *addr, size_t len);
-void inproc_connect(struct Inproc *inproc, const char *addr, size_t len);
-void inproc_send(struct Inproc *inproc, uint8_t *data, size_t len);
-void inproc_recv_sync(struct Inproc *inproc, struct Message *msg);
-void inproc_recv_async(void *future, struct Inproc *inproc);
+void intraprocess_init(struct Session *session, struct IntraProcessClient *inproc, uint8_t *identity, size_t len);
+void intraprocess_bind(struct IntraProcessClient *inproc, const char *addr, size_t len);
+void intraprocess_connect(struct IntraProcessClient *inproc, const char *addr, size_t len);
+void intraprocess_send(struct IntraProcessClient *inproc, uint8_t *data, size_t len);
+void intraprocess_recv_sync(struct IntraProcessClient *inproc, struct Message *msg);
+void intraprocess_recv_async(void *future, struct IntraProcessClient *inproc);
 
 void message_destroy(struct Message *recv);

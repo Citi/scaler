@@ -104,14 +104,14 @@ struct Message
 };
 
 struct Session;
-struct Inproc;
+struct IntraProcessClient;
 
 ENUM EpollType{
     ClientSend,
     ClientRecv,
     ClientListener,
     ClientPeerRecv,
-    InprocRecv,
+    IntraProcessClientRecv,
     EpollClosed,
 };
 
@@ -124,13 +124,13 @@ struct EpollData
     {
         void *ptr;
         Client *client;
-        Inproc *inproc;
+        IntraProcessClient *inproc;
         Peer *peer;
     };
 };
 
 // inproc sockets are always pair sockets
-struct Inproc
+struct IntraProcessClient
 {
     size_t id;
     Session *session;
@@ -154,12 +154,12 @@ struct Session
     std::vector<std::thread> threads;
     std::vector<Client *> clients;
 
-    std::vector<Inproc *> inprocs;
+    std::vector<IntraProcessClient *> inprocs;
 
     // exclusive: odifying inprocs or clients (rare)
     // shared: sending / receiving messages (common)
     std::shared_mutex mutex;
-    std::shared_mutex inproc_mutex;
+    std::shared_mutex intraprocess_mutex;
 
     int epoll_fd;
     std::vector<EpollData> epoll_data;
@@ -310,12 +310,12 @@ void message_destroy(Message *recv);
 void client_send_sync(Client *binder, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
 void client_recv_sync(Client *client, Message *msg);
 
-void inproc_init(Session *session, Inproc *inproc, uint8_t *identity, size_t len);
-void inproc_recv_async(void *future, Inproc *inproc);
-void inproc_recv_sync(Inproc *inproc, Message *msg);
-void inproc_send(Inproc *inproc, uint8_t *data, size_t len);
-void inproc_connect(Inproc *inproc, const char *addr, size_t len);
-void inproc_bind(Inproc *inproc, const char *addr, size_t len);
+void intraprocess_init(Session *session, IntraProcessClient *inproc, uint8_t *identity, size_t len);
+void intraprocess_recv_async(void *future, IntraProcessClient *inproc);
+void intraprocess_recv_sync(IntraProcessClient *inproc, Message *msg);
+void intraprocess_send(IntraProcessClient *inproc, uint8_t *data, size_t len);
+void intraprocess_connect(IntraProcessClient *inproc, const char *addr, size_t len);
+void intraprocess_bind(IntraProcessClient *inproc, const char *addr, size_t len);
 
 // Python callbacks
 /*extern "Python+C"*/ void future_set_result(void *future, void *data);
@@ -331,4 +331,4 @@ void client_send_event(Client *binder);
 void client_recv_event(Client *binder);
 void client_peer_recv_event(Peer *peer);
 void client_listener_event(Client *binder);
-void inproc_recv_event(Inproc *inproc);
+void intraprocess_recv_event(IntraProcessClient *inproc);

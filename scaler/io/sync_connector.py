@@ -8,11 +8,11 @@ from typing import Optional
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorType, Session, Addr, TCPAddress, IntraProcessAddress, Client, InProcessClient, TCPAddress, IntraProcessAddress
+from scaler.io.model import ConnectorType, Session, Addr, TCPAddress, IntraProcessAddress, Client, IntraProcessClient, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
-    _client: Client | InProcessClient
+    _client: Client | IntraProcessClient
 
     def __init__(self,
                  session: Session,
@@ -42,7 +42,7 @@ class SyncConnector:
                 if type_ != ConnectorType.Pair:
                     raise ValueError(f"Inproc only supports pair type, got {type_}")
 
-                self._client = InProcessClient(session, self._identity)
+                self._client = IntraProcessClient(session, self._identity)
                 self._client.connect(addr=address.name)
                 host = address.name
 
@@ -65,7 +65,7 @@ class SyncConnector:
             match self._client:
                 case Client():
                     self._client.send_sync(data=serialize(message))
-                case InProcessClient():
+                case IntraProcessClient():
                     self._client.send(data=serialize(message))
 
     def receive(self) -> Optional[Message]:
@@ -73,7 +73,7 @@ class SyncConnector:
             match self._client:
                 case Client():
                     msg = self._client.recv_sync()
-                case InProcessClient():
+                case IntraProcessClient():
                     msg = self._client.recv_sync()
 
         return self.__compose_message(msg.payload)

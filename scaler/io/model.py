@@ -33,6 +33,7 @@ class Session:
 
         if self._destroyed:
             return
+
         lib.session_destroy(self._obj)
         self._destroyed = True
 
@@ -173,12 +174,12 @@ class InterProcessAddress(Addr):
     def protocol(self) -> Protocol:
         return Protocol.InterProcess
 
-class InProcessClient:
+class IntraProcessClient:
     _obj: "FFITypes.CData"
 
     def __init__(self, session: Session, identity: bytes):
-        self._obj = ffi.new("struct Inproc *")
-        lib.inproc_init(session._obj, self._obj, identity, len(identity))
+        self._obj = ffi.new("struct IntraProcessClient *")
+        lib.intraprocess_init(session._obj, self._obj, identity, len(identity))
 
         session.register_client(self)
 
@@ -186,17 +187,17 @@ class InProcessClient:
         ... # TODO
 
     def bind(self, addr: str) -> None:
-        lib.inproc_bind(self._obj, addr.encode(), len(addr))
+        lib.intraprocess_bind(self._obj, addr.encode(), len(addr))
 
     def connect(self, addr: str) -> None:
-        lib.inproc_connect(self._obj, addr.encode(), len(addr))
+        lib.intraprocess_connect(self._obj, addr.encode(), len(addr))
 
     def send(self, data: bytes) -> None:
-        lib.inproc_send(self._obj, data, len(data))
+        lib.intraprocess_send(self._obj, data, len(data))
 
     def recv_sync(self) -> Message:
         msg = ffi.new("struct Message *")
-        lib.inproc_recv_sync(self._obj, msg)
+        lib.intraprocess_recv_sync(self._obj, msg)
         addr = bytes(ffi.buffer(msg.address.data, msg.address.len))
         payload = bytes(ffi.buffer(msg.payload.data, msg.payload.len))
 
@@ -205,8 +206,8 @@ class InProcessClient:
         return Message(addr, payload)
 
     async def recv(self) -> Message:
-        inproc_recv = c_async_wrapper(lib.inproc_recv_async)
-        (source, payload) = await inproc_recv(self._obj)
+        intraprocess_recv = c_async_wrapper(lib.intraprocess_recv_async)
+        (source, payload) = await intraprocess_recv(self._obj)
         return Message(source, payload)
 
 class Client:
@@ -215,7 +216,7 @@ class Client:
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType):
         self._obj = ffi.new("struct Client *")
-        lib.client_init(session._obj, self._obj, ClientTransport.Tcp, identity, len(identity), type_.value)
+        lib.client_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
 
         session.register_client(self)
 
@@ -226,8 +227,7 @@ class Client:
         if self._destroyed:
             return
         
-        obj = self._obj
-        lib.client_destroy(obj)
+        lib.client_destroy(self._obj)
         self._destroyed = True
 
     def __check_destroyed(self) -> None:
@@ -397,8 +397,12 @@ if __name__ == "__main__":
     c2 = Client(session, b"client-1", ConnectorType.Pair)
     c2.connect(addr=TCPAddress.localhost(5564))
 
+    print("A")
+
     c3 = Client(session, b"client-2", ConnectorType.Pair)
     c3.connect(addr=TCPAddress.localhost(5564))
+
+    print("B")
 
     router.send_sync(to=b"client-1", data=b"hello")
     router.send_sync(to=b"client-1", data=b"hello")
