@@ -6,7 +6,6 @@ import uuid
 from typing import Dict, List, Optional, Tuple
 
 import tblib.pickling_support
-import zmq.asyncio
 
 # from scaler.utility.logging.utility import setup_logger
 from scaler.io.async_binder import AsyncBinder
@@ -26,15 +25,17 @@ from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.mixins import Looper
 from scaler.utility.object_utility import generate_object_id, serialize_failure
-from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.mixins import HeartbeatManager, ObjectTracker, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
+from scaler.io.model import Session, TCPAddress
+
+import random
 
 class VanillaProcessorManager(Looper, ProcessorManager):
     def __init__(
         self,
-        context: zmq.asyncio.Context,
+        session: Session,
         event_loop: str,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
@@ -52,8 +53,8 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        self._address_path = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
-        self._address = ZMQConfig(ZMQType.ipc, host=self._address_path)
+        # self._address_path = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
+        self._address = TCPAddress.localhost(random.randint(10000, 20000))
 
         self._heartbeat: Optional[HeartbeatManager] = None
         self._task_manager: Optional[TaskManager] = None
@@ -67,9 +68,12 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         self._can_accept_task_lock: asyncio.Lock = asyncio.Lock()
 
-        self._binder_internal: AsyncBinder = AsyncBinder(
-            context=context, name="processor_manager", address=self._address, identity=None
+        self._session = session
+
+        self._binder_internal = AsyncBinder(
+            session=self._session, name="processor_manager", address=self._address, identity=None
         )
+
         self._binder_internal.register(self.__on_receive_internal)
 
     def register(

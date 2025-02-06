@@ -5,40 +5,55 @@ import threading
 import uuid
 from typing import Optional
 
-import zmq
-
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
-from scaler.utility.zmq_config import ZMQConfig
+
+from scaler.io.model import ConnectorType, Session, Addr, TCPAddress, IntraProcessAddress, Client, IntraProcessClient, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
-    def __init__(self, context: zmq.Context, socket_type: int, address: ZMQConfig, identity: Optional[bytes]):
+    _client: Client | IntraProcessClient
+
+    def __init__(self,
+                 session: Session,
+                 type_: ConnectorType,
+                 address: Addr,
+                    identity: bytes | None):
         self._address = address
 
-        self._context = context
-        self._socket = self._context.socket(socket_type)
+        match address:
+            case TCPAddress():    
+                host = address.host
+            case IntraProcessAddress():
+                host = address.name
 
         self._identity: bytes = (
-            f"{os.getpid()}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}".encode()
+            f"{os.getpid()}|{host}|{uuid.uuid4()}".encode()
             if identity is None
             else identity
         )
 
-        # set socket option
-        self._socket.setsockopt(zmq.IDENTITY, self._identity)
-        self._socket.setsockopt(zmq.SNDHWM, 0)
-        self._socket.setsockopt(zmq.RCVHWM, 0)
+        match address:
+            case TCPAddress():
+                self._client = Client(session, self._identity, type_)
+                self._client.connect(addr=self._address)
+                host = address.host
+            case IntraProcessAddress():
+                if type_ != ConnectorType.Pair:
+                    raise ValueError(f"Inproc only supports pair type, got {type_}")
 
-        self._socket.connect(self._address.to_address())
+                self._client = IntraProcessClient(session, self._identity)
+                self._client.connect(addr=address.name)
+                host = address.name
 
         self._lock = threading.Lock()
 
     def close(self):
-        self._socket.close()
+        ...
+        # self._socket.close()
 
     @property
-    def address(self) -> ZMQConfig:
+    def address(self) -> Addr:
         return self._address
 
     @property
@@ -47,13 +62,21 @@ class SyncConnector:
 
     def send(self, message: Message):
         with self._lock:
-            self._socket.send(serialize(message), copy=False)
+            match self._client:
+                case Client():
+                    self._client.send_sync(data=serialize(message))
+                case IntraProcessClient():
+                    self._client.send(data=serialize(message))
 
     def receive(self) -> Optional[Message]:
         with self._lock:
-            payload = self._socket.recv(copy=False)
+            match self._client:
+                case Client():
+                    msg = self._client.recv_sync()
+                case IntraProcessClient():
+                    msg = self._client.recv_sync()
 
-        return self.__compose_message(payload.bytes)
+        return self.__compose_message(msg.payload)
 
     def __compose_message(self, payload: bytes) -> Optional[Message]:
         result: Optional[Message] = deserialize(payload)

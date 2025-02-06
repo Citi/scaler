@@ -5,14 +5,15 @@ import signal
 from typing import List, Optional, Tuple
 
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.worker import Worker
+
+from scaler.io.model import TCPAddress
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        address: ZMQConfig,
+        address: TCPAddress,
         worker_io_threads: int,
         worker_names: List[str],
         heartbeat_interval_seconds: int,
@@ -55,7 +56,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         logging.info(f"{self.__get_prefix()} received signal, shutting down")
         for worker in self._workers:
             logging.info(f"{self.__get_prefix()} shutting down worker[{worker.pid}]")
-            os.kill(worker.pid, signal.SIGINT)
+            worker.terminate()
 
     def __register_signal(self):
         signal.signal(signal.SIGINT, self.__destroy)

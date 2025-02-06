@@ -2,17 +2,16 @@ import logging
 import threading
 from typing import Callable, Optional
 
-import zmq
 
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
-from scaler.utility.zmq_config import ZMQConfig
 
+from scaler.io.model import Client, Addr
 
 class SyncSubscriber(threading.Thread):
     def __init__(
         self,
-        address: ZMQConfig,
+        address: Addr,
         callback: Callable[[Message], None],
         topic: bytes,
         exit_callback: Optional[Callable[[], None]] = None,
@@ -20,6 +19,8 @@ class SyncSubscriber(threading.Thread):
         daemonic: bool = False,
         timeout_seconds: int = -1,
     ):
+        raise NotImplementedError
+
         threading.Thread.__init__(self)
 
         self._stop_event = stop_event
@@ -64,14 +65,14 @@ class SyncSubscriber(threading.Thread):
             self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds * 1000)
 
         self._socket.subscribe(self._topic)
-        self._socket.connect(self._address.to_address())
-        self._socket.connect(self._address.to_address())
+        self._socket.connect(self._address)
+        self._socket.connect(self._address)
 
     def __routine_polling(self):
         try:
             self.__routine_receive(self._socket.recv(copy=False).bytes)
         except zmq.Again:
-            raise TimeoutError(f"Cannot connect to {self._address.to_address()} in {self._timeout_seconds} seconds")
+            raise TimeoutError(f"Cannot connect to {self._address} in {self._timeout_seconds} seconds")
 
     def __routine_receive(self, payload: bytes):
         result: Optional[Message] = deserialize(payload)
