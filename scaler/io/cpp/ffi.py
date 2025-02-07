@@ -83,22 +83,13 @@ from typing import Callable, ParamSpec, TypeVar, Concatenate, Coroutine
 P = ParamSpec("P")
 R = TypeVar("R")
 
-__future_keep_alive = []
-
 # c_async is a helper function to call async C functions
 # example: c_async(lib.async_binder_recv, binder)
 async def c_async(fn: Callable[Concatenate["FFITypes.CData", P], R], *args: P.args, **kwargs: P.kwargs) -> R:
     future = asyncio.get_running_loop().create_future()
     handle = ffi.new_handle(future)
-    __future_keep_alive.append(handle)
     fn(handle, *args, **kwargs)
-    try:
-        res = await future
-    except BaseException as be:
-        print("yoooo,", be)
-        raise
-    __future_keep_alive.remove(handle)
-    return res
+    return await future
 
 
 P2 = ParamSpec("P")
