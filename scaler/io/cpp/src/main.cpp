@@ -165,6 +165,8 @@ ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data, in
 
 WriteResult write_message(int fd, Bytes *bytes)
 {
+    std::cout << "write_message(): " << bytes->len << " bytes" << std::endl;
+
     if (bytes->len > MAX_MSG_SIZE)
         panic("cannot write message; too large: " + std::to_string(bytes->len) + " bytes");
 
@@ -219,6 +221,8 @@ ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
 
     data->data = buffer;
     data->len = len;
+
+    std::cout << "read_message(): " << len << " bytes" << std::endl;
 
     return ReadResult::Read;
 }
@@ -448,7 +452,6 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
 
         .send_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .send = ConcurrentQueue<SendMsg>(),
-        .muted = std::queue<SendMsg>(),
 
         .recv_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv = ConcurrentQueue<void *>(),
@@ -524,6 +527,34 @@ void client_bind(Client *client, const char *host, uint16_t port)
     session->add_epoll_fd(client->fd, EpollType::ClientListener, client);
     session->mutex.unlock();
     client->mutex.unlock();
+}
+
+
+// hold the client lock when calling this function
+void Client::unmute()
+{
+    for (;;)
+    {
+        eventfd_t value;
+        if (eventfd_read(this->send_event_fd, &value) < 0)
+        {
+            if (errno == EAGAIN)
+                break;
+
+            panic("handle eventfd read error");
+        }
+
+        SendMsg send;
+        while (!this->send.try_dequeue(send))
+            std::this_thread::yield();
+
+        if (client_send_(this, std::move(send.msg)) != SendResult::Sent)
+        {
+            panic("client_listener_event(): failed to send muted message");
+        }
+
+        future_set_result(send.future, NULL);
+    }
 }
 
 // preconditions:
@@ -616,6 +647,7 @@ start:
 
     client->mutex.lock();
     client->peers.push_back(peer);
+    client->unmute();
     client->mutex.unlock();
 
     session->mutex.lock();
@@ -804,6 +836,25 @@ void client_destroy(Client *client)
     // we're done with the session
     session->mutex.unlock();
 
+    // drain the recv buffer
+    for (;;)
+    {
+        eventfd_t value;
+        if (eventfd_read(client->recv_buffer_event_fd, &value) < 0)
+        {
+            if (errno == EAGAIN)
+                break;
+
+            panic("handle eventfd read error: " + std::to_string(errno));
+        }
+
+        Message msg;
+        while (!client->recv_buffer.try_dequeue(msg))
+            std::this_thread::yield();
+
+        free(msg.payload.data);
+    }
+
     close(client->send_event_fd);
     close(client->recv_event_fd);
     close(client->recv_buffer_event_fd);
@@ -818,14 +869,6 @@ void client_destroy(Client *client)
         peer_destroy(peer);
 
     client->peers.clear();
-
-    while (!client->muted.empty())
-    {
-        auto send = client->muted.front();
-        client->muted.pop();
-        free(send.msg.payload.data);
-    }
-
     client->mutex.unlock();
 
     // call the C++ destructor without freeing the memory
@@ -861,7 +904,7 @@ SendResult client_send_(Client *client, Message &&msg)
 
         if (write_message(fd, &msg.payload) == WriteResult::Disconnected)
         {
-            // todo
+            std::cout << "client_send_(): disconnected" << std::endl;
         }
     }
     break;
@@ -875,7 +918,7 @@ SendResult client_send_(Client *client, Message &&msg)
         }
         if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
         {
-            // todo
+            std::cout << "client_send_(): disconnected" << std::endl;
         }
     }
     break;
@@ -886,7 +929,7 @@ SendResult client_send_(Client *client, Message &&msg)
         {
             if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
             {
-                // todo
+                std::cout << "client_send_(): disconnected" << std::endl;
             }
         }
     }
@@ -902,7 +945,7 @@ SendResult client_send_(Client *client, Message &&msg)
 
         if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
         {
-            // todo
+            std::cout << "client_send_(): disconnected" << std::endl;
         }
     }
     break;
@@ -967,17 +1010,21 @@ send:
 // epoll handlers
 void client_send_event(Client *client)
 {
+    client->mutex.lock();
     for (;;)
     {
+        if (client->muted())
+        {
+            break;
+        }
+
         // decrement the semaphore
         eventfd_t value;
         if (eventfd_read(client->send_event_fd, &value) < 0)
         {
             // semaphore is zero, we can epoll_wait() again
             if (errno == EAGAIN)
-            {
                 break;
-            }
 
             panic("handle eventfd read error: " + std::to_string(errno));
         }
@@ -986,11 +1033,8 @@ void client_send_event(Client *client)
         // we loop because thread synchronization may be delayed
         SendMsg send;
         while (!client->send.try_dequeue(send))
-        {
             std::this_thread::yield();
-        }
 
-        client->mutex.lock();
         auto res = client_send_(client, std::move(send.msg));
 
         switch (res)
@@ -999,11 +1043,11 @@ void client_send_event(Client *client)
             future_set_result(send.future, NULL);
             break;
         case SendResult::Muted:
-            client->muted.push(send);
+            panic("client_send_event: client is muted");
         }
-        client->mutex.unlock();
     }
 
+    client->mutex.unlock();
     client->session->mutex.unlock_shared();
 }
 
@@ -1076,21 +1120,22 @@ void client_peer_recv_event(Peer *peer)
 
     for (;;)
     {
-        // read message
-        // if we have outstanding reads: complete them
-        // if not, add to recv buffer
-        // break the loop when read() returns EAGAIN or EWOULDBLOCK
-
         Bytes payload;
         auto status = read_message(peer->fd, &payload, true, 3000);
 
         // this means we have exhausted the data and can epoll_wait again
-        if (status == ReadResult::NoData || status == ReadResult::TimedOut)
+        if (status == ReadResult::NoData)
             break;
+
+        if (status == ReadResult::TimedOut)
+        {
+            std::cout << "peer timed out: " << peer->identity.as_string() << std::endl;
+            break;
+        }
 
         if (status == ReadResult::Disconnect)
         {
-            // std::cout << "peer disconnected! " << peer->identity.as_string() << std::endl;
+            std::cout << "peer disconnected! " << peer->identity.as_string() << std::endl;
             break;
 
             // todo
@@ -1158,9 +1203,6 @@ void client_listener_event(Client *client)
             break;
         }
 
-        if (fd == 0)
-            panic("client listener: fd is 0???");
-
         auto peer = new Peer{
             .client = client,
             .identity = identity,
@@ -1170,24 +1212,7 @@ void client_listener_event(Client *client)
         client->mutex.lock();
         client->peers.push_back(peer);
 
-        // process all the messages in client->muted
-        // pop each message and send
-        while (!client->muted.empty())
-        {
-            auto send = client->muted.front();
-            client->muted.pop();
-
-            auto res = client_send_(client, std::move(send.msg));
-
-            switch (res)
-            {
-            case SendResult::Sent:
-                future_set_result(send.future, NULL);
-                break;
-            case SendResult::Muted:
-                panic("muted after reconnect");
-            }
-        }
+        client->unmute();
 
         if (eventfd_write(client->unmuted_event_fd, 1) < 0)
         {
@@ -1205,6 +1230,7 @@ void client_listener_event(Client *client)
         {
             // the caller is expecting the shared lock to be held
             session->mutex.unlock();
+            session->mutex.lock_shared();
             break;
         }
 

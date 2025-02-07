@@ -268,7 +268,6 @@ struct Client
 
     int send_event_fd;             // event fd for send queue
     ConcurrentQueue<SendMsg> send; // the send queue for Python thread -> io thread communication
-    std::queue<SendMsg> muted;     // messages that are muted because the socket is not connected
 
     int recv_event_fd;                    // event fd for recv queue
     ConcurrentQueue<void *> recv;         // the recv queue for io thread -> Python thread communication
@@ -290,7 +289,18 @@ struct Client
         return false;
     }
 
+    inline bool muted() {
+        // these types mute when they have no peers
+        if (this->type == ConnectorType::Pair || this->type == ConnectorType::Dealer) {
+            return this->peers.empty();
+        }
+
+        // other types drop messages when they have no peers
+        return false;
+    }
+
     void recv_msg(Message &&msg);
+    void unmute();
 };
 
 // public API
@@ -313,13 +323,15 @@ void intraprocess_connect(IntraProcessClient *inproc, const char *addr, size_t l
 void intraprocess_bind(IntraProcessClient *inproc, const char *addr, size_t len);
 
 // Python callbacks
-/*extern "Python+C"*/ void future_set_result(void *future, void *data);
+void future_set_result(void *future, void *data);
 
 // private API
-// void client_connect_tcp_(Client *binder, const char *addr, uint16_t port, bool force);
-// void client_reconnect(Client *binder);
 void peer_destroy(Peer *peer);
 int fd_wait(int fd, int timeout, short int events);
+uint8_t *datadup(const uint8_t *data, size_t len);
+
+// todo: make this a method of Client
+SendResult client_send_(Client *client, Message &&msg);
 
 // epoll handlers
 void client_send_event(Client *binder);
