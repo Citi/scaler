@@ -63,7 +63,6 @@ class Scheduler:
         self._graph_manager = VanillaGraphTaskManager()
         self._task_manager = VanillaTaskManager(max_number_of_tasks_waiting=config.max_number_of_tasks_waiting)
         self._worker_manager = VanillaWorkerManager(
-            per_worker_queue_size=config.per_worker_queue_size,
             timeout_seconds=config.worker_timeout_seconds,
             load_balance_seconds=config.load_balance_seconds,
             load_balance_trigger_times=config.load_balance_trigger_times,

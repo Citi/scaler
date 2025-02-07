@@ -28,7 +28,6 @@ UINT8_MAX = 2**8 - 1
 class VanillaWorkerManager(WorkerManager, Looper, Reporter):
     def __init__(
         self,
-        per_worker_queue_size: int,
         timeout_seconds: int,
         load_balance_seconds: int,
         load_balance_trigger_times: int,
@@ -42,7 +41,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         self._task_manager: Optional[TaskManager] = None
 
         self._worker_alive_since: Dict[bytes, Tuple[float, WorkerHeartbeat]] = dict()
-        self._allocator = QueuedAllocator(per_worker_queue_size)
+        self._allocator = QueuedAllocator()
 
         self._last_balance_advice: Dict[bytes, List[bytes]] = dict()
         self._load_balance_advice_same_count = 0
@@ -93,7 +92,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
     async def on_heartbeat(self, worker: bytes, info: WorkerHeartbeat):
         # Set worker queue size here
-        if await self._allocator.add_worker_with_max_tasks(worker, info.queue_size):
+        if await self._allocator.add_worker(worker, info.queue_size):
             logging.info(f"worker {worker!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker, b"connected"))
 

@@ -25,6 +25,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         logging_paths: Tuple[str, ...],
         logging_level: str,
         logging_config_file: Optional[str],
+        workers_queue_sizes: List[int],
     ):
         multiprocessing.Process.__init__(self, name="WorkerMaster")
 
@@ -42,8 +43,11 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._logging_config_file = logging_config_file
+        self._workers_queue_sizes = workers_queue_sizes
 
         self._workers: List[Worker] = []
+
+        assert len(self._workers_queue_sizes) == len(self._worker_names)
 
     def run(self):
         setup_logger(self._logging_paths, self._logging_config_file, self._logging_level)
@@ -81,9 +85,9 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
                 hard_processor_suspend=self._hard_processor_suspend,
                 logging_paths=self._logging_paths,
                 logging_level=self._logging_level,
-                queue_size=1000,  # FIXME: Use a variable instead
+                queue_size=self._workers_queue_sizes[index]
             )
-            for name in self._worker_names
+            for index, name in enumerate(self._worker_names)
         ]
 
         for worker in self._workers:

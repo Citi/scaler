@@ -10,7 +10,6 @@ from scaler.io.config import (
     DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
     DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
     DEFAULT_OBJECT_RETENTION_SECONDS,
-    DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
 from scaler.scheduler.config import SchedulerConfig
@@ -66,13 +65,6 @@ def get_args():
         help="exact number of repeated load balance advices when trigger load balance operation in scheduler",
     )
     parser.add_argument(
-        "--per-worker-queue-size",
-        "-qs",
-        type=int,
-        default=DEFAULT_PER_WORKER_QUEUE_SIZE,
-        help="specify per worker queue size",
-    )
-    parser.add_argument(
         "--event-loop", "-e", default="builtin", choices=EventLoopType.allowed_types(), help="select event loop type"
     )
     parser.add_argument(
@@ -115,7 +107,6 @@ def main():
         address=args.address,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,
-        per_worker_queue_size=args.per_worker_queue_size,
         client_timeout_seconds=args.client_timeout_seconds,
         worker_timeout_seconds=args.worker_timeout_seconds,
         object_retention_seconds=args.object_retention_seconds,

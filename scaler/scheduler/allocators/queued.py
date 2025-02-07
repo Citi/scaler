@@ -7,28 +7,22 @@ from scaler.utility.queues.indexed_queue import IndexedQueue
 
 
 class QueuedAllocator(TaskAllocator):
-    def __init__(self, max_tasks_per_worker: int):
-        self._max_tasks_per_worker = max_tasks_per_worker
+    def __init__(self):
         self._workers_to_task_ids: Dict[bytes, IndexedQueue] = dict()
+        self._workers_to_queue_size: Dict[bytes, int] = dict()
         self._task_id_to_worker: Dict[bytes, bytes] = {}
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
-        self._workers_max_tasks: Dict[bytes, int] = dict()
 
-    async def add_worker(self, worker: bytes) -> bool:
+    async def add_worker(self, worker: bytes, max_tasks: int) -> bool:
         if worker in self._workers_to_task_ids:
             return False
 
         self._workers_to_task_ids[worker] = IndexedQueue()
         await self._worker_queue.put([0, worker])
+        self._workers_to_queue_size[worker] = max_tasks
         return True
-
-    async def add_worker_with_max_tasks(self, worker: bytes, max_tasks: int) -> bool:
-        res = await self.add_worker(worker)
-        if res:
-            self._workers_max_tasks[worker] = max_tasks
-        return res
 
     def remove_worker(self, worker: bytes) -> List[bytes]:
         if worker not in self._workers_to_task_ids:
@@ -82,7 +76,7 @@ class QueuedAllocator(TaskAllocator):
 
         mean_queued = math.ceil(sum(queued_tasks_per_worker.values()) / len(queued_tasks_per_worker))
 
-        balance_count = {worker: max(0, count - mean_queued) for worker, count in queued_tasks_per_worker.items()}
+        balance_count = {worker: max(0, count - self._workers_to_queue_size[worker] // 2) for worker, count in queued_tasks_per_worker.items()}
 
         over_mean_advice_total = sum(balance_count.values())
         minimal_allocate = min(number_of_idle_workers, sum(queued_tasks_per_worker.values()))
@@ -111,21 +105,7 @@ class QueuedAllocator(TaskAllocator):
             return self._task_id_to_worker[task_id]
 
         count, worker = await self._worker_queue.get()
-        if count == self._max_tasks_per_worker:
-            await self._worker_queue.put([count, worker])
-            return None
-
-        self._workers_to_task_ids[worker].put(task_id)
-        self._task_id_to_worker[task_id] = worker
-        await self._worker_queue.put([count + 1, worker])
-        return worker
-
-    async def assign_task_with_max_tasks(self, task_id: bytes) -> Optional[bytes]:
-        if task_id in self._task_id_to_worker:
-            return self._task_id_to_worker[task_id]
-
-        count, worker = await self._worker_queue.get()
-        if count == self._workers_max_tasks[worker]:
+        if count == self._workers_to_queue_size[worker]:
             await self._worker_queue.put([count, worker])
             return None
 
@@ -155,18 +135,8 @@ class QueuedAllocator(TaskAllocator):
             return False
 
         count = self._worker_queue.max_priority()
-        if count == self._max_tasks_per_worker:
-            return False
-
-        return True
-
-    def has_available_worker_with_max_tasks(self) -> bool:
-        if not len(self._worker_queue):
-            return False
-
-        count = self._worker_queue.max_priority()
         max_tasks = 0
-        for _, max_task in self._workers_max_tasks:
+        for _, max_task in self._workers_to_queue_size:
             max_tasks = max(max_tasks, max_task)
 
         if count == max_tasks:
@@ -176,12 +146,6 @@ class QueuedAllocator(TaskAllocator):
 
     def statistics(self) -> Dict:
         return {
-            worker: {"free": self._max_tasks_per_worker - len(tasks), "sent": len(tasks)}
-            for worker, tasks in self._workers_to_task_ids.items()
-        }
-
-    def statistics_with_max_tasks(self) -> Dict:
-        return {
-            worker: {"free": self._workers_max_tasks[worker] - len(tasks), "sent": len(tasks)}
+            worker: {"free": self._workers_to_queue_size[worker] - len(tasks), "sent": len(tasks)}
             for worker, tasks in self._workers_to_task_ids.items()
         }

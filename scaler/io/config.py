@@ -43,9 +43,6 @@ DEFAULT_LOAD_BALANCE_SECONDS = 1
 # times happened
 DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 
-# number of tasks can be queued to each worker on scheduler side
-DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
-
 # =======================
 # WORKER SPECIFIC OPTIONS
 
