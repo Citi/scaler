@@ -177,6 +177,11 @@ struct Session
     {
         return num_threads() == 1;
     };
+
+    void add_epoll_fd(int fd, EpollType type, void *data, bool edge_triggered = true);
+    bool epoll_data_by_fd(int fd, EpollData **data);
+    bool has_epoll_data_fd(int fd);
+    void remove_epoll_fd(int fd);
 };
 
 ENUM ReadResult{
@@ -195,10 +200,6 @@ void session_destroy(Session *session);
 
 // private API
 void io_thread_main(Session *session, size_t id);
-void add_epoll_fd(Session *session, int fd, EpollType type, void *data, bool edge_triggered = true);
-void remove_epoll_fd(Session *session, int fd);
-bool epoll_data_by_fd(Session *session, int fd, EpollData **data);
-bool has_epoll_data_fd(Session *session, int fd);
 ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout);
 ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data);
 WriteResult write_message(int fd, Bytes *data);
@@ -207,23 +208,6 @@ void serialize_u32(uint32_t x, uint8_t buffer[4]);
 void deserialize_u32(const uint8_t buffer[4], uint32_t *x);
 bool client_connect_(Client *client, sockaddr_storage &&addr, int tries);
 void set_sock_opts(int fd);
-
-struct AddrInfo
-{
-    const char *host;
-    uint16_t port;
-
-    // empty
-    bool operator!() const
-    {
-        return host == nullptr || port == 0;
-    }
-
-    bool empty() const
-    {
-        return host == nullptr || port == 0;
-    }
-};
 
 struct Peer
 {
@@ -294,7 +278,20 @@ struct Client
     ConcurrentQueue<Message> recv_buffer; // these are messages that have been received
 
     // must hold mutex
-    bool peer_by_id(Bytes id, Peer **peer);
+    bool peer_by_id(Bytes id, Peer **peer)
+    {
+        for (auto &p : this->peers)
+        {
+            if (p->identity == id)
+            {
+                *peer = p;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     void recv_msg(Message &&msg);
 };
 

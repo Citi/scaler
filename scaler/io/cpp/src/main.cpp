@@ -223,12 +223,12 @@ ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
     return ReadResult::Read;
 }
 
-bool epoll_data_by_fd(Session *session, int fd, EpollData **data)
+bool Session::epoll_data_by_fd(int fd, EpollData **data)
 {
-    auto x = std::find_if(session->epoll_data.begin(), session->epoll_data.end(), [fd](EpollData &d)
+    auto x = std::find_if(this->epoll_data.begin(), this->epoll_data.end(), [fd](EpollData &d)
                           { return d.fd == fd; });
 
-    if (x != session->epoll_data.end())
+    if (x != this->epoll_data.end())
     {
         *data = &*x;
         return true;
@@ -272,7 +272,7 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
 
         // note, the epoll data will only be valid while the shared lock is held
         EpollData *data;
-        if (!epoll_data_by_fd(session, event.data.fd, &data))
+        if (!session->epoll_data_by_fd(event.data.fd, &data))
         {
             session->mutex.unlock_shared();
             continue;
@@ -322,7 +322,7 @@ void session_init(Session *session, size_t num_threads)
 
     // this epfd is used to signal the io threads to close
     // unlike all others, it's level-triggered
-    add_epoll_fd(session, session->epoll_close_efd, EpollType::EpollClosed, NULL, false);
+    session->add_epoll_fd(session->epoll_close_efd, EpollType::EpollClosed, NULL, false);
 
     session->threads.reserve(num_threads);
 
@@ -354,9 +354,9 @@ void session_destroy(Session *session)
     session->~Session();
 }
 
-bool has_epoll_data_fd(Session *session, int fd)
+bool Session::has_epoll_data_fd(int fd)
 {
-    for (auto &d : session->epoll_data)
+    for (auto &d : this->epoll_data)
     {
         if (d.fd == fd)
         {
@@ -367,7 +367,7 @@ bool has_epoll_data_fd(Session *session, int fd)
     return false;
 }
 
-void add_epoll_fd(Session *session, int fd, EpollType type, void *data, bool edge_triggered)
+void Session::add_epoll_fd(int fd, EpollType type, void *data, bool edge_triggered)
 {
     EpollData epoll_data{
         .fd = fd,
@@ -375,12 +375,12 @@ void add_epoll_fd(Session *session, int fd, EpollType type, void *data, bool edg
         .ptr = data,
     };
 
-    if (has_epoll_data_fd(session, fd))
+    if (has_epoll_data_fd(fd))
     {
         panic("epoll fd already exists: " + std::to_string(fd));
     }
 
-    session->epoll_data.push_back(epoll_data);
+    this->epoll_data.push_back(epoll_data);
 
     uint32_t flags = EPOLLIN;
 
@@ -397,38 +397,24 @@ void add_epoll_fd(Session *session, int fd, EpollType type, void *data, bool edg
         .events = flags,
         .data = {.fd = fd}};
 
-    if (epoll_ctl(session->epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0)
+    if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0)
     {
         panic("failed to add epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
     }
 }
 
 // must hold exclusive lock on session
-void remove_epoll_fd(Session *session, int fd)
+void Session::remove_epoll_fd(int fd)
 {
-    if (epoll_ctl(session->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
+    if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
     {
         // we ignore enoent because it means the fd was already removed
         if (errno != ENOENT)
             panic("failed to remove epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
     }
 
-    std::erase_if(session->epoll_data, [fd](EpollData &data)
+    std::erase_if(this->epoll_data, [fd](EpollData &data)
                   { return data.fd == fd; });
-}
-
-bool Client::peer_by_id(Bytes id, Peer **peer)
-{
-    for (auto &p : this->peers)
-    {
-        if (p->identity == id)
-        {
-            *peer = p;
-            return true;
-        }
-    }
-
-    return false;
 }
 
 void client_init(Session *session, Client *client, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
@@ -479,8 +465,8 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
 
     session->mutex.lock();
     session->clients.push_back(client);
-    add_epoll_fd(session, client->send_event_fd, EpollType::ClientSend, client);
-    add_epoll_fd(session, client->recv_event_fd, EpollType::ClientRecv, client);
+    session->add_epoll_fd(client->send_event_fd, EpollType::ClientSend, client);
+    session->add_epoll_fd(client->recv_event_fd, EpollType::ClientRecv, client);
     session->mutex.unlock();
 }
 
@@ -542,7 +528,7 @@ void client_bind(Client *client, const char *host, uint16_t port)
     // AND it will only ever be bound or connected, never both
     // std::cout << "client_bind(): lock session" << std::endl;
     session->mutex.lock();
-    add_epoll_fd(session, client->fd, EpollType::ClientListener, client);
+    session->add_epoll_fd(client->fd, EpollType::ClientListener, client);
     session->mutex.unlock();
     client->mutex.unlock();
 }
@@ -640,7 +626,7 @@ start:
     client->mutex.unlock();
 
     session->mutex.lock();
-    add_epoll_fd(session, peer->fd, EpollType::ClientPeerRecv, peer);
+    session->add_epoll_fd(peer->fd, EpollType::ClientPeerRecv, peer);
     session->mutex.unlock();
     return true;
 }
@@ -813,13 +799,13 @@ void client_destroy(Client *client)
     std::erase(session->clients, client);
 
     if (client->fd > 0)
-        remove_epoll_fd(session, client->fd);
-    remove_epoll_fd(session, client->send_event_fd);
-    remove_epoll_fd(session, client->recv_event_fd);
+        session->remove_epoll_fd(client->fd);
+    session->remove_epoll_fd(client->send_event_fd);
+    session->remove_epoll_fd(client->recv_event_fd);
 
     for (auto peer : client->peers)
     {
-        remove_epoll_fd(session, peer->fd);
+        session->remove_epoll_fd(peer->fd);
     }
 
     // we're done with the session
@@ -1222,14 +1208,14 @@ void client_listener_event(Client *client)
         session->mutex.lock();
         // we need to check that the client is still in the session
         // it's possible that the client was destroyed while we were upgrading the lock
-        if (!has_epoll_data_fd(session, client_fd))
+        if (!session->has_epoll_data_fd(client_fd))
         {
             // the caller is expecting the shared lock to be held
             session->mutex.unlock();
             break;
         }
 
-        add_epoll_fd(session, fd, EpollType::ClientPeerRecv, peer);
+        session->add_epoll_fd(fd, EpollType::ClientPeerRecv, peer);
 
         // downgrade the lock
         session->mutex.unlock();
@@ -1413,7 +1399,7 @@ void intraprocess_init(Session *session, IntraProcessClient *inproc, uint8_t *id
     session->intraprocess_mutex.unlock();
 
     session->mutex.lock();
-    add_epoll_fd(session, inproc->recv_event_fd, EpollType::IntraProcessClientRecv, inproc);
+    session->add_epoll_fd(inproc->recv_event_fd, EpollType::IntraProcessClientRecv, inproc);
     session->mutex.unlock();
 }
 
