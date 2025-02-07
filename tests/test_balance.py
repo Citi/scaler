@@ -32,7 +32,7 @@ class TestBalance(unittest.TestCase):
         combo = SchedulerClusterCombo(
             address=address,
             n_workers=1,
-            per_worker_queue_size=N_TASKS,
+            workers_queue_sizes=[N_TASKS for _ in range(0, N_TASKS)],
             load_balance_seconds=1,  # FIXME: re-enable balancing as it's currently disabled by default
         )
 
