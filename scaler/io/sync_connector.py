@@ -8,7 +8,7 @@ from typing import Optional
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorType, Session, Addr, TCPAddress, IntraProcessAddress, Client, IntraProcessClient, TCPAddress, IntraProcessAddress
+from scaler.io.model import ConnectorType, Session, Address, TCPAddress, IntraProcessAddress, Client, IntraProcessClient, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
@@ -17,7 +17,7 @@ class SyncConnector:
     def __init__(self,
                  session: Session,
                  type_: ConnectorType,
-                 address: Addr,
+                 address: Address,
                     identity: bytes | None):
         self._address = address
 
@@ -53,7 +53,7 @@ class SyncConnector:
         # self._socket.close()
 
     @property
-    def address(self) -> Addr:
+    def address(self) -> Address:
         return self._address
 
     @property

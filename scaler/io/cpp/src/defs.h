@@ -63,4 +63,4 @@ void intraprocess_send(struct IntraProcessClient *inproc, uint8_t *data, size_t 
 void intraprocess_recv_sync(struct IntraProcessClient *inproc, struct Message *msg);
 void intraprocess_recv_async(void *future, struct IntraProcessClient *inproc);
 
-void message_destroy(struct Message *recv);
+void free(void *ptr);

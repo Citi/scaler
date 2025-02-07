@@ -46,11 +46,11 @@ class AsyncBinder(Looper, Reporter):
 
         if message is None:
 
-            logging.error(f"received unknown message from {client_msg.addr!r}: {client_msg.payload!r}")
+            logging.error(f"received unknown message from {client_msg.address!r}: {client_msg.payload!r}")
             return
 
         self.__count_received(message.__class__.__name__)
-        await self._callback(client_msg.addr, message)
+        await self._callback(client_msg.address, message)
 
     def get_status(self) -> BinderStatus:
         return BinderStatus.new_msg(received=self._received, sent=self._sent)

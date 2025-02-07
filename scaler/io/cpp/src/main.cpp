@@ -39,14 +39,14 @@ extern "C"
 
     void __cyg_profile_func_enter([[maybe_unused]] void *this_fn, [[maybe_unused]] void *call_site)
     {
-        // std::cout << "entering function" << std::endl;
+        // // std::cout << "entering function" << std::endl;
     }
 
     __attribute__((no_instrument_function)) void __cyg_profile_func_exit(void *, void *);
 
     void __cyg_profile_func_exit([[maybe_unused]] void *this_fn, [[maybe_unused]] void *call_site)
     {
-        // std::cout << "exiting function" << std::endl;
+        // // std::cout << "exiting function" << std::endl;
     }
 }
 
@@ -127,7 +127,7 @@ WriteResult writeall(int fd, const uint8_t *data, size_t len)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                // std::cout << "writeall(): stalled" << std::endl;
+                // // std::cout << "writeall(): stalled" << std::endl;
 
                 if (auto sig = fd_wait(fd, -1, POLLOUT))
                     panic("failed to wait on fd; signal: " + std::to_string(sig));
@@ -278,12 +278,12 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
 {
     for (;;)
     {
-        std::cout << "io-thread[" << id << "]: waiting for events" << std::endl;
+        // std::cout << "io-thread[" << id << "]: waiting for events" << std::endl;
 
         epoll_event event;
         auto n_events = epoll_wait(session->epoll_fd, &event, 1, -1);
 
-        std::cout << "io-thread[" << id << "]: got " << n_events << " events" << std::endl;
+        // std::cout << "io-thread[" << id << "]: got " << n_events << " events" << std::endl;
 
         if (n_events == 0)
         {
@@ -308,26 +308,26 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
         //  - the session is shared between all threads, INCLUDING the Python thread
         //  - the Python thread can add or remove clients and inprocs
         //    **this can happen in the time between epoll_wait() returns and the event is processed
-        std::cout << "io-thread[" << id << "]: locking session: " << event.data.fd << std::endl;
+        // std::cout << "io-thread[" << id << "]: locking session: " << event.data.fd << std::endl;
         while (!session->mutex.try_lock_shared())
         {
-            std::cout << "io-thread[" << id << "]: waiting for session lock" << std::endl;
+            // std::cout << "io-thread[" << id << "]: waiting for session lock" << std::endl;
 
             // sleep
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
-        std::cout << "io-thread[" << id << "]: session locked: " << event.data.fd << std::endl;
+        // std::cout << "io-thread[" << id << "]: session locked: " << event.data.fd << std::endl;
 
         // note, the epoll data will only be valid while the shared lock is held
         EpollData *data;
         if (!epoll_data_by_fd(session, event.data.fd, &data))
         {
-            std::cout << "io-thread[" << id << "]: failed to find epoll data for fd: " << event.data.fd << std::endl;
+            // std::cout << "io-thread[" << id << "]: failed to find epoll data for fd: " << event.data.fd << std::endl;
             session->mutex.unlock_shared();
             continue;
         }
 
-        std::cout << "io-thread[" << id << "]: processing event: " << event_name(data->type) << std::endl;
+        // std::cout << "io-thread[" << id << "]: processing event: " << event_name(data->type) << std::endl;
 
         // clang-format off
         switch (data->type)
@@ -355,7 +355,7 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
         }
         // clang-format on
 
-        std::cout << "io-thread[" << id << "]: unlocking session" << std::endl;
+        // std::cout << "io-thread[" << id << "]: unlocking session" << std::endl;
         // session->mutex.unlock_shared();
     }
 }
@@ -389,7 +389,7 @@ void session_init(Session *session, size_t num_threads)
 
 void session_destroy(Session *session)
 {
-    std::cout << "destroying session" << std::endl;
+    // std::cout << "destroying session" << std::endl;
 
     // this will wake up the io threads and cause them to exit
     if (eventfd_write(session->epoll_close_efd, 1) < 0)
@@ -400,11 +400,11 @@ void session_destroy(Session *session)
     // wait for all threads to exit
     for (size_t i = 0; i < session->threads.size(); ++i)
     {
-        std::cout << "joining thread " << i << std::endl;
+        // std::cout << "joining thread " << i << std::endl;
         session->threads[i].join();
     }
 
-    std::cout << "all threads exited" << std::endl;
+    // std::cout << "all threads exited" << std::endl;
 
     close(session->epoll_fd);
 
@@ -427,7 +427,7 @@ bool has_epoll_data_fd(Session *session, int fd)
 
 void add_epoll_fd(Session *session, int fd, EpollType type, void *data, bool edge_triggered)
 {
-    std::cout << "adding epoll fd: " << fd << " ;; " << event_name(type) << std::endl;
+    // std::cout << "adding epoll fd: " << fd << " ;; " << event_name(type) << std::endl;
 
     EpollData epoll_data{
         .fd = fd,
@@ -537,9 +537,9 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
         .recv_buffer = ConcurrentQueue<Message>(),
     };
 
-    // std::cout << "!! new client, identity: " << client->identity.as_string() << std::endl;
+    // // std::cout << "!! new client, identity: " << client->identity.as_string() << std::endl;
 
-    std::cout << "client_init(): lock session" << std::endl;
+    // std::cout << "client_init(): lock session" << std::endl;
     session->mutex.lock();
     session->clients.push_back(client);
     add_epoll_fd(session, client->send_event_fd, EpollType::ClientSend, client);
@@ -549,7 +549,7 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
 
 void client_bind(Client *client, const char *host, uint16_t port)
 {
-    // std::cout << "binding to " << host << ":" << port << std::endl;
+    // // std::cout << "binding to " << host << ":" << port << std::endl;
 
     auto session = client->session;
     client->mutex.lock();
@@ -568,7 +568,7 @@ void client_bind(Client *client, const char *host, uint16_t port)
     // {
     // case ClientTransport::Tcp:
     {
-        // std::cout << "TCP TRANSPORT" << std::endl;
+        // // std::cout << "TCP TRANSPORT" << std::endl;
 
         // int on = 1;
         // setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
@@ -626,7 +626,7 @@ void client_bind(Client *client, const char *host, uint16_t port)
     // if an io-thread holding the session lock tries to lock the client
     // we make an assumption that the client is not in the session list until it has been bound or connect
     // AND it will only ever be bound or connected, never both
-    std::cout << "client_bind(): lock session" << std::endl;
+    // std::cout << "client_bind(): lock session" << std::endl;
     session->mutex.lock();
     add_epoll_fd(session, client->fd, EpollType::ClientListener, client);
     session->mutex.unlock();
@@ -697,8 +697,8 @@ start:
         }
     }
 
-    // std::cout << "client_connect_(): connected, writing identity to fd: " << fd << std::endl;
-    // // std::cout << "connected to:" << std::string(host) << ":" << std::to_string(port) << ", writing identity: " << std::string((char *)client->identity.data, client->identity.len) << std::endl;
+    // // std::cout << "client_connect_(): connected, writing identity to fd: " << fd << std::endl;
+    // // // std::cout << "connected to:" << std::string(host) << ":" << std::to_string(port) << ", writing identity: " << std::string((char *)client->identity.data, client->identity.len) << std::endl;
 
     if (write_message(fd, &client->identity) == WriteResult::Disconnected)
     {
@@ -712,7 +712,7 @@ start:
         panic("peer disconnected during identity exchange");
     }
 
-    // std::cout << "identity received: " << identity.len << std::endl;
+    // // std::cout << "identity received: " << identity.len << std::endl;
 
     if (fd == 0)
     {
@@ -730,9 +730,9 @@ start:
     client->peers.push_back(peer);
     client->mutex.unlock();
 
-    std::cout << "client_connect_(): lock session" << std::endl;
+    // std::cout << "client_connect_(): lock session" << std::endl;
     session->mutex.lock();
-    std::cout << "add client peer recv: " << fd << " for client: " << client->identity.as_string() << std::endl;
+    // std::cout << "add client peer recv: " << fd << " for client: " << client->identity.as_string() << std::endl;
     add_epoll_fd(session, peer->fd, EpollType::ClientPeerRecv, peer);
     session->mutex.unlock();
     return true;
@@ -740,7 +740,7 @@ start:
 
 void client_connect(Client *client, const char *host, uint16_t port)
 {
-    // std::cout << "client_connect(): connecting to " << host << ":" << port << std::endl;
+    // // std::cout << "client_connect(): connecting to " << host << ":" << port << std::endl;
 
     sockaddr_in server_addr{
         .sin_family = AF_INET,
@@ -772,10 +772,10 @@ void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8
             .payload = Bytes{data, data_len},
         }};
 
-    std::cout << "client_send(): sending message to: " << send.msg.address.as_string() << std::endl;
+    // std::cout << "client_send(): sending message to: " << send.msg.address.as_string() << std::endl;
     client->send.enqueue(send);
 
-    std::cout << "client_send(): enqueued message" << std::endl;
+    // std::cout << "client_send(): enqueued message" << std::endl;
 
     // notify io threads
     if (eventfd_write(client->send_event_fd, 1) < 0)
@@ -786,7 +786,7 @@ void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8
 
 void client_recv(void *future, Client *client)
 {
-    // std::cout << "client_recv(): waiting for message" << std::endl;
+    // // std::cout << "client_recv(): waiting for message" << std::endl;
 
     client->recv.enqueue(future);
 
@@ -856,7 +856,7 @@ int fd_wait(int fd, int timeout, short int events)
 
 void client_recv_sync(Client *client, Message *msg)
 {
-    // std::cout << "client_recv_sync(): waiting for message" << std::endl;
+    // // std::cout << "client_recv_sync(): waiting for message" << std::endl;
 
     // this is a blocking call
     // we need to wait for the message to arrive
@@ -898,7 +898,7 @@ void client_recv_sync(Client *client, Message *msg)
 
 void peer_destroy(Peer *peer)
 {
-    // std::cout << "destroying peer with fd: " << peer->fd << std::endl;
+    // // std::cout << "destroying peer with fd: " << peer->fd << std::endl;
 
     close(peer->fd);
     free(peer->identity.data);
@@ -907,16 +907,16 @@ void peer_destroy(Peer *peer)
 
 void client_destroy(Client *client)
 {
-    std::cout << "destroying client: " << client->identity.as_string() << std::endl;
+    // std::cout << "destroying client: " << client->identity.as_string() << std::endl;
 
     auto session = client->session;
 
     // take exclusive lock on the session
-    std::cout << "client_destroy(): lock session" << std::endl;
+    // std::cout << "client_destroy(): lock session" << std::endl;
     session->mutex.lock();
-    std::cout << "client_destroy(): locked session" << std::endl;
+    // std::cout << "client_destroy(): locked session" << std::endl;
     client->mutex.lock();
-    std::cout << "client_destroy(): locked client" << std::endl;
+    // std::cout << "client_destroy(): locked client" << std::endl;
 
     // remove the client from the session
     std::erase(session->clients, client);
@@ -928,14 +928,14 @@ void client_destroy(Client *client)
 
     for (auto peer : client->peers)
     {
-        std::cout << "client_destroy(): removing peer fd: " << peer->fd << std::endl;
+        // std::cout << "client_destroy(): removing peer fd: " << peer->fd << std::endl;
         remove_epoll_fd(session, peer->fd);
     }
 
     // we're done with the session
     session->mutex.unlock();
 
-    std::cout << "client_destroy(): unlocked session" << std::endl;
+    // std::cout << "client_destroy(): unlocked session" << std::endl;
 
     close(client->send_event_fd);
     close(client->recv_event_fd);
@@ -961,7 +961,7 @@ void client_destroy(Client *client)
 
     client->mutex.unlock();
 
-    std::cout << "destroyed client" << std::endl;
+    // std::cout << "destroyed client" << std::endl;
 
     // call the C++ destructor without freeing the memory
     // the memory is owned by Python
@@ -970,13 +970,18 @@ void client_destroy(Client *client)
 
 // this is called by python after the message's content is copied (for now)
 // this is a pointer to a stack variable, so we _do not_ free it
-void message_destroy(Message *msg)
+void message_destroy([[maybe_unused]] Message *msg)
 {
+    // std::cout << "message_destroy(): destroying message" << std::endl;
+
     // this data belongs to the Client or Peer
     // free(msg->address.data);
 
     // always heap-allocated and owned by the message
-    free(msg->payload.data);
+    // free(msg->payload.data);
+    // delete msg;
+
+    delete msg;
 }
 
 // pre:
@@ -990,7 +995,7 @@ SendResult client_send_(Client *client, Message &&msg)
     // e.g. accepting a new connection, or something else
     // std::scoped_lock lock(client->mutex);
 
-    // std::cout << "client_send_(): send msg len: " << msg.payload.len << std::endl;
+    // // std::cout << "client_send_(): send msg len: " << msg.payload.len << std::endl;
 
     switch (client->type)
     {
@@ -1001,13 +1006,13 @@ SendResult client_send_(Client *client, Message &&msg)
 
         auto fd = client->peers[0]->fd;
 
-        // std::cout << "client_send_(pair): send to peer: " << msg.address.as_string() << std::endl;
+        // // std::cout << "client_send_(pair): send to peer: " << msg.address.as_string() << std::endl;
 
         if (write_message(fd, &msg.payload) == WriteResult::Disconnected)
         {
-            std::cout << "client_send_(): disconnected" << std::endl;
+            // std::cout << "client_send_(): disconnected" << std::endl;
         }
-        // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << client->peers[0]->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
+        // // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << client->peers[0]->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
     }
     break;
     case ConnectorType::Router:
@@ -1019,14 +1024,14 @@ SendResult client_send_(Client *client, Message &&msg)
             break;
         }
 
-        // std::cout << "client_send_(router): send to peer: " << msg.address.as_string() << std::endl;
+        // // std::cout << "client_send_(router): send to peer: " << msg.address.as_string() << std::endl;
 
         // write_message(peer->fd, &msg.payload);
         if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
         {
-            std::cout << "client_send_(): disconnected" << std::endl;
+            // std::cout << "client_send_(): disconnected" << std::endl;
         }
-        // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << peer->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
+        // // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << peer->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
     }
     break;
     case ConnectorType::Pub:
@@ -1034,14 +1039,14 @@ SendResult client_send_(Client *client, Message &&msg)
         // if the socket has no peers, the message is dropped
         for (auto peer : client->peers)
         {
-            // std::cout << "client_send_(pub): send to peer: " << msg.address.as_string() << std::endl;
+            // // std::cout << "client_send_(pub): send to peer: " << msg.address.as_string() << std::endl;
 
             if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
             {
-                std::cout << "client_send_(): disconnected" << std::endl;
+                // std::cout << "client_send_(): disconnected" << std::endl;
             }
             // write_message(peer->fd, &msg.payload);
-            // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << peer->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
+            // // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << peer->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
         }
     }
     break;
@@ -1054,14 +1059,14 @@ SendResult client_send_(Client *client, Message &&msg)
         auto peer = client->peers[client->rr];
         client->rr = (client->rr + 1) % client->peers.size();
 
-        // std::cout << "client_send_(dealer): send to peer: " << msg.address.as_string() << std::endl;
+        // // std::cout << "client_send_(dealer): send to peer: " << msg.address.as_string() << std::endl;
 
         if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
         {
-            std::cout << "client_send_(): disconnected" << std::endl;
+            // std::cout << "client_send_(): disconnected" << std::endl;
         }
 
-        // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << peer->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
+        // // std::cout << "client_send_(): sent message from: " << client->identity.as_string() << "; to: " << peer->identity.as_string() << ";" << std::string((char *)msg.address.data, msg.address.len) << ";; HASH: " << easy_hash(msg.payload.data, msg.payload.len) << std::endl;
     }
     break;
     default:
@@ -1090,7 +1095,7 @@ const char *connector_type_to_string(ConnectorType type)
 
 void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
-    // std::cout << "client_send_sync(): sending message to: " << std::string((char *)to, to_len) << std::endl;
+    // // std::cout << "client_send_sync(): sending message to: " << std::string((char *)to, to_len) << std::endl;
 
     auto session = client->session;
 
@@ -1100,9 +1105,9 @@ send:
         .payload = Bytes{data, data_len},
     };
 
-    // std::cout << "send to: " << std::string((char *)msg.address.data, msg.address.len) << std::endl;
+    // // std::cout << "send to: " << std::string((char *)msg.address.data, msg.address.len) << std::endl;
 
-    std::cout << "client_send_sync(): lock session" << std::endl;
+    // std::cout << "client_send_sync(): lock session" << std::endl;
     session->mutex.lock_shared();
     client->mutex.lock();
     auto res = client_send_(client, std::move(msg));
@@ -1111,14 +1116,14 @@ send:
 
     if (res == SendResult::Muted)
     {
-        std::cout << "client_send_sync(): muted" << std::endl;
+        // std::cout << "client_send_sync(): muted" << std::endl;
 
     wait:
 
         if (auto sig = fd_wait(client->unmuted_event_fd, -1, POLLIN))
             panic("failed to wait on fd; signal: " + std::to_string(sig));
 
-        // std::cout << "client_send_sync(): woke up" << std::endl;
+        // // std::cout << "client_send_sync(): woke up" << std::endl;
 
         eventfd_t value;
         if (eventfd_read(client->unmuted_event_fd, &value) < 0)
@@ -1127,7 +1132,7 @@ send:
                 goto wait;
         }
 
-        // std::cout << "client_send_sync(): woke up" << std::endl;
+        // // std::cout << "client_send_sync(): woke up" << std::endl;
 
         goto send;
     }
@@ -1159,7 +1164,7 @@ void client_send_event(Client *client)
             std::this_thread::yield();
         }
 
-        // std::cout << "client_send_event()" << std::endl;
+        // // std::cout << "client_send_event()" << std::endl;
 
         client->mutex.lock();
         auto res = client_send_(client, std::move(send.msg));
@@ -1170,7 +1175,7 @@ void client_send_event(Client *client)
             future_set_result(send.future, NULL);
             break;
         case SendResult::Muted:
-            std::cout << "client_send_event(): muted" << std::endl;
+            // std::cout << "client_send_event(): muted" << std::endl;
             client->muted.push(send);
         }
         client->mutex.unlock();
@@ -1212,7 +1217,7 @@ void client_recv_event(Client *client)
                 }
                 else
                 {
-                    // std::cout << "client_recv_event(): re-incremented recv_buffer_event_fd" << std::endl;
+                    // // std::cout << "client_recv_event(): re-incremented recv_buffer_event_fd" << std::endl;
                 }
 
                 break;
@@ -1236,7 +1241,7 @@ void client_recv_event(Client *client)
             std::this_thread::yield();
         }
 
-        // std::cout << "client_recv_event(): complete future" << std::endl;
+        // // std::cout << "client_recv_event(): complete future" << std::endl;
 
         // just like in `client_epoll_connected_event` this is the address of a stack variable
         future_set_result(future, &msg);
@@ -1247,16 +1252,18 @@ void client_recv_event(Client *client)
 
 void client_peer_recv_event(Peer *peer)
 {
-    // std::cout << "client_peer_recv_event(): deref peer->client ;; peer fd: " << peer->fd << std::endl;
+    // // std::cout << "client_peer_recv_event(): deref peer->client ;; peer fd: " << peer->fd << std::endl;
     auto client = peer->client;
-    // std::cout << "client_peer_recv_event(): deref client->session" << std::endl;
+    // // std::cout << "client_peer_recv_event(): deref client->session" << std::endl;
     auto session = client->session;
 
-    std::cout << "client_peer_recv_event(): locking client->mutex" << std::endl;
+    // std::cout << "client_peer_recv_event(): locking client->mutex" << std::endl;
 
     // we need to make sure no other thread is working on this peer
     // we could maybe have a per-peer lock, but it may not be necessary
     client->mutex.lock();
+
+    // std::cout << "client_peer_recv_event(): locked client->mutex" << std::endl;
 
     for (;;)
     {
@@ -1265,12 +1272,12 @@ void client_peer_recv_event(Peer *peer)
         // if not, add to recv buffer
         // break the loop when read() returns EAGAIN or EWOULDBLOCK
 
-        std::cout << "client_peer_recv_event(): " << peer->identity.as_string() << std::endl;
+        // std::cout << "client_peer_recv_event(): " << peer->identity.as_string() << std::endl;
 
         Bytes payload;
         auto status = read_message(peer->fd, &payload, true, 3000);
 
-        std::cout << "client_peer_recv_event(): read status: " << (int)status << std::endl;
+        // std::cout << "client_peer_recv_event(): read status: " << (int)status << std::endl;
 
         // this means we have exhausted the data and can epoll_wait again
         if (status == ReadResult::NoData || status == ReadResult::TimedOut)
@@ -1280,7 +1287,7 @@ void client_peer_recv_event(Peer *peer)
 
         if (status == ReadResult::Disconnect)
         {
-            std::cout << "peer disconnected! " << peer->identity.as_string() << std::endl;
+            // std::cout << "peer disconnected! " << peer->identity.as_string() << std::endl;
             break;
 
             auto fd = peer->fd;
@@ -1289,26 +1296,26 @@ void client_peer_recv_event(Peer *peer)
             // global ordering requires us to relinquish the client lock first
             // upgrade the lock on the session and remove the epoll
             // this is a relatively uncommon occurrence
-            std::cout << "client_peer_recv_event(): unlocking client->mutex" << std::endl;
+            // std::cout << "client_peer_recv_event(): unlocking client->mutex" << std::endl;
             client->mutex.unlock();
-            std::cout << "client_peer_recv_event(): unlocking shared session" << std::endl;
+            // std::cout << "client_peer_recv_event(): unlocking shared session" << std::endl;
             session->mutex.unlock_shared();
-            std::cout << "client_peer_recv_event(): lock session" << std::endl;
+            // std::cout << "client_peer_recv_event(): lock session" << std::endl;
             // session->mutex.lock();
             while (!session->mutex.try_lock())
             {
-                std::cout << "client_peer_recv_event(): waiting for session lock" << std::endl;
+                // std::cout << "client_peer_recv_event(): waiting for session lock" << std::endl;
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(1000));
             }
             remove_epoll_fd(session, fd);
-            std::cout << "client_peer_recv_event(): unlocking session" << std::endl;
+            // std::cout << "client_peer_recv_event(): unlocking session" << std::endl;
             session->mutex.unlock();
-            std::cout << "client_peer_recv_event(): locking shared session" << std::endl;
+            // std::cout << "client_peer_recv_event(): locking shared session" << std::endl;
             // session->mutex.lock_shared();
             client->mutex.lock();
 
-            std::cout << "client_peer_recv_event(): client locked" << std::endl;
+            // std::cout << "client_peer_recv_event(): client locked" << std::endl;
 
             // remove peer from client list
             std::erase(client->peers, peer);
@@ -1320,17 +1327,17 @@ void client_peer_recv_event(Peer *peer)
             // ownership of the peer after we removed it from the client's list
             peer_destroy(peer);
 
-            std::cout << "client_peer_recv_event(): peer destroyed" << std::endl;
+            // std::cout << "client_peer_recv_event(): peer destroyed" << std::endl;
 
             if (connected)
             {
-                std::cout << "client_peer_recv_event(): reconnected" << std::endl;
+                // std::cout << "client_peer_recv_event(): reconnected" << std::endl;
             }
             else
             {
                 // todo: what to do here?
                 // panic("failed to reconnect");
-                std::cout << "failed to reconnect to peer" << std::endl;
+                // std::cout << "failed to reconnect to peer" << std::endl;
             }
 
             // calling code expects shard session lock to be held
@@ -1454,7 +1461,7 @@ void client_listener_event(Client *client)
             // also needed because of edge-triggered epoll
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                std::cout << "client_listener_event(): EAGAIN" << std::endl;
+                // std::cout << "client_listener_event(): EAGAIN" << std::endl;
 
                 break;
             }
@@ -1467,7 +1474,7 @@ void client_listener_event(Client *client)
         // send our identity
         write_message(fd, &client->identity);
 
-        // std::cout << "receiving identity" << std::endl;
+        // // std::cout << "receiving identity" << std::endl;
 
         Bytes identity;
         auto status = read_message(fd, &identity, false, 300);
@@ -1475,11 +1482,11 @@ void client_listener_event(Client *client)
         if (status == ReadResult::Disconnect || status == ReadResult::TimedOut)
         {
             close(fd);
-            // std::cout << "peer disconnected during identity exchange" << std::endl;
+            // // std::cout << "peer disconnected during identity exchange" << std::endl;
             break;
         }
 
-        // std::cout << "recv identity: " << identity.len << std::endl;
+        // // std::cout << "recv identity: " << identity.len << std::endl;
 
         if (fd == 0)
         {
@@ -1521,38 +1528,38 @@ void client_listener_event(Client *client)
 
         // yep, that's a lot of mutex ops
         // unfortunately global ordering requires it
-        // std::cout << "client_listener_event(): unlocking client->mutex" << std::endl;
+        // // std::cout << "client_listener_event(): unlocking client->mutex" << std::endl;
         client->mutex.unlock();
-        // std::cout << "client_listener_event(): unlocking shared session" << std::endl;
+        // // std::cout << "client_listener_event(): unlocking shared session" << std::endl;
         session->mutex.unlock_shared();
-        std::cout << "client_listener_event(): lock session" << std::endl;
+        // std::cout << "client_listener_event(): lock session" << std::endl;
         session->mutex.lock();
-        std::cout << "client_listener_event(): locked session" << std::endl;
+        // std::cout << "client_listener_event(): locked session" << std::endl;
 
         // we need to check that the client is still in the session
         // it's possible that the client was destroyed while we were upgrading the lock
         if (!has_epoll_data_fd(session, client_fd))
         {
-            std::cout << "client_listener_event(): pre-empted" << std::endl;
+            // std::cout << "client_listener_event(): pre-empted" << std::endl;
 
             // the caller is expecting the shared lock to be held
             session->mutex.unlock();
-            std::cout << "client_listener_event(): lock session" << std::endl;
+            // std::cout << "client_listener_event(): lock session" << std::endl;
             // session->mutex.lock_shared();
             break;
         }
 
-        std::cout << "add client peer recv: " << fd << " for client: " << client->identity.as_string() << std::endl;
+        // std::cout << "add client peer recv: " << fd << " for client: " << client->identity.as_string() << std::endl;
         add_epoll_fd(session, fd, EpollType::ClientPeerRecv, peer);
 
         // downgrade the lock
-        // std::cout << "client_listener_event(): unlocking session" << std::endl;
+        // // std::cout << "client_listener_event(): unlocking session" << std::endl;
         session->mutex.unlock();
-        // std::cout << "client_listener_event(): locking shared session" << std::endl;
-        std::cout << "client_listener_event(): lock session" << std::endl;
+        // // std::cout << "client_listener_event(): locking shared session" << std::endl;
+        // std::cout << "client_listener_event(): lock session" << std::endl;
         session->mutex.lock_shared();
 
-        std::cout << "accepted peer: " << identity.as_string() << std::endl;
+        // std::cout << "accepted peer: " << identity.as_string() << std::endl;
     }
 
     session->mutex.unlock_shared();
@@ -1561,14 +1568,14 @@ void client_listener_event(Client *client)
 // lock-free
 void Client::recv_msg(Message &&msg)
 {
-    std::cout << "recv message from: " << msg.address.as_string() << std::endl;
+    // std::cout << "recv message from: " << msg.address.as_string() << std::endl;
 
     // try to dequeue a future from the recv queue
     // for sync clients this will never happen
     eventfd_t value;
     if (eventfd_read(this->recv_event_fd, &value) == 0)
     {
-        // std::cout << "optimistically completing recv; recv count: " << value << std::endl;
+        // // std::cout << "optimistically completing recv; recv count: " << value << std::endl;
 
         void *future;
         while (!this->recv.try_dequeue(future))
@@ -1675,7 +1682,7 @@ void intraprocess_send(IntraProcessClient *inproc, uint8_t *data, size_t len)
         .payload = Bytes{data_dup, len},
     });
 
-    // std::cout << "inproc sent: posting semaphore" << std::endl;
+    // // std::cout << "inproc sent: posting semaphore" << std::endl;
 
     if (eventfd_write(peer->recv_buffer_event_fd, 1) < 0)
     {
@@ -1687,14 +1694,14 @@ void intraprocess_recv_sync(IntraProcessClient *inproc, Message *msg)
 {
     for (;;)
     {
-        // std::cout << "inproc recv sync: going to wait on eventfd" << std::endl;
+        // // std::cout << "inproc recv sync: going to wait on eventfd" << std::endl;
 
         if (auto status = fd_wait(inproc->recv_buffer_event_fd, -1, POLLIN))
         {
             panic("signal received: " + std::string(strsignal(status)));
         }
 
-        // std::cout << "inproc recv sync: eventfd signaled" << std::endl;
+        // // std::cout << "inproc recv sync: eventfd signaled" << std::endl;
 
         // decrement the semaphore
         eventfd_t value;
@@ -1708,7 +1715,7 @@ void intraprocess_recv_sync(IntraProcessClient *inproc, Message *msg)
             panic("handle eventfd read error");
         }
 
-        // std::cout << "inproc recv sync: dequeuing message" << std::endl;
+        // // std::cout << "inproc recv sync: dequeuing message" << std::endl;
 
         while (!inproc->queue.try_dequeue(*msg))
         {
@@ -1756,7 +1763,7 @@ void intraprocess_init(Session *session, IntraProcessClient *inproc, uint8_t *id
     session->inprocs.push_back(inproc);
     session->intraprocess_mutex.unlock();
 
-    std::cout << "intraprocess_init(): lock session" << std::endl;
+    // std::cout << "intraprocess_init(): lock session" << std::endl;
     session->mutex.lock();
     add_epoll_fd(session, inproc->recv_event_fd, EpollType::IntraProcessClientRecv, inproc);
     session->mutex.unlock();
@@ -1767,7 +1774,7 @@ void intraprocess_recv_event(IntraProcessClient *inproc)
     for (;;)
     {
         // shared lock
-        // std::cout << "A!" << std::endl;
+        // // std::cout << "A!" << std::endl;
 
         eventfd_t value;
         if (eventfd_read(inproc->recv_buffer_event_fd, &value) < 0)
@@ -1800,7 +1807,7 @@ void intraprocess_recv_event(IntraProcessClient *inproc)
                 }
                 else
                 {
-                    // std::cout << "inproc_recv_event(): re-incremented recv_buffer_event_fd" << std::endl;
+                    // // std::cout << "inproc_recv_event(): re-incremented recv_buffer_event_fd" << std::endl;
                 }
 
                 break;
@@ -1821,7 +1828,7 @@ void intraprocess_recv_event(IntraProcessClient *inproc)
             std::this_thread::yield();
         }
 
-        // std::cout << "msg len: " << msg.payload.len << std::endl;
+        // // std::cout << "msg len: " << msg.payload.len << std::endl;
 
         future_set_result(future, &msg);
     }

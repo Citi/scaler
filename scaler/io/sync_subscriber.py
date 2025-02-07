@@ -6,12 +6,12 @@ from typing import Callable, Optional
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import Client, Addr
+from scaler.io.model import Client, Address
 
 class SyncSubscriber(threading.Thread):
     def __init__(
         self,
-        address: Addr,
+        address: Address,
         callback: Callable[[Message], None],
         topic: bytes,
         exit_callback: Optional[Callable[[], None]] = None,

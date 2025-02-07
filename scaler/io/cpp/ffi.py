@@ -2,6 +2,7 @@ __ALL__ = ["FFITypes", "ffi", "lib", "c_async", "c_async_wrap"]
 
 import sys
 from os import path
+
 sys.path.append(path.join(path.dirname(__file__), "build"))
 from cpp import ffi, lib
 
@@ -114,26 +115,3 @@ def c_async_wrapper(fn: Callable[Concatenate["FFITypes.CData", P2], R2]) -> Call
         return await future
 
     return inner
-
-# this is called from C to inform the asyncio runtime that a future was completed
-@ffi.def_extern()
-def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData") -> None:
-    if result == ffi.NULL:
-        result = None
-    else:
-        msg = ffi.cast("struct Message *", result)
-
-        # todo: look into doing this without copying the data
-        source = bytes(ffi.buffer(msg.address.data, msg.address.len))
-        data = bytes(ffi.buffer(msg.payload.data, msg.payload.len))
-
-        # this frees the payload
-        lib.message_destroy(msg)
-
-        result = (source, data)
-
-    future: asyncio.Future = ffi.from_handle(future_handle)
-
-    # using `call_soon_threadsafe()` is very important:
-    # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
-    future.get_loop().call_soon_threadsafe(future.set_result, result)
