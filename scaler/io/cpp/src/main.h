@@ -247,8 +247,6 @@ ENUM SendResult{
 
 struct Client
 {
-    size_t id;
-
     ConnectorType type;
     Transport transport;
 

@@ -425,22 +425,16 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
         panic("IntraProcess transport has a separate API");
     }
 
-    // *identity is owned by the caller, we need our own copy
-    uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
-    memcpy(identity_dup, identity, len);
-
-    auto id = session->id_counter++;
-
     new (client) Client{
-        .id = id,
         .type = type,
         .transport = transport,
 
         .mutex = std::mutex(),
         .session = session,
 
+        // *identity is owned by the caller, we need our own copy
         .identity = Bytes{
-            .data = identity_dup,
+            .data = datadup(identity, len),
             .len = len,
         },
 
@@ -458,7 +452,6 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
 
         .recv_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv = ConcurrentQueue<void *>(),
-        // .outstanding_recvs = std::queue<void *>(),
         .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv_buffer = ConcurrentQueue<Message>(),
     };
