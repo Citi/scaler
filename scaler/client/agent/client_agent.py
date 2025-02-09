@@ -66,8 +66,6 @@ class ClientAgent(threading.Thread):
             identity=None,
         )
 
-        print("client agent internal connected")
-
         self._connector_external = AsyncConnector(
             session=self._session,
             name="client_agent_external",
