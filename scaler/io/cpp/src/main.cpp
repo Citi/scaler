@@ -165,8 +165,6 @@ ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data, in
 
 WriteResult write_message(int fd, Bytes *bytes)
 {
-    std::cout << "write_message(): " << bytes->len << " bytes" << std::endl;
-
     if (bytes->len > MAX_MSG_SIZE)
         panic("cannot write message; too large: " + std::to_string(bytes->len) + " bytes");
 
@@ -211,6 +209,7 @@ ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
     len = ntohl(len);
 
     uint8_t *buffer = (uint8_t *)malloc(len * sizeof(uint8_t));
+
     status = readexact(fd, buffer, len, false, timeout);
 
     if (status != ReadResult::Read)
@@ -222,7 +221,7 @@ ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
     data->data = buffer;
     data->len = len;
 
-    std::cout << "read_message(): " << len << " bytes" << std::endl;
+    // std::cout << "read_message(): " << len << " bytes" << std::endl;
 
     return ReadResult::Read;
 }
@@ -271,7 +270,7 @@ void io_thread_main(Session *session, [[maybe_unused]] size_t id)
         //  - the session is shared between all threads, INCLUDING the Python thread
         //  - the Python thread can add or remove clients and inprocs
         //    **this can happen in the time between epoll_wait() returns and the event is processed
-        // std::cout << "io-thread[" << id << "]: locking session: " << event.data.fd << std::endl;
+        // // std::cout << "io-thread[" << id << "]: locking session: " << event.data.fd << std::endl;
         session->mutex.lock_shared();
 
         // note, the epoll data will only be valid while the shared lock is held
@@ -348,7 +347,7 @@ void session_destroy(Session *session)
     // wait for all threads to exit
     for (size_t i = 0; i < session->threads.size(); ++i)
     {
-        // std::cout << "joining thread " << i << std::endl;
+        // // std::cout << "joining thread " << i << std::endl;
         session->threads[i].join();
     }
 
@@ -522,13 +521,12 @@ void client_bind(Client *client, const char *host, uint16_t port)
     // if an io-thread holding the session lock tries to lock the client
     // we make an assumption that the client is not in the session list until it has been bound or connect
     // AND it will only ever be bound or connected, never both
-    // std::cout << "client_bind(): lock session" << std::endl;
+    // // std::cout << "client_bind(): lock session" << std::endl;
     session->mutex.lock();
     session->add_epoll_fd(client->fd, EpollType::ClientListener, client);
     session->mutex.unlock();
     client->mutex.unlock();
 }
-
 
 // hold the client lock when calling this function
 void Client::unmute()
@@ -904,7 +902,7 @@ SendResult client_send_(Client *client, Message &&msg)
 
         if (write_message(fd, &msg.payload) == WriteResult::Disconnected)
         {
-            std::cout << "client_send_(): disconnected" << std::endl;
+            // std::cout << "client_send_(): disconnected" << std::endl;
         }
     }
     break;
@@ -918,7 +916,7 @@ SendResult client_send_(Client *client, Message &&msg)
         }
         if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
         {
-            std::cout << "client_send_(): disconnected" << std::endl;
+            // std::cout << "client_send_(): disconnected" << std::endl;
         }
     }
     break;
@@ -929,7 +927,7 @@ SendResult client_send_(Client *client, Message &&msg)
         {
             if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
             {
-                std::cout << "client_send_(): disconnected" << std::endl;
+                // std::cout << "client_send_(): disconnected" << std::endl;
             }
         }
     }
@@ -945,7 +943,7 @@ SendResult client_send_(Client *client, Message &&msg)
 
         if (write_message(peer->fd, &msg.payload) == WriteResult::Disconnected)
         {
-            std::cout << "client_send_(): disconnected" << std::endl;
+            // std::cout << "client_send_(): disconnected" << std::endl;
         }
     }
     break;
@@ -1129,13 +1127,13 @@ void client_peer_recv_event(Peer *peer)
 
         if (status == ReadResult::TimedOut)
         {
-            std::cout << "peer timed out: " << peer->identity.as_string() << std::endl;
+            // std::cout << "peer timed out: " << peer->identity.as_string() << std::endl;
             break;
         }
 
         if (status == ReadResult::Disconnect)
         {
-            std::cout << "peer disconnected! " << peer->identity.as_string() << std::endl;
+            // std::cout << "peer disconnected! " << peer->identity.as_string() << std::endl;
             break;
 
             // todo
@@ -1247,7 +1245,7 @@ void client_listener_event(Client *client)
 // lock-free
 void Client::recv_msg(Message &&msg)
 {
-    // std::cout << "recv message from: " << msg.address.as_string() << std::endl;
+    // // std::cout << "recv message from: " << msg.address.as_string() << std::endl;
 
     // try to dequeue a future from the recv queue
     // for sync clients this will never happen

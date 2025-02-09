@@ -3,31 +3,34 @@ __ALL__ = ["Session", "Client", "Message", "Callback", "ConnectorType", "TcpAddr
 import sys
 from os import path
 sys.path.append(path.join(path.dirname(__file__), "cpp"))
-from ffi import FFITypes, ffi, lib, c_async, c_async_wrapper
+from ffi import FFITypes, ffi, lib as C, c_async, c_async_wrapper
 sys.path.pop()
 
-from dataclasses import dataclass
-
 import asyncio
-from enum import IntEnum, unique, auto, Enum
-from typing import Awaitable, Callable, TypeAlias
+from enum import IntEnum, unique
+from dataclasses import dataclass
 from abc import ABC, abstractmethod
+from typing import Awaitable, Callable, TypeAlias
 
 @dataclass
 class BorrowedMessage:
     _payload_buffer: "FFITypes.buffer"
-    _address_buffer: "FFITypes.buffer"
+    _payload: bytes | None
+    _address: bytes
 
-    def __free(x):
-        ... # lib.free(x)
+    def __init__(self, obj: "FFITypes.CData"): # Message*
+        # the message owns the address and it must be freed when we're done with it
+        self._payload_buffer = ffi.buffer(ffi.gc(obj.payload.data, C.free), obj.payload.len)
+        self._payload = None
 
-    def __init__(self, obj: "FFITypes.CData"):
-        self._payload_buffer = ffi.buffer(ffi.gc(obj.payload.data, BorrowedMessage.__free), obj.payload.len)
+        # copy the address
         self._address = bytes(ffi.buffer(obj.address.data, obj.address.len))
 
     @property
-    def payload(self) -> "FFITypes.buffer":
-        return self._payload_buffer
+    def payload(self) -> bytes:
+        if self._payload is None:
+            self._payload = bytes(self._payload_buffer)
+        return self._payload
 
     @property
     def address(self) -> bytes:
@@ -43,21 +46,11 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
 
         result = BorrowedMessage(msg)
 
-        # todo: look into doing this without copying the data
-        # source = bytes(ffi.buffer(msg.address.data, msg.address.len))
-        # data = bytes(ffi.buffer(msg.payload.data, msg.payload.len))
-
-        # # this frees the payload
-        # lib.message_destroy(msg)
-
-        # result = (source, data)
-
     future: asyncio.Future = ffi.from_handle(future_handle)
 
     # using `call_soon_threadsafe()` is very important:
     # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
     future.get_loop().call_soon_threadsafe(future.set_result, result)
-
 
 class Session:
     _obj: "FFITypes.CData"
@@ -66,7 +59,7 @@ class Session:
 
     def __init__(self, io_threads: int) -> None:
         self._obj = ffi.new("struct Session *")
-        lib.session_init(self._obj, io_threads)
+        C.session_init(self._obj, io_threads)
 
         self._destroyed = False
 
@@ -80,7 +73,7 @@ class Session:
         if self._destroyed:
             return
 
-        lib.session_destroy(self._obj)
+        C.session_destroy(self._obj)
         self._destroyed = True
 
     def register_client(self, client) -> None:
@@ -109,17 +102,17 @@ ConnectorCallback: TypeAlias = Callable[[BorrowedMessage], Awaitable[None]]
 
 @unique
 class ConnectorType(IntEnum):
-    Pair = lib.Pair
-    Pub = lib.Pub
-    Sub = lib.Sub
-    Dealer = lib.Dealer
-    Router = lib.Router
+    Pair = C.Pair
+    Pub = C.Pub
+    Sub = C.Sub
+    Dealer = C.Dealer
+    Router = C.Router
 
 @unique
 class Protocol(IntEnum):
-    TCP = lib.TCP
-    IntraProcess = lib.IntraProcess
-    InterProcess = lib.InterProcess
+    TCP = C.TCP
+    IntraProcess = C.IntraProcess
+    InterProcess = C.InterProcess
 
 class Address(ABC):
     @property
@@ -226,7 +219,7 @@ class IntraProcessClient:
 
     def __init__(self, session: Session, identity: bytes):
         self._obj = ffi.new("struct IntraProcessClient *")
-        lib.intraprocess_init(session._obj, self._obj, identity, len(identity))
+        C.intraprocess_init(session._obj, self._obj, identity, len(identity))
 
         session.register_client(self)
 
@@ -234,22 +227,22 @@ class IntraProcessClient:
         ... # TODO
 
     def bind(self, addr: str) -> None:
-        lib.intraprocess_bind(self._obj, addr.encode(), len(addr))
+        C.intraprocess_bind(self._obj, addr.encode(), len(addr))
 
     def connect(self, addr: str) -> None:
-        lib.intraprocess_connect(self._obj, addr.encode(), len(addr))
+        C.intraprocess_connect(self._obj, addr.encode(), len(addr))
 
     def send(self, data: bytes) -> None:
-        lib.intraprocess_send(self._obj, data, len(data))
+        C.intraprocess_send(self._obj, data, len(data))
 
     def recv_sync(self) -> BorrowedMessage:
         msg = ffi.new("struct Message *")
-        lib.intraprocess_recv_sync(self._obj, msg)
+        C.intraprocess_recv_sync(self._obj, msg)
 
         return BorrowedMessage(msg)
 
     async def recv(self) -> BorrowedMessage:
-        intraprocess_recv = c_async_wrapper(lib.intraprocess_recv_async)
+        intraprocess_recv = c_async_wrapper(C.intraprocess_recv_async)
         return await intraprocess_recv(self._obj)
 
 class Client:
@@ -258,7 +251,7 @@ class Client:
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType):
         self._obj = ffi.new("struct Client *")
-        lib.client_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
+        C.client_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
 
         session.register_client(self)
 
@@ -269,7 +262,7 @@ class Client:
         if self._destroyed:
             return
         
-        lib.client_destroy(self._obj)
+        C.client_destroy(self._obj)
         self._destroyed = True
 
     def __check_destroyed(self) -> None:
@@ -287,7 +280,7 @@ class Client:
             case _:
                 raise ValueError("either addr or host and port must be provided")
             
-        lib.client_bind(self._obj, host.encode(), port)
+        C.client_bind(self._obj, host.encode(), port)
 
     def connect(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
         self.__check_destroyed()
@@ -300,7 +293,7 @@ class Client:
             case _:
                 raise ValueError("either addr or host and port must be provided")
             
-        lib.client_connect(self._obj, host.encode(), port)
+        C.client_connect(self._obj, host.encode(), port)
 
     async def send(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
@@ -321,7 +314,7 @@ class Client:
         else:
             to_len = len(to)
 
-        return await c_async(lib.client_send, self._obj, to, to_len, data, len(data))
+        return await c_async(C.client_send, self._obj, to, to_len, data, len(data))
     
     def send_sync(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
@@ -342,19 +335,20 @@ class Client:
         else:
             to_len = len(to)
 
-        lib.client_send_sync(self._obj, to, to_len, data, len(data))
+        C.client_send_sync(self._obj, to, to_len, data, len(data))
 
     def recv_sync(self) -> BorrowedMessage:
         self.__check_destroyed()
 
         msg = ffi.new("struct Message *")
-        lib.client_recv_sync(self._obj, msg)
+        msg.payload.data = ffi.NULL
+        C.client_recv_sync(self._obj, msg)
         return BorrowedMessage(msg)
 
     async def recv(self) -> BorrowedMessage:
         self.__check_destroyed()
 
-        return await c_async(lib.client_recv, self._obj)
+        return await c_async(C.client_recv, self._obj)
 
 # if __name__ == "__main__":
 #     import asyncio, json
