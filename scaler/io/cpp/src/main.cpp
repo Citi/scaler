@@ -874,11 +874,10 @@ void client_destroy(Client *client)
     client->~Client();
 }
 
-// this is called by python after the message's content is copied (for now)
 // this is a pointer to a stack variable, so we _do not_ free it
-void message_destroy([[maybe_unused]] Message *msg)
+void message_destroy(Message &message)
 {
-    panic("todo: remove message_destroy()");
+    free(message.payload.data);
 }
 
 // pre:
@@ -1102,6 +1101,9 @@ void client_recv_event(Client *client)
 
         // just like in `client_epoll_connected_event` this is the address of a stack variable
         future_set_result(future, &msg);
+
+        // we're done with the message
+        message_destroy(msg);
     }
 
     client->session->mutex.unlock_shared();
@@ -1257,6 +1259,9 @@ void Client::recv_msg(Message &&msg)
             std::this_thread::yield();
 
         future_set_result(future, &msg);
+
+        // we're done with the message
+        message_destroy(msg);
     }
     else
     {
@@ -1465,6 +1470,9 @@ void intraprocess_recv_event(IntraProcessClient *inproc)
             std::this_thread::yield();
 
         future_set_result(future, &msg);
+
+        // we're done with the message
+        message_destroy(msg);
     }
 
     inproc->session->mutex.unlock_shared();

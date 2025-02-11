@@ -339,3 +339,5 @@ void client_recv_event(Client *binder);
 void client_peer_recv_event(Peer *peer);
 void client_listener_event(Client *binder);
 void intraprocess_recv_event(IntraProcessClient *inproc);
+
+void message_destroy(Message &message);

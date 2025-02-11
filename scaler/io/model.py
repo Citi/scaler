@@ -13,15 +13,12 @@ from abc import ABC, abstractmethod
 from typing import Awaitable, Callable, TypeAlias
 
 class BorrowedMessage:
-    _payload_buffer: "FFITypes.buffer"
-    _payload: bytes | None
+    _payload: bytes
     _address: bytes
 
-    def __init__(self, obj: "FFITypes.CData"): # Message*
-        # the message owns the address and it must be freed when we're done with it
-        self._payload_buffer = ffi.buffer(ffi.gc(obj.payload.data, C.free), obj.payload.len)
-        self._payload = None
-
+    def __init__(self, obj: "FFITypes.CData"): # Message *
+        # copy the payload
+        self._payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
         # copy the address
         self._address = bytes(ffi.buffer(obj.address.data, obj.address.len))
 
