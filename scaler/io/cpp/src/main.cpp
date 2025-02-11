@@ -98,7 +98,7 @@ WriteResult writeall(int fd, const uint8_t *data, size_t len)
                 continue;
             }
 
-            if (errno == ECONNRESET)
+            if (errno == ECONNRESET || errno == EPIPE)
             {
                 return WriteResult::Disconnected;
             }
