@@ -231,7 +231,7 @@ struct ThreadContext
     Session *session;
     std::thread thread;
     std::vector<EpollData2 *> io_cache;
-    std::vector<Peer *> connecting;
+    std::queue<Peer *> connecting;
     ConcurrentQueue<ControlRequest> control;
     int control_efd;
     int epoll_fd;

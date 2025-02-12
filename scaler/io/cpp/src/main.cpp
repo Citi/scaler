@@ -342,6 +342,9 @@ void io_thread_main(ThreadContext *ctx, size_t id)
 
         if (data->type == EpollType::ConnectTimer)
         {
+            // the timer is no longer armed
+            ctx->timer_armed = false;
+
             // retry connecting peers
             // read the timer fd
             {
@@ -360,14 +363,13 @@ void io_thread_main(ThreadContext *ctx, size_t id)
                     panic("failed to read from connect timer");
             }
 
-            for (auto peer : ctx->connecting)
+            while (!ctx->connecting.empty())
             {
-            }
+                auto peer = ctx->connecting.front();
+                ctx->connecting.pop();
 
-            if (!ctx->connecting.empty())
-                ctx->arm_timer();
-            else
-                ctx->timer_armed = false;
+                client_connect_request(ctx, peer);
+            }
 
             continue;
         }
@@ -390,6 +392,7 @@ void io_thread_main(ThreadContext *ctx, size_t id)
             case ControlOperation::Connect:
             {
                 auto peer = new Peer{
+                    // a real fd will be assigned later
                     .fd = -1,
                     .client = request.client,
                     .addr = *request.addr,
@@ -426,6 +429,7 @@ void io_thread_main(ThreadContext *ctx, size_t id)
                 // success, peer is connected
                 ctx->remove_epoll(data->fd);
 
+                // add the peer to the client's list
                 data->peer->client->peers.push_back(data->peer);
                 ctx->accept_peer(data->peer);
             }
@@ -434,7 +438,7 @@ void io_thread_main(ThreadContext *ctx, size_t id)
                 // todo: are there other recoverable errors?
                 if (result == ECONNREFUSED || result == ETIMEDOUT)
                 {
-                    ctx->connecting.push_back(data->peer);
+                    ctx->connecting.push(data->peer);
 
                     // don't bother arming the timer if it's already armed
                     if (!ctx->timer_armed)
@@ -531,7 +535,7 @@ void session_init(Session *session, size_t num_threads)
             .session = session,
             .thread = std::thread(),
             .io_cache = std::vector<EpollData2 *>(),
-            .connecting = std::vector<Peer *>(),
+            .connecting = std::queue<Peer *>(),
             .control = ConcurrentQueue<ControlRequest>(),
             .control_efd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
             .epoll_fd = epoll_create1(0),
