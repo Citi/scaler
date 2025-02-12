@@ -62,8 +62,6 @@ std::string event_name(EpollType &type)
         return "ClientListener";
     case EpollType::IntraProcessClientRecv:
         return "IntraProcessClientRecv";
-    case EpollType::EpollClosed:
-        return "EpollClosed";
     }
 
     panic("unknown epoll type");
@@ -82,7 +80,7 @@ void deserialize_u32(const uint8_t buffer[4], uint32_t *x)
     *x = buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24;
 }
 
-WriteResult writeall(int fd, const uint8_t *data, size_t len)
+WriteResult3 writeall(int fd, const uint8_t *data, size_t len)
 {
     size_t sent = 0;
     while (sent < len)
@@ -100,7 +98,7 @@ WriteResult writeall(int fd, const uint8_t *data, size_t len)
 
             if (errno == ECONNRESET || errno == EPIPE)
             {
-                return WriteResult::Disconnected;
+                return WriteR
             }
 
             panic("failed to send to peer: " + std::to_string(errno) + "; " + strerror(errno));
@@ -226,113 +224,328 @@ ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
     return ReadResult::Read;
 }
 
-bool Session::epoll_data_by_fd(int fd, EpollData **data)
-{
-    auto x = std::find_if(this->epoll_data.begin(), this->epoll_data.end(), [fd](EpollData &d)
-                          { return d.fd == fd; });
+ENUM ReadResultType2{
+    Ok,
+    Disconnect,
+};
 
-    if (x != this->epoll_data.end())
+struct ReadResult2
+{
+    ReadResultType2 type;
+    size_t len;
+};
+
+ReadResult2 readexact2(int fd, uint8_t *data, size_t len, bool stop_if_no_data)
+{
+    size_t n_read = 0;
+    while (n_read < len)
     {
-        *data = &*x;
-        return true;
+        ssize_t n = read(fd, data + n_read, len - n_read);
+        if (n < 0)
+        {
+            if (stop_if_no_data && (errno == EWOULDBLOCK || errno == EAGAIN))
+                return {
+                    .type = ReadResultType2::Ok,
+                    .len = n_read,
+                };
+
+            if (errno == ECONNRESET)
+                return {
+                    .type = ReadResultType2::Disconnect,
+                    .len = n_read,
+                };
+
+            panic("failed to read from peer: " + std::to_string(errno) + "; " + strerror(errno) + " ;; fd " + std::to_string(fd));
+        }
+
+        if (n == 0)
+            return {
+                .type = ReadResultType2::Disconnect,
+                .len = n_read,
+            };
+
+        n_read += n;
     }
 
-    return false;
+    return {
+        .type = ReadResultType2::Ok,
+        .len = n_read,
+    };
 }
 
-void io_thread_main(Session *session, [[maybe_unused]] size_t id)
+// two write functions:
+//   - A: write everything, don't stop even if the socket returns EAGAIN or EWOULDBLOCK, only exit when done or if the socket disconnects
+//   - B: write as much as you can, exit as soon as the socket blocks, or indicate that the socket disconnected, return the number of bytes written
+
+ENUM WriteResult2{
+    Written,
+    Disconnect,
+};
+
+struct WriteResult3
+{
+    WriteResult2 type;
+    size_t len;
+};
+
+void ThreadContext::accept_peer(Peer *peer)
+{
+    this->add_epoll(peer->fd, EPOLLIN | EPOLLET, EpollType::ClientPeerRecv, peer);
+}
+
+void client_connect_request(ThreadContext *ctx, Peer *peer)
+{
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+
+    if (fd < 0)
+    {
+        panic("failed to create socket");
+    }
+
+    peer->fd = fd;
+    set_sock_opts(peer->fd);
+    auto res = connect(peer->fd, (sockaddr *)&peer->addr, sizeof(peer->addr));
+
+    if (res < 0)
+    {
+        if (errno = EINPROGRESS)
+        {
+            // we need to wait for the socket to become writable
+            ctx->add_epoll(peer->fd, EPOLLOUT, EpollType::PeerConnecting, peer);
+        }
+
+        close(fd);
+        return;
+    }
+
+    if (res == 0)
+    {
+        // the socket connected immediately
+        peer->client->peers.push_back(peer);
+        ctx->accept_peer(peer);
+    }
+}
+
+void io_thread_main(ThreadContext *ctx, size_t id)
 {
     for (;;)
     {
         epoll_event event;
-        auto n_events = epoll_wait(session->epoll_fd, &event, 1, -1);
+        auto n_events = epoll_wait(ctx->epoll_fd, &event, 1, -1);
 
         if (n_events == 0)
         {
             continue;
         }
 
-        if (n_events < 0)
+        EpollData2 *data = (EpollData2 *)event.data.ptr;
+
+        if (data->type == EpollType::ConnectTimer)
         {
-            // we were interrupted by a signal, wait again
-            if (errno == EINTR)
-                continue;
+            // retry connecting peers
+            // read the timer fd
+            {
+                uint64_t value;
+                auto n = read(ctx->connect_timer_tfd, &value, sizeof(value));
 
-            // if the epoll fd is closed, we should exit
-            if (errno == EBADF)
-                return;
+                if (n < 0)
+                {
+                    if (errno == EAGAIN)
+                        break;
 
-            panic("handle epoll error: " + std::to_string(errno) + "; " + strerror(errno));
-        }
+                    panic("failed to read from connect timer");
+                }
 
-        // Q: why does the session need its own mutex?
-        // A:
-        //  - the session is shared between all threads, INCLUDING the Python thread
-        //  - the Python thread can add or remove clients and inprocs
-        //    **this can happen in the time between epoll_wait() returns and the event is processed
-        // // std::cout << "io-thread[" << id << "]: locking session: " << event.data.fd << std::endl;
-        session->mutex.lock_shared();
+                if (n != sizeof(value))
+                    panic("failed to read from connect timer");
+            }
 
-        // note, the epoll data will only be valid while the shared lock is held
-        EpollData *data;
-        if (!session->epoll_data_by_fd(event.data.fd, &data))
-        {
-            session->mutex.unlock_shared();
+            for (auto peer : ctx->connecting)
+            {
+            }
+
+            if (!ctx->connecting.empty())
+                ctx->arm_timer();
+            else
+                ctx->timer_armed = false;
+
             continue;
         }
 
-        // clang-format off
-        switch (data->type)
+        if (data->type == EpollType::Control)
         {
-            // the client has issued a send() call
-            case EpollType::ClientSend:             client_send_event(data->client);            break;
+            // a control request has been received
+            ControlRequest request;
+            while (!ctx->control.try_dequeue(request))
+                std::this_thread::yield();
 
-            // the client has issued a recv() call
-            case EpollType::ClientRecv:             client_recv_event(data->client);            break;
+            switch (request.op)
+            {
+            case ControlOperation::AddClient:
+                ctx->add_client(request.client);
+                break;
+            case ControlOperation::RemoveClient:
+                ctx->remove_client(request.client);
+                break;
+            case ControlOperation::Connect:
+            {
+                auto peer = new Peer{
+                    .fd = -1,
+                    .client = request.client,
+                    .addr = *request.addr,
+                };
 
-            // we have received a message from a peer
-            case EpollType::ClientPeerRecv:         client_peer_recv_event(data->peer);         break;
-
-            // we are bound and have a connection to accept
-            case EpollType::ClientListener:         client_listener_event(data->client);        break;
-
-            // an inproc client has received a message
-            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc);      break;
-
-            // the session is closing
-            case EpollType::EpollClosed: {
-                session->mutex.unlock_shared();
-                return;
+                client_connect_request(ctx, peer);
             }
+            break;
+            }
+
+            if (request.sem)
+                request.sem->release();
+
+            continue;
         }
-        // clang-format on
+
+        if (data->type == EpollType::PeerConnecting)
+        {
+            // the peer connection was in progress and has become writeable
+            ctx->remove_epoll(data->fd);
+
+            int result;
+            socklen_t result_len;
+            if (getsockopt(data->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
+            {
+                close(data->fd);
+                delete data->peer;
+
+                panic("failed to get socket error");
+            }
+
+            if (result == 0)
+            {
+                // success, peer is connected
+                ctx->remove_epoll(data->fd);
+
+                data->peer->client->peers.push_back(data->peer);
+                ctx->accept_peer(data->peer);
+            }
+            else
+            {
+                // todo: are there other recoverable errors?
+                if (result == ECONNREFUSED || result == ETIMEDOUT)
+                {
+                    ctx->connecting.push_back(data->peer);
+
+                    // don't bother arming the timer if it's already armed
+                    if (!ctx->timer_armed)
+                        ctx->arm_timer();
+                }
+
+                panic("failed to connect to peer: " + std::to_string(result));
+            }
+
+            continue;
+        }
+
+        if (data->type == EpollType::Closed)
+        {
+            // the session is closing
+            // todo: cleanup logic(?)
+            return;
+        }
+
+        if (event.events & EPOLLIN)
+        {
+            // read event
+
+            // clang-format off
+            switch (data->type)
+            {
+                // the client has issued a send() call
+                case EpollType::ClientSend:             client_send_event(data->client);            break;
+
+                // the client has issued a recv() call
+                case EpollType::ClientRecv:             client_recv_event(data->client);            break;
+
+                // we are bound and have a connection to accept
+                case EpollType::ClientListener:         client_listener_event(data->client);        break;
+
+                // an inproc client has received a message
+                case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc);      break;
+
+                // we have received a message from a peer
+                case EpollType::ClientPeerRecv:
+                {
+                    if (data->read)
+                    {
+                        // resume the read
+                        auto read = *data->read;
+
+                        readexact(data->fd, read.message.payload.data + read.cursor, read.message.payload.len - read.cursor, false, 1000);
+
+                        continue;
+                    }
+
+                    client_peer_recv_event(data->peer);
+                }
+            }
+            // clang-format on
+
+            // this is something else
+            continue;
+        }
+
+        if (event.events & EPOLLOUT)
+        {
+            // write event
+
+            if (data->write)
+            {
+                // resume the write
+
+                continue;
+            }
+
+            // this is an error
+            panic("unexpected write event");
+        }
     }
 }
 
 void session_init(Session *session, size_t num_threads)
 {
     new (session) Session{
-        .threads = std::vector<std::thread>(),
-        .clients = std::vector<Client *>(),
+        .threads = std::vector<ThreadContext>(),
         .inprocs = std::vector<IntraProcessClient *>(),
-        .mutex = std::shared_mutex(),
         .intraprocess_mutex = std::shared_mutex(),
-        .epoll_fd = epoll_create1(0),
-        .epoll_data = std::vector<EpollData>(),
         .epoll_close_efd = eventfd(0, 0),
-        .id_counter = 0,
     };
 
-    // this epfd is used to signal the io threads to close
-    // unlike all others, it's level-triggered
-    session->add_epoll_fd(session->epoll_close_efd, EpollType::EpollClosed, NULL, false);
-
+    // exactly size the vector to avoid reallocation
     session->threads.reserve(num_threads);
 
     for (size_t i = 0; i < num_threads; ++i)
     {
-        session->threads.emplace_back(
-            std::thread(io_thread_main, session, i));
+        session->threads.emplace_back(ThreadContext{
+            // note: this does not start the thread
+            .session = session,
+            .thread = std::thread(),
+            .io_cache = std::vector<EpollData2 *>(),
+            .connecting = std::vector<Peer *>(),
+            .control = ConcurrentQueue<ControlRequest>(),
+            .control_efd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
+            .epoll_fd = epoll_create1(0),
+            .connect_timer_tfd = timerfd_create(CLOCK_MONOTONIC, 0),
+            .timer_armed = false,
+        });
+
+        auto ctx = &session->threads.back();
+
+        ctx->add_epoll(session->epoll_close_efd, EPOLLIN, EpollType::Closed, nullptr);
+        ctx->add_epoll(ctx->control_efd, EPOLLIN, EpollType::Control, nullptr);
+        ctx->add_epoll(ctx->connect_timer_tfd, EPOLLIN, EpollType::ConnectTimer, nullptr);
+
+        ctx->thread = std::thread(io_thread_main, ctx, i);
     }
 }
 
@@ -348,77 +561,77 @@ void session_destroy(Session *session)
     for (size_t i = 0; i < session->threads.size(); ++i)
     {
         // // std::cout << "joining thread " << i << std::endl;
-        session->threads[i].join();
+        session->threads[i].thread.join();
     }
 
-    close(session->epoll_fd);
+    close(session->epoll_close_efd);
 
     // call the destructor without freeing the memory (it's owned by the caller)
     session->~Session();
 }
 
-bool Session::has_epoll_data_fd(int fd)
-{
-    for (auto &d : this->epoll_data)
-    {
-        if (d.fd == fd)
-        {
-            return true;
-        }
-    }
+// bool Session::has_epoll_data_fd(int fd)
+// {
+//     for (auto &d : this->epoll_data)
+//     {
+//         if (d.fd == fd)
+//         {
+//             return true;
+//         }
+//     }
 
-    return false;
-}
+//     return false;
+// }
 
-void Session::add_epoll_fd(int fd, EpollType type, void *data, bool edge_triggered)
-{
-    EpollData epoll_data{
-        .fd = fd,
-        .type = type,
-        .ptr = data,
-    };
+// void Session::add_epoll_fd(int fd, EpollType type, void *data, bool edge_triggered)
+// {
+//     EpollData epoll_data{
+//         .fd = fd,
+//         .type = type,
+//         .ptr = data,
+//     };
 
-    if (has_epoll_data_fd(fd))
-    {
-        panic("epoll fd already exists: " + std::to_string(fd));
-    }
+//     if (has_epoll_data_fd(fd))
+//     {
+//         panic("epoll fd already exists: " + std::to_string(fd));
+//     }
 
-    this->epoll_data.push_back(epoll_data);
+//     this->epoll_data.push_back(epoll_data);
 
-    uint32_t flags = EPOLLIN;
+//     uint32_t flags = EPOLLIN;
 
-    if (edge_triggered)
-    {
-        flags |= EPOLLET;
-    }
+//     if (edge_triggered)
+//     {
+//         flags |= EPOLLET;
+//     }
 
-    epoll_event event{
-        // epollin: read events
-        // epollet: edge-triggered
-        // epollexclusive: only wake one* epoll instance
-        // *optimistic, it can still wake multiple
-        .events = flags,
-        .data = {.fd = fd}};
+//     epoll_event event{
+//         // epollin: read events
+//         // epollet: edge-triggered
+//         // epollexclusive: only wake one* epoll instance
+//         // *optimistic, it can still wake multiple
+//         .events = flags,
+//         .data = {.fd = fd}};
 
-    if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0)
-    {
-        panic("failed to add epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
-    }
-}
+//     if (epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, fd, &event) < 0)
+//     {
+//         panic("failed to add epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
+//     }
+// }
 
 // must hold exclusive lock on session
-void Session::remove_epoll_fd(int fd)
-{
-    if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
-    {
-        // we ignore enoent because it means the fd was already removed
-        if (errno != ENOENT)
-            panic("failed to remove epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
-    }
+// void Session::remove_epoll_fd(int fd)
+// {
+//     if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
+//     {
+//         // we ignore enoent because it means the fd was already removed
+//         if (errno != ENOENT)
+//             panic("failed to remove epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
+//     }
 
-    std::erase_if(this->epoll_data, [fd](EpollData &data)
-                  { return data.fd == fd; });
-}
+//     std::erase_if(this->epoll_data, [fd](EpollData &data)
+//                   { return data.fd == fd; });
+// }
 
 void client_init(Session *session, Client *client, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
 {
@@ -458,11 +671,11 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
         .recv_buffer = ConcurrentQueue<Message>(),
     };
 
-    session->mutex.lock();
-    session->clients.push_back(client);
-    session->add_epoll_fd(client->send_event_fd, EpollType::ClientSend, client);
-    session->add_epoll_fd(client->recv_event_fd, EpollType::ClientRecv, client);
-    session->mutex.unlock();
+    // session->mutex.lock();
+    // session->clients.push_back(client);
+    // session->add_epoll_fd(client->send_event_fd, EpollType::ClientSend, client);
+    // session->add_epoll_fd(client->recv_event_fd, EpollType::ClientRecv, client);
+    // session->mutex.unlock();
 }
 
 void client_bind(Client *client, const char *host, uint16_t port)
@@ -522,10 +735,10 @@ void client_bind(Client *client, const char *host, uint16_t port)
     // we make an assumption that the client is not in the session list until it has been bound or connect
     // AND it will only ever be bound or connected, never both
     // // std::cout << "client_bind(): lock session" << std::endl;
-    session->mutex.lock();
-    session->add_epoll_fd(client->fd, EpollType::ClientListener, client);
-    session->mutex.unlock();
-    client->mutex.unlock();
+    // session->mutex.lock();
+    // session->add_epoll_fd(client->fd, EpollType::ClientListener, client);
+    // session->mutex.unlock();
+    // client->mutex.unlock();
 }
 
 // hold the client lock when calling this function
@@ -648,9 +861,9 @@ start:
     client->unmute();
     client->mutex.unlock();
 
-    session->mutex.lock();
-    session->add_epoll_fd(peer->fd, EpollType::ClientPeerRecv, peer);
-    session->mutex.unlock();
+    // session->mutex.lock();
+    // session->add_epoll_fd(peer->fd, EpollType::ClientPeerRecv, peer);
+    // session->mutex.unlock();
     return true;
 }
 
@@ -812,66 +1025,66 @@ void peer_destroy(Peer *peer)
 
 void client_destroy(Client *client)
 {
-    auto session = client->session;
+    // auto session = client->session;
 
-    // take exclusive lock on the session
-    session->mutex.lock();
-    client->mutex.lock();
+    // // take exclusive lock on the session
+    // session->mutex.lock();
+    // client->mutex.lock();
 
-    // remove the client from the session
-    std::erase(session->clients, client);
+    // // remove the client from the session
+    // std::erase(session->clients, client);
 
-    if (client->fd > 0)
-        session->remove_epoll_fd(client->fd);
-    session->remove_epoll_fd(client->send_event_fd);
-    session->remove_epoll_fd(client->recv_event_fd);
+    // if (client->fd > 0)
+    //     session->remove_epoll_fd(client->fd);
+    // session->remove_epoll_fd(client->send_event_fd);
+    // session->remove_epoll_fd(client->recv_event_fd);
 
-    for (auto peer : client->peers)
-    {
-        session->remove_epoll_fd(peer->fd);
-    }
+    // for (auto peer : client->peers)
+    // {
+    //     session->remove_epoll_fd(peer->fd);
+    // }
 
-    // we're done with the session
-    session->mutex.unlock();
+    // // we're done with the session
+    // session->mutex.unlock();
 
-    // drain the recv buffer
-    for (;;)
-    {
-        eventfd_t value;
-        if (eventfd_read(client->recv_buffer_event_fd, &value) < 0)
-        {
-            if (errno == EAGAIN)
-                break;
+    // // drain the recv buffer
+    // for (;;)
+    // {
+    //     eventfd_t value;
+    //     if (eventfd_read(client->recv_buffer_event_fd, &value) < 0)
+    //     {
+    //         if (errno == EAGAIN)
+    //             break;
 
-            panic("handle eventfd read error: " + std::to_string(errno));
-        }
+    //         panic("handle eventfd read error: " + std::to_string(errno));
+    //     }
 
-        Message msg;
-        while (!client->recv_buffer.try_dequeue(msg))
-            std::this_thread::yield();
+    //     Message msg;
+    //     while (!client->recv_buffer.try_dequeue(msg))
+    //         std::this_thread::yield();
 
-        free(msg.payload.data);
-    }
+    //     free(msg.payload.data);
+    // }
 
-    close(client->send_event_fd);
-    close(client->recv_event_fd);
-    close(client->recv_buffer_event_fd);
-    close(client->unmuted_event_fd);
+    // close(client->send_event_fd);
+    // close(client->recv_event_fd);
+    // close(client->recv_buffer_event_fd);
+    // close(client->unmuted_event_fd);
 
-    if (client->fd > 0)
-        close(client->fd);
+    // if (client->fd > 0)
+    //     close(client->fd);
 
-    free(client->identity.data);
+    // free(client->identity.data);
 
-    for (auto peer : client->peers)
-        peer_destroy(peer);
+    // for (auto peer : client->peers)
+    //     peer_destroy(peer);
 
-    client->peers.clear();
-    client->mutex.unlock();
+    // client->peers.clear();
+    // client->mutex.unlock();
 
-    // call the C++ destructor without freeing the memory
-    // the memory is owned by Python
-    client->~Client();
+    // // call the C++ destructor without freeing the memory
+    // // the memory is owned by Python
+    // client->~Client();
 }
 
 // this is a pointer to a stack variable, so we _do not_ free it
@@ -980,34 +1193,33 @@ send:
         .payload = Bytes{data, data_len},
     };
 
-    session->mutex.lock_shared();
-    client->mutex.lock();
-    auto res = client_send_(client, std::move(msg));
-    client->mutex.unlock();
-    session->mutex.unlock_shared();
+    // session->mutex.lock_shared();
+    // client->mutex.lock();
+    // auto res = client_send_(client, std::move(msg));
+    // client->mutex.unlock();
+    // session->mutex.unlock_shared();
 
-    if (res == SendResult::Muted)
-    {
-    wait:
+    // if (res == SendResult::Muted)
+    // {
+    // wait:
 
-        if (auto sig = fd_wait(client->unmuted_event_fd, -1, POLLIN))
-            panic("failed to wait on fd; signal: " + std::to_string(sig));
+    //     if (auto sig = fd_wait(client->unmuted_event_fd, -1, POLLIN))
+    //         panic("failed to wait on fd; signal: " + std::to_string(sig));
 
-        eventfd_t value;
-        if (eventfd_read(client->unmuted_event_fd, &value) < 0)
-        {
-            if (errno == EAGAIN)
-                goto wait;
-        }
+    //     eventfd_t value;
+    //     if (eventfd_read(client->unmuted_event_fd, &value) < 0)
+    //     {
+    //         if (errno == EAGAIN)
+    //             goto wait;
+    //     }
 
-        goto send;
-    }
+    //     goto send;
+    // }
 }
 
 // epoll handlers
 void client_send_event(Client *client)
 {
-    client->mutex.lock();
     for (;;)
     {
         if (client->muted())
@@ -1043,9 +1255,6 @@ void client_send_event(Client *client)
             panic("client_send_event: client is muted");
         }
     }
-
-    client->mutex.unlock();
-    client->session->mutex.unlock_shared();
 }
 
 void client_recv_event(Client *client)
@@ -1106,7 +1315,7 @@ void client_recv_event(Client *client)
         message_destroy(msg);
     }
 
-    client->session->mutex.unlock_shared();
+    // client->session->mutex.unlock_shared();
 }
 
 void client_peer_recv_event(Peer *peer)
@@ -1150,7 +1359,7 @@ void client_peer_recv_event(Peer *peer)
     }
 
     client->mutex.unlock();
-    session->mutex.unlock_shared();
+    // session->mutex.unlock_shared();
 }
 
 void set_sock_opts(int fd)
@@ -1218,63 +1427,64 @@ void client_listener_event(Client *client)
         {
             panic("failed to write to eventfd: " + std::to_string(errno));
         }
-
-        // yep, that's a lot of mutex ops
-        // unfortunately global ordering requires it
-        client->mutex.unlock();
-        session->mutex.unlock_shared();
-        session->mutex.lock();
-        // we need to check that the client is still in the session
-        // it's possible that the client was destroyed while we were upgrading the lock
-        if (!session->has_epoll_data_fd(client_fd))
-        {
-            // the caller is expecting the shared lock to be held
-            session->mutex.unlock();
-            session->mutex.lock_shared();
-            break;
-        }
-
-        session->add_epoll_fd(fd, EpollType::ClientPeerRecv, peer);
-
-        // downgrade the lock
-        session->mutex.unlock();
-        session->mutex.lock_shared();
     }
 
-    session->mutex.unlock_shared();
+    //     // yep, that's a lot of mutex ops
+    //     // unfortunately global ordering requires it
+    //     client->mutex.unlock();
+    //     session->mutex.unlock_shared();
+    //     session->mutex.lock();
+    //     // we need to check that the client is still in the session
+    //     // it's possible that the client was destroyed while we were upgrading the lock
+    //     if (!session->has_epoll_data_fd(client_fd))
+    //     {
+    //         // the caller is expecting the shared lock to be held
+    //         session->mutex.unlock();
+    //         session->mutex.lock_shared();
+    //         break;
+    //     }
+
+    //     session->add_epoll_fd(fd, EpollType::ClientPeerRecv, peer);
+
+    //     // downgrade the lock
+    //     session->mutex.unlock();
+    //     session->mutex.lock_shared();
+    // }
+
+    // session->mutex.unlock_shared();
 }
 
 // lock-free
-void Client::recv_msg(Message &&msg)
-{
-    // // std::cout << "recv message from: " << msg.address.as_string() << std::endl;
+// void Client::recv_msg(Message &&msg)
+// {
+//     // // std::cout << "recv message from: " << msg.address.as_string() << std::endl;
 
-    // try to dequeue a future from the recv queue
-    // for sync clients this will never happen
-    eventfd_t value;
-    if (eventfd_read(this->recv_event_fd, &value) == 0)
-    {
-        void *future;
-        while (!this->recv.try_dequeue(future))
-            std::this_thread::yield();
+//     // try to dequeue a future from the recv queue
+//     // for sync clients this will never happen
+//     eventfd_t value;
+//     if (eventfd_read(this->recv_event_fd, &value) == 0)
+//     {
+//         void *future;
+//         while (!this->recv.try_dequeue(future))
+//             std::this_thread::yield();
 
-        future_set_result(future, &msg);
+//         future_set_result(future, &msg);
 
-        // we're done with the message
-        message_destroy(msg);
-    }
-    else
-    {
-        if (errno != EAGAIN)
-            panic("eventfd read error: " + std::to_string(errno) + "; " + strerror(errno));
+//         // we're done with the message
+//         message_destroy(msg);
+//     }
+//     else
+//     {
+//         if (errno != EAGAIN)
+//             panic("eventfd read error: " + std::to_string(errno) + "; " + strerror(errno));
 
-        // no outstanding recvs, buffer the message
-        this->recv_buffer.enqueue(msg);
+//         // no outstanding recvs, buffer the message
+//         this->recv_buffer.enqueue(msg);
 
-        if (eventfd_write(this->recv_buffer_event_fd, 1) < 0)
-            panic("failed to write to eventfd: " + std::to_string(errno));
-    }
-}
+//         if (eventfd_write(this->recv_buffer_event_fd, 1) < 0)
+//             panic("failed to write to eventfd: " + std::to_string(errno));
+//     }
+// }
 
 void intraprocess_bind(IntraProcessClient *inproc, const char *addr, size_t len)
 {
@@ -1398,10 +1608,10 @@ void intraprocess_init(Session *session, IntraProcessClient *inproc, uint8_t *id
     uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
     memcpy(identity_dup, identity, len);
 
-    auto id = session->id_counter++;
+    // auto id = session->id_counter++;
 
     new (inproc) IntraProcessClient{
-        .id = id,
+        .id = 0, // todo
         .session = session,
         .queue = ConcurrentQueue<Message>(),
         .recv = ConcurrentQueue<void *>(),
@@ -1420,9 +1630,9 @@ void intraprocess_init(Session *session, IntraProcessClient *inproc, uint8_t *id
     session->inprocs.push_back(inproc);
     session->intraprocess_mutex.unlock();
 
-    session->mutex.lock();
-    session->add_epoll_fd(inproc->recv_event_fd, EpollType::IntraProcessClientRecv, inproc);
-    session->mutex.unlock();
+    // session->mutex.lock();
+    // session->add_epoll_fd(inproc->recv_event_fd, EpollType::IntraProcessClientRecv, inproc);
+    // session->mutex.unlock();
 }
 
 void intraprocess_recv_event(IntraProcessClient *inproc)

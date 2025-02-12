@@ -1,6 +1,7 @@
 // C
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 
 // C++
 #include <thread>
@@ -12,9 +13,24 @@
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
+#include <iostream>
+#include <source_location>
+#include <string>
 
 // System
 #include <sys/socket.h>
+#include <sys/eventfd.h>
+#include <sys/epoll.h>
+#include <sys/signalfd.h>
+#include <sys/un.h>
+#include <sys/timerfd.h>
+
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
+
+#include <arpa/inet.h>
+#include <netinet/tcp.h>
 
 // Third-party
 #include "third_party/concurrentqueue.h"
@@ -37,6 +53,22 @@ using moodycamel::ConcurrentQueue;
 // max message size to receive or send in bytes
 #define MAX_MSG_SIZE 500 * 1024 * 1024 // 500M
 
+[[noreturn]] void panic(
+    [[maybe_unused]] std::string message,
+    const std::source_location &location = std::source_location::current())
+{
+
+    auto file_name = std::string(location.file_name());
+    file_name = file_name.substr(file_name.find_last_of("/") + 1);
+
+    std::cout << "panic at " << file_name << ":" << location.line()
+              << ":" << location.column() << " in function ["
+              << location.function_name() << "] in file ["
+              << location.file_name() << "]: " << message << std::endl;
+
+    exit(1);
+}
+
 struct Client;
 struct Peer;
 struct Message;
@@ -50,19 +82,9 @@ struct Bytes
     bool operator==(const Bytes &other) const
     {
         if (len != other.len)
-        {
             return false;
-        }
 
-        for (size_t i = 0; i < len; i++)
-        {
-            if (data[i] != other.data[i])
-            {
-                return false;
-            }
-        }
-
-        return true;
+        return std::memcmp(data, other.data, len) == 0;
     }
 
     // same as empty()
@@ -112,7 +134,43 @@ ENUM EpollType{
     ClientListener,
     ClientPeerRecv,
     IntraProcessClientRecv,
-    EpollClosed,
+    PeerConnecting,
+
+    ConnectTimer,
+    Control,
+    Closed,
+};
+
+// this is an in-progress write operation
+// created only after the entire header has been written
+struct WriteOperation
+{
+    SendMsg send;
+    size_t cursor;
+};
+
+// an in-progress read operation
+// created only after the entire header has been read
+struct ReadOperation
+{
+    Message message;
+    size_t cursor;
+};
+
+struct EpollData2
+{
+    int fd;
+    EpollType type;
+    std::optional<ReadOperation> read;
+    std::optional<WriteOperation> write;
+
+    union
+    {
+        void *ptr;
+        Client *client;
+        IntraProcessClient *inproc;
+        Peer *peer;
+    };
 };
 
 struct EpollData
@@ -148,25 +206,109 @@ struct IntraProcessClient
     std::optional<size_t> peer;
 };
 
+ENUM ControlOperation{
+    AddClient,
+    RemoveClient,
+    Connect,
+};
+
+struct ControlRequest
+{
+    ControlOperation op;
+    int client_fd;
+    std::optional<std::binary_semaphore> sem;
+    std::optional<sockaddr_storage> addr;
+
+    union
+    {
+        void *data;
+        Client *client;
+    };
+};
+
+struct ThreadContext
+{
+    Session *session;
+    std::thread thread;
+    std::vector<EpollData2 *> io_cache;
+    std::vector<Peer *> connecting;
+    ConcurrentQueue<ControlRequest> control;
+    int control_efd;
+    int epoll_fd;
+    int connect_timer_tfd;
+    bool timer_armed;
+
+    void arm_timer()
+    {
+        const time_t timeout_s = 3;
+
+        itimerspec timer{
+            .it_interval = {.tv_sec = 0, .tv_nsec = 0},
+            .it_value = {.tv_sec = timeout_s, .tv_nsec = 0},
+        };
+
+        if (timerfd_settime(this->connect_timer_tfd, 0, &timer, nullptr) < 0)
+        {
+            panic("failed to arm timer");
+        }
+        this->timer_armed = true;
+    }
+
+    void accept_peer(Peer *peer);
+
+    void add_client(Client *client);
+    void remove_client(Client *client);
+
+    // must be called on io-thread
+    void add_epoll(int fd, uint32_t flags, EpollType type, void *data)
+    {
+        auto edata = new EpollData2{
+            .fd = fd,
+            .type = type,
+            .ptr = data,
+        };
+
+        epoll_event event{
+            .events = flags,
+            .data = {.ptr = edata}};
+
+        epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, fd, &event);
+
+        this->io_cache.push_back(edata);
+    }
+
+    // must be called on io-thread
+    void remove_epoll(int fd)
+    {
+        if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
+        {
+            // we ignore enoent because it means the fd was already removed
+            if (errno != ENOENT)
+                panic("failed to remove epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
+        }
+
+        auto edata = std::find_if(this->io_cache.begin(), this->io_cache.end(), [fd](EpollData2 *d)
+                                  { return d->fd == fd; });
+
+        if (edata != this->io_cache.end())
+        {
+            delete *edata;
+            this->io_cache.erase(edata);
+        }
+    }
+};
+
 struct Session
 {
     // the io threads
-    std::vector<std::thread> threads;
-    std::vector<Client *> clients;
-
+    std::vector<ThreadContext> threads;
     std::vector<IntraProcessClient *> inprocs;
 
-    // exclusive: odifying inprocs or clients (rare)
-    // shared: sending / receiving messages (common)
-    std::shared_mutex mutex;
     std::shared_mutex intraprocess_mutex;
-
-    int epoll_fd;
-    std::vector<EpollData> epoll_data;
 
     int epoll_close_efd;
 
-    size_t id_counter;
+    std::atomic_uint8_t thread_rr;
 
     inline size_t num_threads()
     {
@@ -178,10 +320,10 @@ struct Session
         return num_threads() == 1;
     };
 
-    void add_epoll_fd(int fd, EpollType type, void *data, bool edge_triggered = true);
-    bool epoll_data_by_fd(int fd, EpollData **data);
-    bool has_epoll_data_fd(int fd);
-    void remove_epoll_fd(int fd);
+    // void add_epoll_fd(int fd, EpollType type, void *data, bool edge_triggered = true);
+    // bool epoll_data_by_fd(int fd, EpollData **data);
+    // bool has_epoll_data_fd(int fd);
+    // void remove_epoll_fd(int fd);
 };
 
 ENUM ReadResult{
@@ -199,7 +341,7 @@ void session_init(Session *session, size_t num_threads);
 void session_destroy(Session *session);
 
 // private API
-void io_thread_main(Session *session, size_t id);
+void io_thread_main(ThreadContext *ctx, size_t id);
 ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout);
 ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data);
 WriteResult write_message(int fd, Bytes *data);
@@ -277,21 +419,23 @@ struct Client
     // must hold mutex
     bool peer_by_id(Bytes id, Peer **peer)
     {
-        for (auto &p : this->peers)
+        auto it = std::find_if(this->peers.begin(), this->peers.end(), [id](Peer *p)
+                               { return p->identity == id; });
+
+        if (it != this->peers.end())
         {
-            if (p->identity == id)
-            {
-                *peer = p;
-                return true;
-            }
+            *peer = *it;
+            return true;
         }
 
         return false;
     }
 
-    inline bool muted() {
+    inline bool muted()
+    {
         // these types mute when they have no peers
-        if (this->type == ConnectorType::Pair || this->type == ConnectorType::Dealer) {
+        if (this->type == ConnectorType::Pair || this->type == ConnectorType::Dealer)
+        {
             return this->peers.empty();
         }
 
@@ -341,3 +485,15 @@ void client_listener_event(Client *binder);
 void intraprocess_recv_event(IntraProcessClient *inproc);
 
 void message_destroy(Message &message);
+
+void ThreadContext::add_client(Client *client)
+{
+    this->add_epoll(client->send_event_fd, EPOLLIN | EPOLLET, EpollType::ClientSend, client);
+    this->add_epoll(client->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ClientRecv, client);
+}
+
+void ThreadContext::remove_client(Client *client)
+{
+    this->remove_epoll(client->send_event_fd);
+    this->remove_epoll(client->recv_event_fd);
+}
