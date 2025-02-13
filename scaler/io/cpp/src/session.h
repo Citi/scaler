@@ -80,7 +80,7 @@ struct ReadOperation
     size_t cursor;
 };
 
-struct EpollData2
+struct EpollData
 {
     int fd;
     EpollType type;
@@ -122,7 +122,7 @@ struct ThreadContext
     size_t id;
     Session *session;
     std::thread thread;
-    std::vector<EpollData2 *> io_cache;
+    std::vector<EpollData *> io_cache;
     std::queue<Peer *> connecting;
     ConcurrentQueue<ControlRequest> control;
     int control_efd;
@@ -163,7 +163,7 @@ struct ThreadContext
     // must be called on io-thread
     void add_epoll(int fd, uint32_t flags, EpollType type, void *data)
     {
-        auto edata = new EpollData2{
+        auto edata = new EpollData{
             .fd = fd,
             .type = type,
             .ptr = data,
@@ -188,7 +188,7 @@ struct ThreadContext
                 panic("failed to remove epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
         }
 
-        auto edata = std::find_if(this->io_cache.begin(), this->io_cache.end(), [fd](EpollData2 *d)
+        auto edata = std::find_if(this->io_cache.begin(), this->io_cache.end(), [fd](EpollData *d)
                                   { return d->fd == fd; });
 
         if (edata != this->io_cache.end())
@@ -247,7 +247,7 @@ void session_init(Session *session, size_t num_threads)
             .id = i,
             .session = session,
             .thread = std::thread(),
-            .io_cache = std::vector<EpollData2 *>(),
+            .io_cache = std::vector<EpollData *>(),
             .connecting = std::queue<Peer *>(),
             .control = ConcurrentQueue<ControlRequest>(),
             .control_efd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
@@ -266,41 +266,79 @@ void session_init(Session *session, size_t num_threads)
     }
 }
 
-void io_thread_main(ThreadContext *ctx)
+void set_sock_opts(int fd)
 {
-    for (;;)
-    {
-        epoll_event event;
-        auto n_events = epoll_wait(ctx->epoll_fd, &event, 1, -1);
+    timeval tv{
+        .tv_sec = 1,
+        .tv_usec = 0};
 
-        if (n_events == 0)
+    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+
+    int on = 1;
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
+}
+
+// begin the connection process for a peer
+// the peer's fd will be overwritten with the new socket
+void client_connect_request(ThreadContext *ctx, Peer *peer)
+{
+    int fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+
+    if (fd < 0)
+    {
+        panic("failed to create socket");
+    }
+
+    peer->fd = fd;
+    set_sock_opts(peer->fd);
+    auto res = connect(peer->fd, (sockaddr *)&peer->addr, sizeof(peer->addr));
+
+    if (res < 0)
+    {
+        if (errno == EINPROGRESS)
         {
-            continue;
+            // we need to wait for the socket to become writable
+            ctx->add_epoll(peer->fd, EPOLLOUT, EpollType::PeerConnecting, peer);
         }
 
-        EpollData2 *data = (EpollData2 *)event.data.ptr;
+        // todo: handle other errors?
+        close(fd);
+        return;
+    }
+
+    if (res == 0)
+    {
+        // the socket connected immediately
+        peer->client->peers.push_back(peer);
+        ctx->accept_peer(peer);
+    }
+}
+
+void io_thread_main(ThreadContext *ctx)
+{
+    epoll_event event;
+    for (;;)
+    {
+        auto n_events = epoll_wait(ctx->epoll_fd, &event, 1, -1);
+
+        // spurrious wakeup
+        if (n_events == 0)
+            continue;
+
+        EpollData *data = (EpollData *)event.data.ptr;
 
         if (data->type == EpollType::ConnectTimer)
         {
             // the timer is no longer armed
             ctx->timer_armed = false;
 
-            // retry connecting peers
-            // read the timer fd
+            if (timerfd_read2(ctx->connect_timer_tfd) < 0)
             {
-                uint64_t value;
-                auto n = read(ctx->connect_timer_tfd, &value, sizeof(value));
+                if (errno == EAGAIN)
+                    continue;
 
-                if (n < 0)
-                {
-                    if (errno == EAGAIN)
-                        break;
-
-                    panic("failed to read from connect timer");
-                }
-
-                if (n != sizeof(value))
-                    panic("failed to read from connect timer");
+                panic("failed to read from connect timer: " + std::to_string(errno));
             }
 
             while (!ctx->connecting.empty())
@@ -367,8 +405,6 @@ void io_thread_main(ThreadContext *ctx)
             if (result == 0)
             {
                 // success, peer is connected
-                ctx->remove_epoll(data->fd);
-
                 // add the peer to the client's list
                 data->peer->client->peers.push_back(data->peer);
                 ctx->accept_peer(data->peer);

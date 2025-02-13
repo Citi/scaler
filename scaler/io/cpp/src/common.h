@@ -10,6 +10,9 @@
 #include <iostream>
 #include <source_location>
 
+// System
+#include <sys/timerfd.h>
+
 // 5ca1ab1e = scalable
 static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
 
@@ -96,4 +99,24 @@ void serialize_u32(uint32_t x, uint8_t buffer[4])
 void deserialize_u32(const uint8_t buffer[4], uint32_t *x)
 {
     *x = buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24;
+}
+
+typedef uint64_t timerfd_t;
+
+// timerfd analogue of eventfd_read()
+int timerfd_read(int fd, timerfd_t *value)
+{
+    auto n = read(fd, value, sizeof(timerfd_t));
+
+    if (n != sizeof(timerfd_t))
+        return -1;
+
+    return 0;
+}
+
+// read a timerfd value and discard it
+// return value is the same as timerfd_read()
+int timerfd_read2(int fd) {
+    timerfd_t value;
+    return timerfd_read(fd, &value);
 }
