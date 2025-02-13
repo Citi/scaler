@@ -13,6 +13,9 @@
 // 5ca1ab1e = scalable
 static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
 
+// Python callback
+void future_set_result(void *future, void *data);
+
 // this is an unrecoverable error that exits the program
 // prints a message plus the source location
 [[noreturn]] void panic(
