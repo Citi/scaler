@@ -3,6 +3,7 @@
 // C++
 #include <optional>
 #include <vector>
+#include <expected>
 
 // System
 #include <sys/socket.h>
@@ -16,12 +17,27 @@
 
 using moodycamel::ConcurrentQueue;
 
+enum class PeerType
+{
+    // we connected to the remote
+    Connector,
+
+    // the remote connected to us
+    Connectee
+};
+
 struct Peer
 {
     Client *client;        // the binder that this peer belongs to
     Bytes identity;        // the peer's address, i.e. identity
-    sockaddr_storage addr; // the peer's address, if we are the connector
-    int fd;                // the tcp socket fd of this peer
+    sockaddr_storage addr; // the peer's address
+    PeerType type;         // the type of peer
+    int fd;                // the socket fd of this peer
+
+    void save_write(WriteOperation op)
+    {
+        this->client->thread->save_write(this, op);
+    }
 };
 
 struct SendMsg
@@ -33,30 +49,191 @@ struct SendMsg
     Message msg;
 };
 
-enum class ConnectorType{
+enum class ConnectorType
+{
     Pair,
     Pub,
     Sub,
     Dealer,
-    Router // only valid for binder interface
+    Router
 };
 
 // Clients are tcp or unix domain sockets (uds, ipc)
 // no variant for in-process because they're handled separately
-enum class Transport{
+enum class Transport
+{
     TCP,
     IntraProcess,
-    InterProcess};
+    InterProcess
+};
+
+void reconnect_peer(Peer *peer)
+{
+    auto client = peer->client;
+    auto thread = client->thread;
+
+    thread->remove_peer(peer);
+    client->remove_peer(peer);
+
+    close(peer->fd);
+
+    // retry the connection if we're the connector
+    if (peer->type == PeerType::Connector)
+    {
+        // todo: put a limit on the number of retries?
+        client_connect_peer(thread, peer);
+    }
+}
+
+// attempt to write all data to an fd
+// - returns the number of bytes written or empty if the connection was lost
+// - if nonblocking is true, the function will return immediately if the fd blocks (EAGAIN or EWOULDBLOCK)
+//   otherwise, the function will block until all data is written
+[[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking)
+{
+    size_t total = 0;
+
+    while (total < len)
+    {
+        auto n = write(fd, data + total, len - total);
+
+        if (n < 0)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                if (nonblocking)
+                    return total;
+
+                continue;
+            }
+
+            // this is a disconnect
+            if (errno == EPIPE || errno == ECONNRESET)
+                return std::nullopt;
+
+            // todo: handle other errors?
+            panic("write error: " + std::to_string(errno));
+        }
+
+        total += n;
+    }
+
+    return total;
+}
+
+// returns the number of payload bytes written or empty if the connection was lost
+// blocks until message and header are written
+// if nonblocking is true, the function will return immediately if the fd blocks (EAGAIN or EWOULDBLOCK)
+// otherwise, the function will block until all data is written
+[[nodiscard]] std::optional<size_t> write_message(int fd, Bytes *payload, bool nonblocking)
+{
+    if (!writeall(fd, MAGIC, 4, false))
+        return std::nullopt;
+
+    uint8_t header[4];
+    serialize_u32(htonl((uint32_t)payload->len), header);
+
+    if (!writeall(fd, header, 4, false))
+        return std::nullopt;
+
+    return writeall(fd, payload->data, payload->len, nonblocking);
+}
+
+// perform a non-blocking write to a peer
+void write_to_peer(Peer *peer, Bytes payload, void *future)
+{
+    auto n_bytes = write_message(peer->fd, &payload, true);
+
+    // disconnect
+    if (!n_bytes)
+        reconnect_peer(peer);
+
+    // partial write, we need to resume later
+    if (*n_bytes < payload.len)
+    {
+        auto op = WriteOperation{
+            .future = future,
+            .payload = payload,
+            .cursor = *n_bytes,
+        };
+
+        peer->save_write(op);
+    }
+}
+
+[[nodiscard]] std::optional<size_t> readexact(int fd, uint8_t *buf, size_t len, bool nonblocking)
+{
+    size_t total = 0;
+
+    while (total < len)
+    {
+        auto n = read(fd, buf + total, len - total);
+
+        if (n < 0)
+        {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                if (nonblocking)
+                    return total;
+
+                continue;
+            }
+
+            // todo: handle other errors?
+            panic("read error: " + std::to_string(errno));
+        }
+
+        if (n == 0)
+            return std::nullopt;
+
+        total += n;
+    }
+
+    return total;
+}
+
+[[nodiscard]] std::optional<size_t> read_message(int fd, Bytes *payload, bool nonblocking, size_t timeout)
+{
+    uint8_t magic[4];
+    auto n_bytes = readexact(fd, magic, 4, false);
+
+    if (!n_bytes)
+        return std::nullopt;
+
+    // if the magic doesn't match we treat it as a disconnect
+    if (std::memcmp(magic, MAGIC, 4) != 0)
+        return std::nullopt;
+
+    uint8_t header[4];
+    n_bytes = readexact(fd, header, 4, false);
+
+    if (!n_bytes)
+        return std::nullopt;
+
+    uint32_t len;
+    deserialize_u32(header, &len);
+
+    payload->len = ntohl(len);
+    payload->data = (uint8_t *)malloc(payload->len);
+
+    n_bytes = readexact(fd, payload->data, payload->len, nonblocking);
+
+    if (!n_bytes)
+        return std::nullopt;
+
+    return n_bytes;
+}
 
 struct Client
 {
     ConnectorType type;
     Transport transport;
 
-    Session *session; // backreference to session
-    Bytes identity;   // the identity of this client
+    ThreadContext *thread; // the thread that this client is bound to
+    Session *session;      // backreference to session
+    Bytes identity;        // the identity of this client
 
-    int rr; // round robin for dealer
+    size_t rr; // round robin for dealer
 
     int fd;                               // the bound socket, <0 when not bound
     std::optional<sockaddr_storage> addr; // addr for when we're bound
@@ -64,11 +241,10 @@ struct Client
 
     int unmuted_event_fd; // event fd for when the client is no longer muted
 
-    int send_event_fd;             // event fd for send queue
-    ConcurrentQueue<SendMsg> send; // the send queue for Python thread -> io thread communication
-
+    int send_event_fd;                    // event fd for send queue
+    ConcurrentQueue<SendMsg> send_queue;  // the send queue for Python thread -> io thread communication
     int recv_event_fd;                    // event fd for recv queue
-    ConcurrentQueue<void *> recv;         // the recv queue for io thread -> Python thread communication
+    ConcurrentQueue<void *> recv_queue;   // the recv queue for io thread -> Python thread communication
     int recv_buffer_event_fd;             // event fd for recv buffer, only needed for sync clients
     ConcurrentQueue<Message> recv_buffer; // these are messages that have been received
 
@@ -87,6 +263,11 @@ struct Client
         return false;
     }
 
+    void remove_peer(Peer *peer)
+    {
+        std::erase(this->peers, peer);
+    }
+
     inline bool muted()
     {
         // these types mute when they have no peers
@@ -99,6 +280,69 @@ struct Client
         return false;
     }
 
-    void recv_msg(Message &&msg);
-    void unmute();
+    size_t peer_rr()
+    {
+        auto rr = this->rr;
+        this->rr = (this->rr + 1) % this->peers.size();
+
+        return rr;
+    }
+
+    void recv_msg(Message &&msg) {};
+    void unmute() {};
+
+    // send a message to a peer according to the client type's rules
+    // - must have exclusive access to the client
+    // - client must not be muted
+    // - if the peer disconnects, a reconnect is attempted, but the message will be lost
+    void send(SendMsg send)
+    {
+        switch (this->type)
+        {
+        case ConnectorType::Pair:
+        {
+            if (this->peers.empty())
+                panic("pair: muted");
+
+            auto peer = this->peers[0];
+
+            write_to_peer(peer, send.msg.payload, send.future);
+        }
+        break;
+        case ConnectorType::Router:
+        {
+            Peer *peer;
+            if (!this->peer_by_id(send.msg.address, &peer))
+            {
+                // routers drop messages
+                break;
+            }
+
+            write_to_peer(peer, send.msg.payload, send.future);
+        }
+        break;
+        case ConnectorType::Pub:
+        {
+            // if the socket has no peers, the message is dropped
+            for (auto peer : this->peers)
+                write_to_peer(peer, send.msg.payload, send.future);
+        }
+        break;
+        case ConnectorType::Dealer:
+        {
+            if (this->peers.empty())
+                panic("dealer: muted");
+
+            // dealers round-robin their peers
+            auto peer = this->peers[this->peer_rr()];
+
+            write_to_peer(peer, send.msg.payload, send.future);
+        }
+        break;
+        default:
+            panic("unknown client type");
+        }
+    }
 };
+
+// --- public api ---

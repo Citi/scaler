@@ -129,25 +129,6 @@ ReadResult readexact(int fd, uint8_t *data, size_t len, bool stop_if_no_data, in
     return ReadResult::Read;
 }
 
-WriteResult write_message(int fd, Bytes *bytes)
-{
-    if (bytes->len > MAX_MSG_SIZE)
-        panic("cannot write message; too large: " + std::to_string(bytes->len) + " bytes");
-
-    uint8_t header[4];
-    serialize_u32(htonl((uint32_t)bytes->len), header);
-
-    auto status = writeall(fd, MAGIC, 4);
-    if (status != WriteResult::Written)
-        return status;
-
-    status = writeall(fd, header, 4);
-    if (status != WriteResult::Written)
-        return status;
-
-    return writeall(fd, bytes->data, bytes->len);
-}
-
 ReadResult read_message(int fd, Bytes *data, bool stop_if_no_data, int timeout)
 {
     uint8_t magic[4];
@@ -668,63 +649,6 @@ void client_recv(void *future, Client *client)
     }
 }
 
-// wait on a single file descriptor
-// this should work even on non-blocking fds
-int fd_wait(int fd, int timeout, short int events)
-{
-    pollfd fds[2];
-
-    fds[0] = {
-        .fd = fd,
-        .events = events,
-        .revents = 0,
-    };
-
-    sigset_t sigs;
-    sigemptyset(&sigs);
-    sigaddset(&sigs, SIGINT);
-    sigaddset(&sigs, SIGQUIT);
-    sigaddset(&sigs, SIGTERM);
-
-    auto signal_fd = signalfd(-1, &sigs, 0);
-
-    fds[1] = {
-        .fd = signal_fd,
-        .events = POLLIN,
-        .revents = 0,
-    };
-
-    auto n = poll(fds, 2, timeout);
-
-    if (n == 0)
-    {
-        close(signal_fd);
-        panic("poll timed out");
-    }
-
-    if (n < 0)
-    {
-        close(signal_fd);
-        panic("poll failed");
-    }
-
-    if (fds[1].revents & POLLIN)
-    {
-        signalfd_siginfo info;
-
-        if (read(signal_fd, &info, sizeof(info)) != sizeof(info))
-        {
-            panic("failed to read signalfd: " + std::to_string(errno));
-        }
-
-        close(signal_fd);
-        return info.ssi_signo;
-    }
-
-    close(signal_fd);
-    return 0;
-}
-
 void client_recv_sync(Client *client, Message *msg)
 {
     // this is a blocking call
@@ -966,45 +890,7 @@ send:
     // }
 }
 
-// epoll handlers
-void client_send_event(Client *client)
-{
-    for (;;)
-    {
-        if (client->muted())
-        {
-            break;
-        }
 
-        // decrement the semaphore
-        eventfd_t value;
-        if (eventfd_read(client->send_event_fd, &value) < 0)
-        {
-            // semaphore is zero, we can epoll_wait() again
-            if (errno == EAGAIN)
-                break;
-
-            panic("handle eventfd read error: " + std::to_string(errno));
-        }
-
-        // invariant: if we decremented the semaphore the queue must have a message
-        // we loop because thread synchronization may be delayed
-        SendMsg send;
-        while (!client->send.try_dequeue(send))
-            std::this_thread::yield();
-
-        auto res = client_send_(client, std::move(send.msg));
-
-        switch (res)
-        {
-        case SendResult::Sent:
-            future_set_result(send.future, NULL);
-            break;
-        case SendResult::Muted:
-            panic("client_send_event: client is muted");
-        }
-    }
-}
 
 void client_recv_event(Client *client)
 {

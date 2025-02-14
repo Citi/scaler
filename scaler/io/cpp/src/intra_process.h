@@ -33,3 +33,5 @@ struct IntraProcessClient
     std::optional<std::string> bind;
     std::optional<size_t> peer;
 };
+
+// --- public api ---

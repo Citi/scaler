@@ -120,3 +120,66 @@ int timerfd_read2(int fd) {
     timerfd_t value;
     return timerfd_read(fd, &value);
 }
+
+enum class FdWait : int8_t {
+    Ready = 0,
+    Timeout = 1,
+    Other = 2,
+};
+
+// wait on a single file descriptor
+// this should work even on non-blocking fds
+FdWait fd_wait(int fd, int timeout, short int events)
+{
+    pollfd fds[2];
+
+    fds[0] = {
+        .fd = fd,
+        .events = events,
+        .revents = 0,
+    };
+
+    sigset_t sigs;
+    sigemptyset(&sigs);
+    sigaddset(&sigs, SIGINT);
+    sigaddset(&sigs, SIGQUIT);
+    sigaddset(&sigs, SIGTERM);
+
+    auto signal_fd = signalfd(-1, &sigs, 0);
+
+    fds[1] = {
+        .fd = signal_fd,
+        .events = POLLIN,
+        .revents = 0,
+    };
+
+    auto n = poll(fds, 2, timeout);
+
+    if (n == 0)
+    {
+        close(signal_fd);
+        return FdWait::Timeout;
+    }
+
+    if (n < 0)
+    {
+        close(signal_fd);
+        return FdWait::Other;
+    }
+
+    if (fds[1].revents & POLLIN)
+    {
+        signalfd_siginfo info;
+
+        if (read(signal_fd, &info, sizeof(info)) != sizeof(info))
+        {
+            panic("failed to read signalfd: " + std::to_string(errno));
+        }
+
+        close(signal_fd);
+        return (FdWait)(-info.ssi_signo);
+    }
+
+    close(signal_fd);
+    return 0;
+}
