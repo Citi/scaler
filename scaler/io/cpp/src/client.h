@@ -1,5 +1,8 @@
 #pragma once
 
+// C
+#include <cmath>
+
 // C++
 #include <optional>
 #include <vector>
@@ -161,7 +164,7 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
     }
 }
 
-[[nodiscard]] std::optional<size_t> readexact(int fd, uint8_t *buf, size_t len, bool nonblocking)
+[[nodiscard]] std::optional<size_t> readexact(int fd, uint8_t *buf, size_t len, bool nonblocking, int timeout)
 {
     size_t total = 0;
 
@@ -175,6 +178,18 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
             {
                 if (nonblocking)
                     return total;
+
+                if (auto res = fd_wait(fd, timeout, POLLIN))
+                {
+                    if (res > 0)
+                        panic("readexact(): received signal: " + std::to_string(res));
+
+                    if (res == FdWait::Other)
+                        panic("readexact(): poll failed: " + std::to_string(errno));
+
+                    if (res == FdWait::Timeout)
+                        return total;
+                }
 
                 continue;
             }
@@ -192,23 +207,27 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
     return total;
 }
 
-[[nodiscard]] std::optional<size_t> read_message(int fd, Bytes *payload, bool nonblocking, size_t timeout)
+// true -> success
+// false -> failure
+[[nodiscard]] bool read_message(int fd, Bytes *payload, bool nonblocking)
 {
     uint8_t magic[4];
-    auto n_bytes = readexact(fd, magic, 4, false);
+    auto n_bytes = readexact(fd, magic, 4, false, 2000);
 
-    if (!n_bytes)
-        return std::nullopt;
+    // n_bytes is empty if the connection was lost
+    // of <4 if the read timed out
+    if (!n_bytes || *n_bytes < 4)
+        return false;
 
     // if the magic doesn't match we treat it as a disconnect
     if (std::memcmp(magic, MAGIC, 4) != 0)
-        return std::nullopt;
+        return false;
 
     uint8_t header[4];
-    n_bytes = readexact(fd, header, 4, false);
+    n_bytes = readexact(fd, header, 4, false, 2000);
 
-    if (!n_bytes)
-        return std::nullopt;
+    if (!n_bytes || *n_bytes < 4)
+        return false;
 
     uint32_t len;
     deserialize_u32(header, &len);
@@ -216,12 +235,13 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
     payload->len = ntohl(len);
     payload->data = (uint8_t *)malloc(payload->len);
 
-    n_bytes = readexact(fd, payload->data, payload->len, nonblocking);
+    double timeout = 1500.0 * std::log(payload->len / 1024.0);
+    n_bytes = readexact(fd, payload->data, payload->len, nonblocking, std::max(2000.0, timeout));
 
-    if (!n_bytes)
-        return std::nullopt;
+    if (!n_bytes || *n_bytes < payload->len)
+        return false;
 
-    return n_bytes;
+    return true;
 }
 
 struct Client
@@ -289,7 +309,34 @@ struct Client
     }
 
     void recv_msg(Message &&msg) {};
-    void unmute() {};
+
+    void unmute()
+    {
+        for (;;)
+        {
+            if (this->muted())
+                return;
+
+            if (eventfd_wait(this->send_event_fd) < 0)
+            {
+                if (errno == EAGAIN)
+                    break;
+
+                panic("failed to read eventfd: " + std::to_string(errno));
+            }
+
+            SendMsg send;
+            while (!this->send_queue.try_dequeue(send))
+                ; // wait
+
+            this->send(send);
+        };
+
+        if (eventfd_signal(this->unmuted_event_fd) < 0)
+        {
+            panic("failed to write to eventfd: " + std::to_string(errno));
+        }
+    }
 
     // send a message to a peer according to the client type's rules
     // - must have exclusive access to the client

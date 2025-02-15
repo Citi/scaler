@@ -291,8 +291,14 @@ void set_sock_opts(int fd)
 // - register with thread ctx
 void accept_peer(ThreadContext *ctx, Peer *peer)
 {
+    auto was_muted = peer->client->muted();
     peer->client->peers.push_back(peer);
     ctx->accept_peer(peer);
+
+    if (was_muted)
+    {
+        peer->client->unmute();
+    }
 }
 
 // begin the connection process for a peer
@@ -335,12 +341,14 @@ void client_send_event(Client *client)
 {
     for (;;)
     {
-        if (client->muted())
+        if (client->muted()) {
+            // zero the semaphore
+            eventfd_reset(client->unmuted_event_fd);
             break;
+        }
 
         // decrement the semaphore
-        eventfd_t value;
-        if (eventfd_read(client->send_event_fd, &value) < 0)
+        if (eventfd_wait(client->send_event_fd) < 0)
         {
             // semaphore is zero, we can epoll_wait() again
             if (errno == EAGAIN)
@@ -436,16 +444,18 @@ void client_listener_event(Client *client)
 
         // send our identity
         // this is a blocking operation
-        write_message(fd, &client->identity, false);
+        if (!write_message(fd, &client->identity, false))
+        {
+            close(fd);
+            continue;
+        }
 
         Bytes identity;
-        auto status = read_
-
-        // if (status == ReadResult::Disconnect || status == ReadResult::TimedOut)
-        // {
-        //     close(fd);
-        //     break;
-        // }
+        if (!read_message(fd, &identity, false))
+        {
+            close(fd);
+            continue;
+        }
 
         auto peer = new Peer{
             .client = client,
@@ -453,13 +463,6 @@ void client_listener_event(Client *client)
             .addr = addr,
             .type = PeerType::Connectee,
             .fd = fd};
-
-        client->unmute();
-
-        if (eventfd_write(client->unmuted_event_fd, 1) < 0)
-        {
-            panic("failed to write to eventfd: " + std::to_string(errno));
-        }
 
         accept_peer(client->thread, peer);
     }

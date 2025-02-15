@@ -116,20 +116,53 @@ int timerfd_read(int fd, timerfd_t *value)
 
 // read a timerfd value and discard it
 // return value is the same as timerfd_read()
-int timerfd_read2(int fd) {
+int timerfd_read2(int fd)
+{
     timerfd_t value;
     return timerfd_read(fd, &value);
 }
 
-enum class FdWait : int8_t {
+int eventfd_wait(int fd)
+{
+    eventfd_t value;
+    return eventfd_read(fd, &value);
+}
+
+int eventfd_signal(int fd)
+{
+    return eventfd_write(fd, 1);
+}
+
+int eventfd_reset(int fd)
+{
+    while (eventfd_wait(fd) == 0)
+        ;
+
+    if (errno == EAGAIN)
+        return 0;
+
+    return -1;
+}
+
+enum FdWait : int8_t
+{
     Ready = 0,
-    Timeout = 1,
-    Other = 2,
+    Timeout = -1,
+    Other = -2,
 };
 
-// wait on a single file descriptor
-// this should work even on non-blocking fds
-FdWait fd_wait(int fd, int timeout, short int events)
+// wait for an event on a file descriptor, or for a signal to arrive, possibly with a timeout
+//
+// fd: the file descriptor to wait on
+// timeout: te number of milliseconds to wait, or -1 to wait indefinitely
+// events: the events to wait for, e.g. POLLIN, POLLOUT -- passed directly to poll()
+//
+// return value:
+//  - Fdwait::Ready (0): the file descriptor is ready
+//  - Fdwait::Timeout (-1): the timeout expired
+//  - Fdwait::Other (-2): poll failed for some other reason
+//  - (>0): a signal was received, the value is the negative of the signal number
+int8_t fd_wait(int fd, int timeout, short int events)
 {
     pollfd fds[2];
 
@@ -177,7 +210,7 @@ FdWait fd_wait(int fd, int timeout, short int events)
         }
 
         close(signal_fd);
-        return (FdWait)(-info.ssi_signo);
+        return info.ssi_signo;
     }
 
     close(signal_fd);
