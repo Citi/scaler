@@ -1,5 +1,9 @@
 #pragma once
 
+// C
+#include <cstddef>
+#include <cstdint>
+
 // C++
 #include <optional>
 #include <string>
@@ -10,15 +14,16 @@
 #include "third_party/concurrentqueue.h";
 
 // First-party
-#include "session.h"
 #include "common.h"
+#include "session.h"
+
+struct Session;
 
 using moodycamel::ConcurrentQueue;
 
 // inproc sockets are always pair sockets
 struct IntraProcessClient
 {
-    size_t id;
     Session *session;
 
     ConcurrentQueue<Message> queue;
@@ -35,3 +40,29 @@ struct IntraProcessClient
 };
 
 // --- public api ---
+
+void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len)
+{
+    uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
+    std::memcpy(identity_dup, identity, len);
+
+    new (client) IntraProcessClient{
+        .session = session,
+        .queue = ConcurrentQueue<Message>(),
+        .recv = ConcurrentQueue<void *>(),
+        .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
+        .recv_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
+        .connecting = std::nullopt,
+        .identity = Bytes{
+            .data = identity_dup,
+            .len = len,
+        },
+        .bind = std::nullopt,
+        .peer = std::nullopt,
+    };
+
+    // take exclusive lock on the session to add the client
+    session->intraprocess_mutex.lock();
+    session->inprocs.push_back(client);
+    session->intraprocess_mutex.unlock();
+}

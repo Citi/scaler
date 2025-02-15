@@ -496,6 +496,10 @@ void resume_write(EpollData *data)
     }
 }
 
+void intraprocess_recv_event(IntraProcessClient *client) {
+    // TODO
+}
+
 void io_thread_main(ThreadContext *ctx)
 {
     epoll_event event;
