@@ -1,4 +1,5 @@
-#pragma once
+#ifndef INTRA_PROCESS_H_
+#define INTRA_PROCESS_H_
 
 // C
 #include <cstddef>
@@ -11,15 +12,20 @@
 #include <shared_mutex>
 
 // Third-party
-#include "third_party/concurrentqueue.h";
+#include "third_party/concurrentqueue.h"
 
 // First-party
 #include "common.h"
 #include "session.h"
 
-struct Session;
-
 using moodycamel::ConcurrentQueue;
+
+// --- declarations ---
+struct IntraProcessClient;
+
+void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len);
+
+// -- structs --
 
 // inproc sockets are always pair sockets
 struct IntraProcessClient
@@ -38,6 +44,9 @@ struct IntraProcessClient
     std::optional<std::string> bind;
     std::optional<size_t> peer;
 };
+
+#endif
+#if INCLUDE_DEFS
 
 // --- public api ---
 
@@ -66,3 +75,5 @@ void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *id
     session->inprocs.push_back(client);
     session->intraprocess_mutex.unlock();
 }
+
+#endif

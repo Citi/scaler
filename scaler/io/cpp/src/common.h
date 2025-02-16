@@ -1,5 +1,13 @@
 #pragma once
 
+// cffi generates C code, which doesn't support
+// C++'s enum class, so we need to use plain enums
+#ifdef TYPECK
+#define ENUM enum class
+#else
+#define ENUM enum
+#endif
+
 // C
 #include <cstddef>
 #include <cstdint>
@@ -12,6 +20,10 @@
 
 // System
 #include <sys/timerfd.h>
+#include <sys/eventfd.h>
+#include <sys/signalfd.h>
+#include <poll.h>
+#include <signal.h>
 
 // 5ca1ab1e = scalable
 static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
@@ -191,13 +203,13 @@ int8_t fd_wait(int fd, int timeout, short int events)
     if (n == 0)
     {
         close(signal_fd);
-        return FdWait::Timeout;
+        return (int8_t) FdWait::Timeout;
     }
 
     if (n < 0)
     {
         close(signal_fd);
-        return FdWait::Other;
+        return (int8_t) FdWait::Other;
     }
 
     if (fds[1].revents & POLLIN)

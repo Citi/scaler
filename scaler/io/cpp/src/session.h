@@ -1,4 +1,5 @@
-#pragma once
+#ifndef SESSION_H_
+#define SESSION_H_
 
 // C++
 #include <atomic>
@@ -12,10 +13,39 @@
 #include <sys/timerfd.h>
 
 // First-party
-#include "intra_process.h"
+#include "common.h"
 #include "client.h"
+#include "intra_process.h"
+
+// --- declarations ---
+
+struct EpollType;
+struct WriteOperation;
+struct ReadOperation;
+struct EpollData;
+ENUM ControlOperation;
+struct ControlRequest;
+struct ThreadContext;
+struct Session;
+
+void set_sock_opts(int fd);
+void accept_peer(ThreadContext *ctx, Peer *peer);
+void client_connect_peer(ThreadContext *ctx, Peer *peer);
+
+void resume_read(EpollData *data);
+void resume_write(EpollData *data);
+
+// epoll handlers
+void client_send_event(Client *client);
+void client_recv_event(Client *client);
+void client_listener_event(Client *client);
+void intraprocess_recv_event(IntraProcessClient *client);
 
 void io_thread_main(ThreadContext *ctx);
+
+void session_init(Session *session, size_t num_threads);
+
+// --- structs ---
 
 struct EpollType
 {
@@ -36,30 +66,7 @@ struct EpollType
     constexpr EpollType(Value value) : value(value) {}
     constexpr operator Value() const { return value; }
 
-    std::string as_string() const
-    {
-        switch (value)
-        {
-        case ClientSend:
-            return "ClientSend";
-        case ClientRecv:
-            return "ClientRecv";
-        case ClientListener:
-            return "ClientListener";
-        case ClientPeerRecv:
-            return "ClientPeerRecv";
-        case IntraProcessClientRecv:
-            return "IntraProcessClientRecv";
-        case PeerConnecting:
-            return "PeerConnecting";
-        case ConnectTimer:
-            return "ConnectTimer";
-        case Control:
-            return "Control";
-        case Closed:
-            return "Closed";
-        }
-    }
+    std::string as_string() const;
 
 private:
     Value value;
@@ -98,7 +105,7 @@ struct EpollData
     };
 };
 
-enum class ControlOperation
+ENUM ControlOperation
 {
     AddClient,
     RemoveClient,
@@ -132,122 +139,28 @@ struct ThreadContext
     int connect_timer_tfd;
     bool timer_armed;
 
-    void arm_timer()
-    {
-        const time_t timeout_s = 3;
-
-        itimerspec timer{
-            .it_interval = {.tv_sec = 0, .tv_nsec = 0},
-            .it_value = {.tv_sec = timeout_s, .tv_nsec = 0},
-        };
-
-        if (timerfd_settime(this->connect_timer_tfd, 0, &timer, nullptr) < 0)
-        {
-            panic("failed to arm timer");
-        }
-        this->timer_armed = true;
-    }
+    void arm_timer();
 
     void accept_peer(Peer *peer);
 
-    void add_client(Client *client)
-    {
-        this->add_epoll(client->send_event_fd, EPOLLIN | EPOLLET, EpollType::ClientSend, client);
-        this->add_epoll(client->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ClientRecv, client);
-    }
+    void add_client(Client *client);
 
-    void remove_client(Client *client)
-    {
-        this->remove_epoll(client->send_event_fd);
-        this->remove_epoll(client->recv_event_fd);
-    }
+    void remove_client(Client *client);
 
-    void remove_peer(Peer *peer)
-    {
-        this->remove_epoll(peer->fd);
-    }
+    void remove_peer(Peer *peer);
 
     // must be called on io-thread
-    void add_epoll(int fd, uint32_t flags, EpollType type, void *data)
-    {
-        auto edata = new EpollData{
-            .fd = fd,
-            .type = type,
-            .ptr = data,
-        };
-
-        epoll_event event{
-            .events = flags,
-            .data = {.ptr = edata}};
-
-        epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, fd, &event);
-
-        this->io_cache.push_back(edata);
-    }
+    void add_epoll(int fd, uint32_t flags, EpollType type, void *data);
 
     // must be called on io-thread
-    void remove_epoll(int fd)
-    {
-        if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
-        {
-            // we ignore enoent because it means the fd was already removed
-            if (errno != ENOENT)
-                panic("failed to remove epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
-        }
+    void remove_epoll(int fd);
 
-        auto edata = std::find_if(this->io_cache.begin(), this->io_cache.end(), [fd](EpollData *d)
-                                  { return d->fd == fd; });
+    EpollData *epoll_by_fd(int fd);
 
-        if (edata != this->io_cache.end())
-        {
-            delete *edata;
-            this->io_cache.erase(edata);
-        }
-    }
+    void save_write(Peer *peer, WriteOperation op);
+    void save_read(Peer *peer, ReadOperation op);
 
-    EpollData *epoll_by_fd(int fd)
-    {
-        auto edata = std::find_if(this->io_cache.begin(), this->io_cache.end(), [fd](EpollData *d)
-                                  { return d->fd == fd; });
-
-        if (edata != this->io_cache.end())
-        {
-            return *edata;
-        }
-
-        return nullptr;
-    }
-
-    void save_write(Peer *peer, WriteOperation op)
-    {
-        auto edata = this->epoll_by_fd(peer->fd);
-
-        if (!edata)
-            panic("failed to find epoll data for peer");
-
-        if (edata->write)
-            panic("write operation already in progress");
-
-        edata->write = op;
-    }
-
-    void save_read(Peer *peer, ReadOperation op)
-    {
-        auto edata = this->epoll_by_fd(peer->fd);
-
-        if (!edata)
-            panic("failed to find epoll data for peer");
-
-        if (edata->read)
-            panic("read operation already in progress");
-
-        edata->read = op;
-    }
-
-    void start()
-    {
-        this->thread = std::thread(io_thread_main, this);
-    }
+    void start();
 };
 
 struct Session
@@ -272,6 +185,154 @@ struct Session
         return num_threads() == 1;
     };
 };
+
+#endif
+#if INCLUDE_DEFS
+
+// --- functions ---
+
+std::string EpollType::as_string() const
+{
+    switch (value)
+    {
+    case EpollType::ClientSend:
+        return "ClientSend";
+    case EpollType::ClientRecv:
+        return "ClientRecv";
+    case EpollType::ClientListener:
+        return "ClientListener";
+    case EpollType::ClientPeerRecv:
+        return "ClientPeerRecv";
+    case EpollType::IntraProcessClientRecv:
+        return "IntraProcessClientRecv";
+    case EpollType::PeerConnecting:
+        return "PeerConnecting";
+    case EpollType::ConnectTimer:
+        return "ConnectTimer";
+    case EpollType::Control:
+        return "Control";
+    case EpollType::Closed:
+        return "Closed";
+    }
+}
+
+void ThreadContext::arm_timer()
+{
+    const time_t timeout_s = 3;
+
+    itimerspec timer{
+        .it_interval = {.tv_sec = 0, .tv_nsec = 0},
+        .it_value = {.tv_sec = timeout_s, .tv_nsec = 0},
+    };
+
+    if (timerfd_settime(this->connect_timer_tfd, 0, &timer, nullptr) < 0)
+    {
+        panic("failed to arm timer");
+    }
+
+    this->timer_armed = true;
+}
+
+void ThreadContext::add_client(Client *client)
+{
+    this->add_epoll(client->send_event_fd, EPOLLIN | EPOLLET, EpollType::ClientSend, client);
+    this->add_epoll(client->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ClientRecv, client);
+}
+
+void ThreadContext::remove_client(Client *client)
+{
+    this->remove_epoll(client->send_event_fd);
+    this->remove_epoll(client->recv_event_fd);
+}
+
+void ThreadContext::remove_peer(Peer *peer)
+{
+    this->remove_epoll(peer->fd);
+}
+
+// must be called on io-thread
+void ThreadContext::add_epoll(int fd, uint32_t flags, EpollType type, void *data)
+{
+    auto edata = new EpollData{
+        .fd = fd,
+        .type = type,
+        .read = std::nullopt,
+        .write = std::nullopt,
+        .ptr = data,
+    };
+
+    epoll_event event{
+        .events = flags,
+        .data = {.ptr = edata}};
+
+    epoll_ctl(this->epoll_fd, EPOLL_CTL_ADD, fd, &event);
+
+    this->io_cache.push_back(edata);
+}
+
+// must be called on io-thread
+void ThreadContext::remove_epoll(int fd)
+{
+    if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
+    {
+        // we ignore enoent because it means the fd was already removed
+        if (errno != ENOENT)
+            panic("failed to remove epoll fd: " + std::to_string(fd) + "; " + strerror(errno));
+    }
+
+    auto edata = std::find_if(this->io_cache.begin(), this->io_cache.end(), [fd](EpollData *d)
+                              { return d->fd == fd; });
+
+    if (edata != this->io_cache.end())
+    {
+        delete *edata;
+        this->io_cache.erase(edata);
+    }
+}
+
+EpollData *ThreadContext::epoll_by_fd(int fd)
+{
+    auto edata = std::find_if(this->io_cache.begin(), this->io_cache.end(), [fd](EpollData *d)
+                              { return d->fd == fd; });
+
+    if (edata != this->io_cache.end())
+    {
+        return *edata;
+    }
+
+    return nullptr;
+}
+
+void ThreadContext::save_write(Peer *peer, WriteOperation op)
+{
+    auto edata = this->epoll_by_fd(peer->fd);
+
+    if (!edata)
+        panic("failed to find epoll data for peer");
+
+    if (edata->write)
+        panic("write operation already in progress");
+
+    edata->write = op;
+}
+
+void ThreadContext::save_read(Peer *peer, ReadOperation op)
+{
+    auto edata = this->epoll_by_fd(peer->fd);
+
+    if (!edata)
+        panic("failed to find epoll data for peer");
+
+    if (edata->read)
+        panic("read operation already in progress");
+
+    edata->read = op;
+}
+
+void ThreadContext::start()
+{
+    this->thread = std::thread(io_thread_main, this);
+}
 
 void set_sock_opts(int fd)
 {
@@ -341,7 +402,8 @@ void client_send_event(Client *client)
 {
     for (;;)
     {
-        if (client->muted()) {
+        if (client->muted())
+        {
             // zero the semaphore
             eventfd_reset(client->unmuted_event_fd);
             break;
@@ -496,7 +558,8 @@ void resume_write(EpollData *data)
     }
 }
 
-void intraprocess_recv_event(IntraProcessClient *client) {
+void intraprocess_recv_event(IntraProcessClient *client)
+{
     // TODO
 }
 
@@ -704,3 +767,5 @@ void session_init(Session *session, size_t num_threads)
         ctx->start();
     }
 }
+
+#endif
