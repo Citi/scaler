@@ -12,6 +12,9 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 
+// Common
+#include "common.h"
+
 // --- declarations ---
 
 struct EpollType;
@@ -24,7 +27,6 @@ struct ThreadContext;
 struct Session;
 
 // First-party
-#include "common.h"
 #include "client.h"
 #include "intra_process.h"
 

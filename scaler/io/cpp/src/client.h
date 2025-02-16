@@ -16,6 +16,9 @@
 // Third-party
 #include "third_party/concurrentqueue.h"
 
+// Common
+#include "common.h"
+
 using moodycamel::ConcurrentQueue;
 
 // --- declarations ---
@@ -28,7 +31,6 @@ ENUM ConnectorType: uint8_t;
 ENUM Transport: uint8_t;
 
 // First-party
-#include "common.h"
 #include "session.h"
 
 [[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking);
