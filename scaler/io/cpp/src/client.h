@@ -16,26 +16,20 @@
 // Third-party
 #include "third_party/concurrentqueue.h"
 
-// First-party
-#include "common.h"
-#include "session.h"
-
 using moodycamel::ConcurrentQueue;
-
-// --- external decls ---
-
-struct Session;
-struct ThreadContext;
-struct WriteOperation;
 
 // --- declarations ---
 
 struct Client;
 struct Peer;
 struct SendMsg;
-ENUM PeerType;
-ENUM ConnectorType;
-ENUM Transport;
+ENUM PeerType : uint8_t;
+ENUM ConnectorType: uint8_t;
+ENUM Transport: uint8_t;
+
+// First-party
+#include "common.h"
+#include "session.h"
 
 [[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking);
 [[nodiscard]] std::optional<size_t> write_message(int fd, Bytes *payload, bool nonblocking);
@@ -56,7 +50,7 @@ struct SendMsg
     Message msg;
 };
 
-ENUM ConnectorType
+ENUM ConnectorType: uint8_t
 {
     Pair,
     Pub,
@@ -67,7 +61,7 @@ ENUM ConnectorType
 
 // Clients are tcp or unix domain sockets (uds, ipc)
 // no variant for in-process because they're handled separately
-ENUM Transport
+ENUM Transport: uint8_t
 {
     TCP,
     IntraProcess,
@@ -113,7 +107,7 @@ struct Client
     void send(SendMsg send);
 };
 
-ENUM PeerType
+ENUM PeerType: uint8_t
 {
     // we connected to the remote
     Connector,

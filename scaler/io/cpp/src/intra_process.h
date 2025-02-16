@@ -14,14 +14,14 @@
 // Third-party
 #include "third_party/concurrentqueue.h"
 
-// First-party
-#include "common.h"
-#include "session.h"
-
 using moodycamel::ConcurrentQueue;
 
 // --- declarations ---
 struct IntraProcessClient;
+
+// First-party
+#include "common.h"
+#include "session.h"
 
 void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len);
 
