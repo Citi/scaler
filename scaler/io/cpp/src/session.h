@@ -1,5 +1,5 @@
-#ifndef SESSION_H_
-#define SESSION_H_
+#ifndef SESSION_H
+#define SESSION_H
 
 // C++
 #include <atomic>

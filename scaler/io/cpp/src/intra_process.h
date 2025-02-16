@@ -1,5 +1,5 @@
-#ifndef INTRA_PROCESS_H_
-#define INTRA_PROCESS_H_
+#ifndef INTRA_PROCESS_H
+#define INTRA_PROCESS_H
 
 // C
 #include <cstddef>

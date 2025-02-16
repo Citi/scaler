@@ -1,5 +1,5 @@
-#ifndef CLIENT_H_
-#define CLIENT_H_
+#ifndef CLIENT_H
+#define CLIENT_H
 
 // C
 #include <cmath>
