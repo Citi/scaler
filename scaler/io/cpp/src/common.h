@@ -100,6 +100,12 @@ struct Message
     Bytes payload;
 };
 
+// free a received message
+void message_destroy(Message &msg) {
+    // the address is owned by the Peer
+    free(msg.payload.data);
+}
+
 void serialize_u32(uint32_t x, uint8_t buffer[4])
 {
     buffer[0] = x & 0xFF;

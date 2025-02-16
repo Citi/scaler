@@ -41,12 +41,12 @@ void resume_write(EpollData *data);
 void client_send_event(Client *client);
 void client_recv_event(Client *client);
 void client_listener_event(Client *client);
+void client_peer_recv_event(Peer *peer);
 void intraprocess_recv_event(IntraProcessClient *client);
 
 void io_thread_main(ThreadContext *ctx);
 
 void session_init(Session *session, size_t num_threads);
-
 
 // --- structs ---
 
@@ -82,14 +82,24 @@ struct WriteOperation
     void *future;
     Bytes payload;
     size_t cursor;
+
+    bool completed() const
+    {
+        return cursor == payload.len;
+    }
 };
 
 // an in-progress read operation
 // created only after the entire header has been read
 struct ReadOperation
 {
-    Message message;
+    Bytes payload;
     size_t cursor;
+
+    bool completed() const
+    {
+        return cursor == payload.len;
+    }
 };
 
 struct EpollData
@@ -106,14 +116,15 @@ struct EpollData
         IntraProcessClient *inproc;
         Peer *peer;
     };
+
+    void reset();
 };
 
-ENUM ControlOperation: uint8_t
-{
-    AddClient,
-    RemoveClient,
-    Connect,
-};
+ENUM ControlOperation : uint8_t{
+                            AddClient,
+                            RemoveClient,
+                            Connect,
+                        };
 
 struct ControlRequest
 {
@@ -193,6 +204,12 @@ struct Session
 #if INCLUDE_DEFS
 
 // --- functions ---
+
+void EpollData::reset()
+{
+    this->read = std::nullopt;
+    this->write = std::nullopt;
+}
 
 std::string EpollType::as_string() const
 {
@@ -515,8 +532,10 @@ void client_listener_event(Client *client)
             continue;
         }
 
-        Bytes identity;
-        if (!read_message(fd, &identity, false))
+        // note: don't need to check for incomplete reads because
+        // we're blocking until the entire identity is read
+        auto op = read_message(fd, false);
+        if (!op)
         {
             close(fd);
             continue;
@@ -524,7 +543,7 @@ void client_listener_event(Client *client)
 
         auto peer = new Peer{
             .client = client,
-            .identity = identity,
+            .identity = op->payload,
             .addr = addr,
             .type = PeerType::Connectee,
             .fd = fd};
@@ -533,12 +552,54 @@ void client_listener_event(Client *client)
     }
 }
 
+void client_peer_recv_event(Peer *peer)
+{
+    for (;;)
+    {
+        auto read = read_message(peer->fd, true);
+
+        // connection lost
+        if (!read)
+        {
+            reconnect_peer(peer);
+            break;
+        }
+
+        if (read->completed())
+            peer->recv_msg(read->payload);
+        else if (read->cursor)
+            peer->save_read(*read);
+    }
+}
+
 void resume_read(EpollData *data)
 {
-    // auto peer = data->peer;
-    // auto op = &*data->read;
+    auto peer = data->peer;
+    auto op = &*data->read;
 
-    // auto n_bytes = readexact
+    auto n_bytes = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, true, 2000);
+
+    // disconnect!
+    if (!n_bytes)
+        reconnect_peer(peer);
+    else
+    {
+        op->cursor += *n_bytes;
+
+        // if we're done, clear the read operation
+        if (op->completed())
+        {
+            Message message{
+                .address = peer->identity,
+                .payload = op->payload,
+            };
+
+            peer->client->recv_msg(std::move(message));
+
+            // reset the read operation
+            data->read = std::nullopt;
+        }
+    }
 }
 
 void resume_write(EpollData *data)

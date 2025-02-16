@@ -26,9 +26,10 @@ using moodycamel::ConcurrentQueue;
 struct Client;
 struct Peer;
 struct SendMsg;
+struct ReadMessage;
 ENUM PeerType : uint8_t;
-ENUM ConnectorType: uint8_t;
-ENUM Transport: uint8_t;
+ENUM ConnectorType : uint8_t;
+ENUM Transport : uint8_t;
 
 // First-party
 #include "session.h"
@@ -36,7 +37,7 @@ ENUM Transport: uint8_t;
 [[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking);
 [[nodiscard]] std::optional<size_t> write_message(int fd, Bytes *payload, bool nonblocking);
 [[nodiscard]] std::optional<size_t> readexact(int fd, uint8_t *buf, size_t len, bool nonblocking, int timeout);
-[[nodiscard]] bool read_message(int fd, Bytes *payload, bool nonblocking);
+[[nodiscard]] std::optional<ReadOperation> read_message(int fd, bool nonblocking);
 
 void write_to_peer(Peer *peer, Bytes payload, void *future);
 void reconnect_peer(Peer *peer);
@@ -52,23 +53,19 @@ struct SendMsg
     Message msg;
 };
 
-ENUM ConnectorType: uint8_t
-{
-    Pair,
-    Pub,
-    Sub,
-    Dealer,
-    Router
-};
+ENUM ConnectorType : uint8_t{
+                         Pair,
+                         Pub,
+                         Sub,
+                         Dealer,
+                         Router};
 
 // Clients are tcp or unix domain sockets (uds, ipc)
 // no variant for in-process because they're handled separately
-ENUM Transport: uint8_t
-{
-    TCP,
-    IntraProcess,
-    InterProcess
-};
+ENUM Transport : uint8_t{
+                     TCP,
+                     IntraProcess,
+                     InterProcess};
 
 struct Client
 {
@@ -109,14 +106,12 @@ struct Client
     void send(SendMsg send);
 };
 
-ENUM PeerType: uint8_t
-{
-    // we connected to the remote
-    Connector,
+ENUM PeerType : uint8_t{
+                    // we connected to the remote
+                    Connector,
 
-    // the remote connected to us
-    Connectee
-};
+                    // the remote connected to us
+                    Connectee};
 
 struct Peer
 {
@@ -127,6 +122,9 @@ struct Peer
     int fd;                // the socket fd of this peer
 
     void save_write(WriteOperation op);
+    void save_read(ReadOperation op);
+
+    void recv_msg(Bytes payload);
 };
 
 #endif
@@ -173,8 +171,27 @@ size_t Client::peer_rr()
     return rr;
 }
 
-void Client::recv_msg(Message &&msg) {
-    panic("todo: " + msg.address.as_string());
+void Client::recv_msg(Message &&msg)
+{
+    // if there's a waiting recv, complete it immediately
+    if (eventfd_wait(this->recv_event_fd) == 0)
+    {
+        void *future;
+        while (!this->recv_queue.try_dequeue(future))
+            ; // wait
+
+        future_set_result(future, &msg);
+        message_destroy(msg);
+    }
+    else
+    {
+        // buffer the message
+        this->recv_buffer.enqueue(msg);
+
+        // support for sync clients
+        if (eventfd_signal(this->recv_buffer_event_fd) < 0)
+            panic("failed to write to eventfd: " + std::to_string(errno));
+    }
 };
 
 void Client::unmute()
@@ -257,6 +274,21 @@ void Client::send(SendMsg send)
 void Peer::save_write(WriteOperation op)
 {
     this->client->thread->save_write(this, op);
+}
+
+void Peer::save_read(ReadOperation op)
+{
+    this->client->thread->save_read(this, op);
+}
+
+void Peer::recv_msg(Bytes payload)
+{
+    Message message{
+        .address = this->identity,
+        .payload = payload,
+    };
+
+    this->client->recv_msg(std::move(message));
 }
 
 // attempt to write all data to an fd
@@ -378,9 +410,16 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
     return total;
 }
 
-// true -> success
-// false -> failure
-[[nodiscard]] bool read_message(int fd, Bytes *payload, bool nonblocking)
+// read msg scenarios:
+// 1. we failed to read the message: std::nullopt
+// 2. we started reading the message and blocked: ReadOperation
+// 3. we successfully read the whole message: ReadOperation
+// 4. we timed out: std::nullopt
+// 5. there was no data available to read (eagain): we need a way to distinguish this from a timeout
+
+// empty -> connection lost
+// o.w. -> some (or all) of the message was read
+[[nodiscard]] std::optional<ReadOperation> read_message(int fd, bool nonblocking)
 {
     uint8_t magic[4];
     auto n_bytes = readexact(fd, magic, 4, false, 2000);
@@ -388,31 +427,41 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
     // n_bytes is empty if the connection was lost
     // of <4 if the read timed out
     if (!n_bytes || *n_bytes < 4)
-        return false;
+        return std::nullopt;
 
     // if the magic doesn't match we treat it as a disconnect
     if (std::memcmp(magic, MAGIC, 4) != 0)
-        return false;
+        return std::nullopt;
 
     uint8_t header[4];
     n_bytes = readexact(fd, header, 4, false, 2000);
 
     if (!n_bytes || *n_bytes < 4)
-        return false;
+        return std::nullopt;
 
     uint32_t len;
     deserialize_u32(header, &len);
+    len = ntohl(len);
 
-    payload->len = ntohl(len);
-    payload->data = (uint8_t *)malloc(payload->len);
+    ReadOperation op{
+        .payload = Bytes{
+            .data = (uint8_t *)malloc(len),
+            .len = len,
+        },
+        .cursor = 0,
+    };
 
-    double timeout = 1500.0 * std::log(payload->len / 1024.0);
-    n_bytes = readexact(fd, payload->data, payload->len, nonblocking, std::max(2000.0, timeout));
+    double timeout = 1500.0 * std::log(len / 1024.0);
+    n_bytes = readexact(fd, op.payload.data, op.payload.len, nonblocking, std::max(2000.0, timeout));
 
-    if (!n_bytes || *n_bytes < payload->len)
-        return false;
+    // if we received less than the expected number of bytes and we're blocking
+    // that means we timed out
+    if (!n_bytes || (*n_bytes < len && !nonblocking))
+        return std::nullopt;
 
-    return true;
+    op.cursor = *n_bytes;
+
+    return op;
 }
 
 void reconnect_peer(Peer *peer)
