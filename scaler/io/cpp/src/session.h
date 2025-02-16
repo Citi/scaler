@@ -12,21 +12,21 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 
-// First-party
-#include "common.h"
-#include "client.h"
-#include "intra_process.h"
-
 // --- declarations ---
 
 struct EpollType;
 struct WriteOperation;
 struct ReadOperation;
 struct EpollData;
-ENUM ControlOperation;
+ENUM ControlOperation : uint8_t;
 struct ControlRequest;
 struct ThreadContext;
 struct Session;
+
+// First-party
+#include "common.h"
+#include "client.h"
+#include "intra_process.h"
 
 void set_sock_opts(int fd);
 void accept_peer(ThreadContext *ctx, Peer *peer);
@@ -44,6 +44,7 @@ void intraprocess_recv_event(IntraProcessClient *client);
 void io_thread_main(ThreadContext *ctx);
 
 void session_init(Session *session, size_t num_threads);
+
 
 // --- structs ---
 
@@ -105,7 +106,7 @@ struct EpollData
     };
 };
 
-ENUM ControlOperation
+ENUM ControlOperation: uint8_t
 {
     AddClient,
     RemoveClient,
