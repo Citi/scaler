@@ -8,6 +8,7 @@
 #include <optional>
 #include <vector>
 #include <expected>
+#include <semaphore>
 
 // System
 #include <sys/socket.h>
@@ -26,6 +27,7 @@ using moodycamel::ConcurrentQueue;
 
 struct Client;
 struct Peer;
+struct Completer;
 struct SendMsg;
 struct ReadMessage;
 struct ReadResult;
@@ -57,10 +59,27 @@ void client_destroy(struct Client *client);
 
 // --- structs ---
 
+struct Completer
+{
+    ENUM Type{
+        Future,
+        Semaphore} type;
+
+    union
+    {
+        void *future;
+        std::binary_semaphore *sem;
+    };
+
+    // complete with a result
+    // may be NULL
+    void complete(void *result);
+};
+
 struct SendMsg
 {
-    // the future to resolve when the message is sent
-    void *future;
+    // resolved when the message is send
+    Completer completer;
 
     // the message to send
     Message msg;
@@ -180,6 +199,19 @@ struct ReadMessage
 
 // --- functions ---
 
+void Completer::complete(void *result)
+{
+    switch (this->type)
+    {
+    case Completer::Type::Future:
+        future_set_result(this->future, result);
+        break;
+    case Completer::Type::Semaphore:
+        this->sem->release();
+        break;
+    }
+}
+
 bool Client::peer_by_id(Bytes id, Peer **peer)
 {
     auto it = std::find_if(this->peers.begin(), this->peers.end(), [id](Peer *p)
@@ -281,7 +313,7 @@ void Client::send(SendMsg send)
 
         auto peer = this->peers[0];
 
-        write_to_peer(peer, send.msg.payload, send.future);
+        write_to_peer(peer, send.msg.payload, send.completer);
     }
     break;
     case ConnectorType::Router:
@@ -293,14 +325,14 @@ void Client::send(SendMsg send)
             break;
         }
 
-        write_to_peer(peer, send.msg.payload, send.future);
+        write_to_peer(peer, send.msg.payload, send.completer);
     }
     break;
     case ConnectorType::Pub:
     {
         // if the socket has no peers, the message is dropped
         for (auto peer : this->peers)
-            write_to_peer(peer, send.msg.payload, send.future);
+            write_to_peer(peer, send.msg.payload, send.completer);
     }
     break;
     case ConnectorType::Dealer:
@@ -311,7 +343,7 @@ void Client::send(SendMsg send)
         // dealers round-robin their peers
         auto peer = this->peers[this->peer_rr()];
 
-        write_to_peer(peer, send.msg.payload, send.future);
+        write_to_peer(peer, send.msg.payload, send.completer);
     }
     break;
     default:
@@ -394,7 +426,7 @@ void Peer::recv_msg(Bytes payload)
 }
 
 // perform a non-blocking write to a peer
-void write_to_peer(Peer *peer, Bytes payload, void *future)
+void write_to_peer(Peer *peer, Bytes payload, Completer completer)
 {
     auto n_bytes = write_message(peer->fd, &payload, true);
 
@@ -406,7 +438,7 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
     if (*n_bytes < payload.len)
     {
         auto op = WriteOperation{
-            .future = future,
+            .completer = completer,
             .payload = payload,
             .cursor = *n_bytes,
         };
@@ -717,7 +749,10 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
 void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
     SendMsg send{
-        .future = future,
+        .completer = {
+            .type = Completer::Future,
+            .future = future,
+        },
         .msg = {
             .address = {
                 .data = to,
@@ -736,9 +771,11 @@ void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len
         panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
-void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len) {
+void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
+{
     // wait for the client to be unmuted
-    if (client->muted()) {
+    if (client->muted())
+    {
         if (fd_wait(client->unmuted_event_fd, -1, POLLIN) < 0)
             panic("failed to wait for unmuted event: " + std::to_string(errno));
 
@@ -746,10 +783,15 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
             panic("failed to read eventfd: " + std::to_string(errno));
     }
 
+    auto sem = std::binary_semaphore(0);
+
     // todo, support semaphore completion?
     // - this or need some other way to synchronously wait for the message to be sent
     SendMsg send{
-        .future = nullptr,
+        .completer = {
+            .type = Completer::Semaphore,
+            .sem = &sem
+        },
         .msg = {
             .address = {
                 .data = to,
@@ -763,9 +805,12 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
     };
 
     client->send(send);
+
+    sem.acquire();
 }
 
-void client_recv(void *future, struct Client *client) {
+void client_recv(void *future, struct Client *client)
+{
     client->recv_queue.enqueue(future);
 
     if (eventfd_signal(client->recv_event_fd) < 0)

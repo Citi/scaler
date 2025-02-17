@@ -80,7 +80,7 @@ private:
 // created only after the entire header has been written
 struct WriteOperation
 {
-    void *future;
+    Completer completer;
     Bytes payload;
     size_t cursor;
 
@@ -453,8 +453,8 @@ void client_send_event(Client *client)
 
         client->send(send);
 
-        // resolve the future
-        future_set_result(send.future, NULL);
+        // resolve the completer
+        send.completer.complete(NULL);
     }
 }
 
