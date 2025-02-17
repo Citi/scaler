@@ -11,6 +11,7 @@
 
 // System
 #include <sys/socket.h>
+#include <sys/un.h>
 #include <arpa/inet.h>
 
 // Third-party
@@ -44,6 +45,15 @@ ENUM Transport : uint8_t;
 
 void write_to_peer(Peer *peer, Bytes payload, void *future);
 void reconnect_peer(Peer *peer);
+
+void client_init(struct Session *session, struct Client *client, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
+void client_bind(struct Client *client, const char *host, uint16_t port);
+void client_connect(struct Client *client, const char *addr, uint16_t port);
+void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void client_recv(void *future, struct Client *client);
+void client_recv_sync(struct Client *client, struct Message *msg);
+void client_destroy(struct Client *client);
 
 // --- structs ---
 
@@ -550,5 +560,219 @@ void reconnect_peer(Peer *peer)
 }
 
 // --- public api ---
+
+void client_init(struct Session *session, struct Client *client, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type)
+{
+    uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
+    std::memcpy(identity_dup, identity, len);
+
+    new (client) Client{
+        .type = type,
+        .transport = transport,
+        .thread = session->next_thread(),
+        .session = session,
+        .identity = Bytes{
+            .data = identity_dup,
+            .len = len,
+        },
+        .rr = 0,
+        .fd = -1,
+        .addr = std::nullopt,
+        .peers = std::vector<Peer *>(),
+        .unmuted_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
+        .send_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
+        .send_queue = ConcurrentQueue<SendMsg>(),
+        .recv_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
+        .recv_queue = ConcurrentQueue<void *>(),
+        .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
+        .recv_buffer = ConcurrentQueue<Message>(),
+    };
+
+    client->thread->add_client(client);
+}
+
+void client_bind(struct Client *client, const char *host, uint16_t port)
+{
+    int fd, status;
+    sockaddr_storage addr;
+
+    switch (client->transport)
+    {
+    case Transport::InterProcess:
+    {
+        fd = socket(
+            AF_UNIX,
+            SOCK_STREAM | SOCK_NONBLOCK,
+            0);
+
+        if (fd < 0)
+            panic("failed to create socket: " + std::to_string(errno));
+
+        sockaddr_un server_addr{
+            .sun_family = AF_UNIX,
+            .sun_path = {0}};
+
+        std::strncpy(server_addr.sun_path, host, sizeof(server_addr.sun_path));
+        std::memcpy(&addr, &server_addr, sizeof(server_addr));
+
+        status = bind(fd, (sockaddr *)&server_addr, sizeof(server_addr));
+    }
+    break;
+    case Transport::TCP:
+    {
+        fd = socket(
+            AF_INET,
+            SOCK_STREAM | SOCK_NONBLOCK,
+            0);
+
+        if (fd < 0)
+            panic("failed to create socket: " + std::to_string(errno));
+
+        set_sock_opts(fd);
+
+        in_addr_t in_addr = strncmp(host, "*", 1) ? inet_addr(host) : INADDR_ANY;
+
+        sockaddr_in server_addr{
+            .sin_family = AF_INET,
+            .sin_port = htons(port),
+            .sin_addr = {
+                .s_addr = in_addr},
+            .sin_zero = {0},
+        };
+
+        std::memcpy(&addr, &server_addr, sizeof(server_addr));
+        status = bind(fd, (sockaddr *)&server_addr, sizeof(server_addr));
+    }
+    break;
+    case Transport::IntraProcess:
+        panic("Client does not support IntraProcess transport");
+    }
+
+    if (status < 0)
+    {
+        if (errno == EADDRINUSE)
+        {
+            panic("address in use: " + std::string(host) + ":" + std::to_string(port));
+        }
+
+        panic("failed to bind socket: " + std::to_string(errno));
+    }
+
+    if (listen(fd, 128) < 0)
+    {
+        panic("failed to listen on socket");
+    }
+
+    client->fd = fd;
+    client->addr = addr;
+
+    client->thread->add_epoll(client->fd, EPOLLIN | EPOLLET, EpollType::ClientListener, client);
+}
+
+void client_connect(struct Client *client, const char *addr, uint16_t port)
+{
+    sockaddr_storage address = {0};
+
+    switch (client->transport)
+    {
+    case Transport::InterProcess:
+    {
+        sockaddr_un server_addr{
+            .sun_family = AF_UNIX,
+            .sun_path = {0}};
+
+        std::strncpy(server_addr.sun_path, addr, sizeof(server_addr.sun_path));
+        std::memcpy(&address, &server_addr, sizeof(server_addr));
+    }
+    break;
+    case Transport::TCP:
+    {
+        in_addr_t in_addr = strncmp(addr, "*", 1) ? inet_addr(addr) : INADDR_ANY;
+
+        sockaddr_in server_addr{
+            .sin_family = AF_INET,
+            .sin_port = htons(port),
+            .sin_addr = {
+                .s_addr = in_addr},
+            .sin_zero = {0},
+        };
+
+        std::memcpy(&address, &server_addr, sizeof(server_addr));
+    }
+    break;
+    case Transport::IntraProcess:
+        panic("Client does not support IntraProcess transport");
+    }
+
+    ControlRequest request{
+        .op = ControlOperation::Connect,
+        .sem = std::nullopt,
+        .addr = address,
+        .client = client,
+    };
+
+    client->thread->control.enqueue(request);
+}
+
+void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
+{
+    SendMsg send{
+        .future = future,
+        .msg = {
+            .address = {
+                .data = to,
+                .len = to_len,
+            },
+            .payload = {
+                .data = data,
+                .len = data_len,
+            },
+        },
+    };
+
+    client->send_queue.enqueue(send);
+
+    if (eventfd_signal(client->send_event_fd) < 0)
+        panic("failed to write to eventfd: " + std::to_string(errno));
+}
+
+void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len) {
+    // wait for the client to be unmuted
+    if (client->muted()) {
+        if (fd_wait(client->unmuted_event_fd, -1, POLLIN) < 0)
+            panic("failed to wait for unmuted event: " + std::to_string(errno));
+
+        if (eventfd_wait(client->unmuted_event_fd) < 0)
+            panic("failed to read eventfd: " + std::to_string(errno));
+    }
+
+    // todo, support semaphore completion?
+    // - this or need some other way to synchronously wait for the message to be sent
+    SendMsg send{
+        .future = nullptr,
+        .msg = {
+            .address = {
+                .data = to,
+                .len = to_len,
+            },
+            .payload = {
+                .data = data,
+                .len = data_len,
+            },
+        },
+    };
+
+    client->send(send);
+}
+
+void client_recv(void *future, struct Client *client) {
+    client->recv_queue.enqueue(future);
+
+    if (eventfd_signal(client->recv_event_fd) < 0)
+        panic("failed to write to eventfd: " + std::to_string(errno));
+}
+
+void client_recv_sync(struct Client *client, struct Message *msg);
+void client_destroy(struct Client *client);
 
 #endif

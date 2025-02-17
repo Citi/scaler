@@ -47,6 +47,7 @@ void intraprocess_recv_event(IntraProcessClient *client);
 void io_thread_main(ThreadContext *ctx);
 
 void session_init(Session *session, size_t num_threads);
+void session_destroy(Session *session);
 
 // --- structs ---
 
@@ -129,7 +130,6 @@ ENUM ControlOperation : uint8_t{
 struct ControlRequest
 {
     ControlOperation op;
-    int client_fd;
     std::optional<std::binary_semaphore> sem;
     std::optional<sockaddr_storage> addr;
 
@@ -193,6 +193,12 @@ struct Session
     {
         return threads.size();
     };
+
+    ThreadContext *next_thread()
+    {
+        auto rr = thread_rr++;
+        return &threads[rr % num_threads()];
+    }
 
     inline bool is_single_threaded()
     {
@@ -638,7 +644,7 @@ void resume_write(EpollData *data)
 
 void intraprocess_recv_event(IntraProcessClient *client)
 {
-    // TODO
+    panic("intraprocess_recv_event(): not implemented");
 }
 
 void io_thread_main(ThreadContext *ctx)
@@ -683,7 +689,7 @@ void io_thread_main(ThreadContext *ctx)
             // a control request has been received
             ControlRequest request;
             while (!ctx->control.try_dequeue(request))
-                std::this_thread::yield();
+                ; // wait
 
             switch (request.op)
             {
@@ -844,6 +850,19 @@ void session_init(Session *session, size_t num_threads)
 
         ctx->start();
     }
+}
+
+// this must be called after all registered clients have been destroyed
+void session_destroy(Session *session)
+{
+    if (eventfd_signal(session->epoll_close_efd) < 0)
+        panic("failed to write to eventfd: " + std::to_string(errno));
+
+    for (auto &ctx : session->threads)
+        ctx.thread.join();
+
+    // run destructor in-place without freeing memory (it's owned by Python)
+    session->~Session();
 }
 
 #endif
