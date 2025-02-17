@@ -447,7 +447,7 @@ void client_send_event(Client *client)
 
         // invariant: if we decremented the semaphore the queue must have a message
         // we loop because thread synchronization may be delayed
-        SendMsg send;
+        SendMessage send;
         while (!client->send_queue.try_dequeue(send))
             ; // wait
 

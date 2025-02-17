@@ -28,7 +28,7 @@ using moodycamel::ConcurrentQueue;
 struct Client;
 struct Peer;
 struct Completer;
-struct SendMsg;
+struct SendMessage;
 struct ReadMessage;
 struct ReadResult;
 struct ReadMessage;
@@ -76,7 +76,7 @@ struct Completer
     void complete(void *result);
 };
 
-struct SendMsg
+struct SendMessage
 {
     // resolved when the message is send
     Completer completer;
@@ -117,7 +117,7 @@ struct Client
     int unmuted_event_fd; // event fd for when the client is no longer muted
 
     int send_event_fd;                    // event fd for send queue
-    ConcurrentQueue<SendMsg> send_queue;  // the send queue for Python thread -> io thread communication
+    ConcurrentQueue<SendMessage> send_queue;  // the send queue for Python thread -> io thread communication
     int recv_event_fd;                    // event fd for recv queue
     ConcurrentQueue<void *> recv_queue;   // the recv queue for io thread -> Python thread communication
     int recv_buffer_event_fd;             // event fd for recv buffer, only needed for sync clients
@@ -135,7 +135,7 @@ struct Client
     // - must have exclusive access to the client
     // - client must not be muted
     // - if the peer disconnects, a reconnect is attempted, but the message will be lost
-    void send(SendMsg send);
+    void send(SendMessage send);
 };
 
 ENUM PeerType : uint8_t{
@@ -289,7 +289,7 @@ void Client::unmute()
             panic("failed to read eventfd: " + std::to_string(errno));
         }
 
-        SendMsg send;
+        SendMessage send;
         while (!this->send_queue.try_dequeue(send))
             ; // wait
 
@@ -302,7 +302,7 @@ void Client::unmute()
     }
 }
 
-void Client::send(SendMsg send)
+void Client::send(SendMessage send)
 {
     switch (this->type)
     {
@@ -613,7 +613,7 @@ void client_init(struct Session *session, struct Client *client, enum Transport 
         .peers = std::vector<Peer *>(),
         .unmuted_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .send_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
-        .send_queue = ConcurrentQueue<SendMsg>(),
+        .send_queue = ConcurrentQueue<SendMessage>(),
         .recv_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv_queue = ConcurrentQueue<void *>(),
         .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
@@ -748,7 +748,7 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
 
 void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
-    SendMsg send{
+    SendMessage send{
         .completer = {
             .type = Completer::Future,
             .future = future,
@@ -787,11 +787,10 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
 
     // todo, support semaphore completion?
     // - this or need some other way to synchronously wait for the message to be sent
-    SendMsg send{
+    SendMessage send{
         .completer = {
             .type = Completer::Semaphore,
-            .sem = &sem
-        },
+            .sem = &sem},
         .msg = {
             .address = {
                 .data = to,
@@ -817,7 +816,18 @@ void client_recv(void *future, struct Client *client)
         panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
-void client_recv_sync(struct Client *client, struct Message *msg);
+void client_recv_sync(struct Client *client, struct Message *msg)
+{
+    if (fd_wait(client->recv_buffer_event_fd, -1, POLLIN) < 0)
+        panic("failed to wait for recv buffer: " + std::to_string(errno));
+
+    if (eventfd_wait(client->recv_buffer_event_fd) < 0)
+        panic("failed to read eventfd: " + std::to_string(errno));
+
+    while (!client->recv_buffer.try_dequeue(*msg))
+        ; // wait
+}
+
 void client_destroy(struct Client *client);
 
 #endif
