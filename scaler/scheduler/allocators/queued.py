@@ -7,19 +7,21 @@ from scaler.utility.queues.indexed_queue import IndexedQueue
 
 
 class QueuedAllocator(TaskAllocator):
-    def __init__(self, max_tasks_per_worker: int):
-        self._max_tasks_per_worker = max_tasks_per_worker
+    def __init__(self):
         self._workers_to_task_ids: Dict[bytes, IndexedQueue] = dict()
+        self._workers_to_queue_size: Dict[bytes, int] = dict()
         self._task_id_to_worker: Dict[bytes, bytes] = {}
 
         self._worker_queue: AsyncPriorityQueue = AsyncPriorityQueue()
 
-    async def add_worker(self, worker: bytes) -> bool:
+
+    async def add_worker(self, worker: bytes, max_tasks: int) -> bool:
         if worker in self._workers_to_task_ids:
             return False
 
         self._workers_to_task_ids[worker] = IndexedQueue()
         await self._worker_queue.put([0, worker])
+        self._workers_to_queue_size[worker] = max_tasks
         return True
 
     def remove_worker(self, worker: bytes) -> List[bytes]:
@@ -74,7 +76,7 @@ class QueuedAllocator(TaskAllocator):
 
         mean_queued = math.ceil(sum(queued_tasks_per_worker.values()) / len(queued_tasks_per_worker))
 
-        balance_count = {worker: max(0, count - mean_queued) for worker, count in queued_tasks_per_worker.items()}
+        balance_count = {worker: max(0, count - self._workers_to_queue_size[worker] // 2) for worker, count in queued_tasks_per_worker.items()}
 
         over_mean_advice_total = sum(balance_count.values())
         minimal_allocate = min(number_of_idle_workers, sum(queued_tasks_per_worker.values()))
@@ -103,7 +105,7 @@ class QueuedAllocator(TaskAllocator):
             return self._task_id_to_worker[task_id]
 
         count, worker = await self._worker_queue.get()
-        if count == self._max_tasks_per_worker:
+        if count == self._workers_to_queue_size[worker]:
             await self._worker_queue.put([count, worker])
             return None
 
@@ -133,13 +135,17 @@ class QueuedAllocator(TaskAllocator):
             return False
 
         count = self._worker_queue.max_priority()
-        if count == self._max_tasks_per_worker:
+        max_tasks = 0
+        for _, max_task in self._workers_to_queue_size:
+            max_tasks = max(max_tasks, max_task)
+
+        if count == max_tasks:
             return False
 
         return True
 
     def statistics(self) -> Dict:
         return {
-            worker: {"free": self._max_tasks_per_worker - len(tasks), "sent": len(tasks)}
+            worker: {"free": self._workers_to_queue_size[worker] - len(tasks), "sent": len(tasks)}
             for worker, tasks in self._workers_to_task_ids.items()
         }

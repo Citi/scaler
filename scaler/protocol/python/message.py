@@ -256,6 +256,10 @@ class WorkerHeartbeat(Message):
     def processors(self) -> List[ProcessorStatus]:
         return [ProcessorStatus(p) for p in self._msg.processors]
 
+    @property
+    def queue_size(self) -> int:
+        return self._msg.queueSize
+
     @staticmethod
     def new_msg(
         agent: Resource,
@@ -264,6 +268,7 @@ class WorkerHeartbeat(Message):
         latency_us: int,
         task_lock: bool,
         processors: List[ProcessorStatus],
+        queue_size: int,
     ) -> "WorkerHeartbeat":
         return WorkerHeartbeat(
             _message.WorkerHeartbeat(
@@ -273,6 +278,7 @@ class WorkerHeartbeat(Message):
                 latencyUS=latency_us,
                 taskLock=task_lock,
                 processors=[p.get_message() for p in processors],
+                queueSize=queue_size,
             )
         )
 

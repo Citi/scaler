@@ -106,6 +106,12 @@ def get_args():
         "bypass --logging-paths and --logging-level at the same time, and this will not work on per worker logging",
     )
     parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument(
+        "workers_queue_sizes",
+        type=int,
+        nargs="+",
+        help="specify queue size for each worker(as a list of integers)",
+    )
     return parser.parse_args()
 
 
@@ -123,6 +129,12 @@ def main():
                 f"({args.num_of_workers})"
             )
 
+    if len(args.workers_queue_sizes) != args.num_of_workers:
+        raise ValueError(
+            f"number of workers' queue sizes ({len(args.workers_queue_sizes)}) must match number "
+            f"of workers ({args.num_of_workers})"
+        )
+
     cluster = Cluster(
         address=args.address,
         worker_names=worker_names,
@@ -137,5 +149,6 @@ def main():
         logging_paths=args.logging_paths,
         logging_level=args.logging_level,
         logging_config_file=args.logging_config_file,
+        workers_queue_sizes=args.workers_queue_sizes,
     )
     cluster.run()

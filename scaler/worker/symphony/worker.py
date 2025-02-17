@@ -2,7 +2,7 @@ import asyncio
 import logging
 import multiprocessing
 import signal
-from typing import Optional
+from typing import Optional, List
 
 import zmq
 import zmq.asyncio
@@ -43,6 +43,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         base_concurrency: int,
         heartbeat_interval_seconds: int,
         death_timeout_seconds: int,
+        queue_size: int,
     ):
         multiprocessing.Process.__init__(self, name="Agent")
 
@@ -61,6 +62,8 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._connector_external: Optional[AsyncConnector] = None
         self._task_manager: Optional[SymphonyTaskManager] = None
         self._heartbeat_manager: Optional[SymphonyHeartbeatManager] = None
+
+        self._queue_size = queue_size
 
     @property
     def identity(self):
@@ -85,7 +88,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             identity=None,
         )
 
-        self._heartbeat_manager = SymphonyHeartbeatManager()
+        self._heartbeat_manager = SymphonyHeartbeatManager(self._queue_size)
         self._task_manager = SymphonyTaskManager(
             base_concurrency=self._base_concurrency, service_name=self._service_name
         )
