@@ -27,6 +27,9 @@ struct Client;
 struct Peer;
 struct SendMsg;
 struct ReadMessage;
+struct ReadResult;
+struct ReadMessage;
+ENUM ReadConfig : uint8_t;
 ENUM PeerType : uint8_t;
 ENUM ConnectorType : uint8_t;
 ENUM Transport : uint8_t;
@@ -36,8 +39,8 @@ ENUM Transport : uint8_t;
 
 [[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking);
 [[nodiscard]] std::optional<size_t> write_message(int fd, Bytes *payload, bool nonblocking);
-[[nodiscard]] std::optional<size_t> readexact(int fd, uint8_t *buf, size_t len, bool nonblocking, int timeout);
-[[nodiscard]] std::optional<ReadOperation> read_message(int fd, bool nonblocking);
+[[nodiscard]] ReadResult readexact(int fd, uint8_t *buf, size_t len, ReadConfig config, int timeout);
+[[nodiscard]] ReadMessage read_message(int fd, bool nonblocking);
 
 void write_to_peer(Peer *peer, Bytes payload, void *future);
 void reconnect_peer(Peer *peer);
@@ -125,6 +128,41 @@ struct Peer
     void save_read(ReadOperation op);
 
     void recv_msg(Bytes payload);
+};
+
+ENUM ReadConfig : uint8_t{
+                      Nonblock,  // read will return immediately if the fd blocks
+                      HardBlock, // read will block until all data is read, or timeout
+                      SoftBlock, // read will block until all data is read, or exit with NoData if the fd blocks before any data is read
+                  };
+
+struct ReadResult
+{
+    // the type of result
+    ENUM Tag{
+        Read,       // successfully read all bytes (all)
+        Blocked,    // nonblocking read blocked (nonblocking)
+        Timeout,    // the read timed out (softblock or hardblock)
+        Disconnect, // the connection was lost (all)
+        NoData,     // there was no data available (EAGAIN || EWOULDBLOCK) (softblock)
+    } tag;
+
+    // always valid
+    size_t n_bytes;
+};
+
+struct ReadMessage
+{
+    ENUM Tag{
+        Read,       // the message was read, possibly partially
+        Timeout,    // the read timed out
+        Disconnect, // the connection was lost
+        NoData,     // there was no data available (EAGAIN || EWOULDBLOCK)
+        BadMagic,   // the magic didn't match
+    } tag;
+
+    // only valid when tag == Read
+    ReadOperation op;
 };
 
 #endif
@@ -367,7 +405,7 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
     }
 }
 
-[[nodiscard]] std::optional<size_t> readexact(int fd, uint8_t *buf, size_t len, bool nonblocking, int timeout)
+[[nodiscard]] ReadResult readexact(int fd, uint8_t *buf, size_t len, ReadConfig config, int timeout)
 {
     size_t total = 0;
 
@@ -379,8 +417,17 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                if (nonblocking)
-                    return total;
+                if (config == ReadConfig::Nonblock)
+                    return {
+                        .tag = ReadResult::Blocked,
+                        .n_bytes = total,
+                    };
+
+                if (config == ReadConfig::SoftBlock && total == 0)
+                    return {
+                        .tag = ReadResult::NoData,
+                        .n_bytes = total,
+                    };
 
                 if (auto res = fd_wait(fd, timeout, POLLIN))
                 {
@@ -391,7 +438,10 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
                         panic("readexact(): poll failed: " + std::to_string(errno));
 
                     if (res == FdWait::Timeout)
-                        return total;
+                        return {
+                            .tag = ReadResult::Timeout,
+                            .n_bytes = total,
+                        };
                 }
 
                 continue;
@@ -402,46 +452,56 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
         }
 
         if (n == 0)
-            return std::nullopt;
+            return {
+                .tag = ReadResult::Disconnect,
+                .n_bytes = total,
+            };
 
         total += n;
     }
 
-    return total;
+    return {
+        .tag = ReadResult::Read,
+        .n_bytes = total,
+    };
 }
 
-// read msg scenarios:
-// 1. we failed to read the message: std::nullopt
-// 2. we started reading the message and blocked: ReadOperation
-// 3. we successfully read the whole message: ReadOperation
-// 4. we timed out: std::nullopt
-// 5. there was no data available to read (eagain): we need a way to distinguish this from a timeout
-
-// empty -> connection lost
-// o.w. -> some (or all) of the message was read
-[[nodiscard]] std::optional<ReadOperation> read_message(int fd, bool nonblocking)
+[[nodiscard]] ReadMessage read_message(int fd, bool nonblocking)
 {
-    uint8_t magic[4];
-    auto n_bytes = readexact(fd, magic, 4, false, 2000);
+    {
+        uint8_t magic[4];
+        auto result = readexact(fd, magic, 4, nonblocking ? ReadConfig::SoftBlock : ReadConfig::HardBlock, 2000);
 
-    // n_bytes is empty if the connection was lost
-    // of <4 if the read timed out
-    if (!n_bytes || *n_bytes < 4)
-        return std::nullopt;
+        if (result.tag == ReadResult::NoData)
+            return {.tag = ReadMessage::NoData};
 
-    // if the magic doesn't match we treat it as a disconnect
-    if (std::memcmp(magic, MAGIC, 4) != 0)
-        return std::nullopt;
+        if (result.tag == ReadResult::Disconnect)
+            return {.tag = ReadMessage::Disconnect};
 
-    uint8_t header[4];
-    n_bytes = readexact(fd, header, 4, false, 2000);
+        if (result.tag == ReadResult::Timeout)
+            return {.tag = ReadMessage::Timeout};
 
-    if (!n_bytes || *n_bytes < 4)
-        return std::nullopt;
+        // the tag must be ReadResult::Read, and we're soft blocking so we read the whole magic
+
+        if (std::memcmp(magic, MAGIC, 4) != 0)
+            return {.tag = ReadMessage::BadMagic};
+    }
 
     uint32_t len;
-    deserialize_u32(header, &len);
-    len = ntohl(len);
+
+    {
+        uint8_t header[4];
+        auto result = readexact(fd, header, 4, ReadConfig::HardBlock, 2000);
+
+        if (result.tag == ReadResult::Disconnect)
+            return {.tag = ReadMessage::Disconnect};
+
+        if (result.tag == ReadResult::Timeout)
+            return {.tag = ReadMessage::Timeout};
+
+        deserialize_u32(header, &len);
+        len = ntohl(len);
+    }
 
     ReadOperation op{
         .payload = Bytes{
@@ -451,17 +511,24 @@ void write_to_peer(Peer *peer, Bytes payload, void *future)
         .cursor = 0,
     };
 
-    double timeout = 1500.0 * std::log(len / 1024.0);
-    n_bytes = readexact(fd, op.payload.data, op.payload.len, nonblocking, std::max(2000.0, timeout));
+    {
+        double timeout = 1500.0 * std::log(len / 1024.0);
+        auto result = readexact(fd, op.payload.data, op.payload.len, nonblocking ? ReadConfig::Nonblock : ReadConfig::HardBlock, std::max(2000.0, timeout));
 
-    // if we received less than the expected number of bytes and we're blocking
-    // that means we timed out
-    if (!n_bytes || (*n_bytes < len && !nonblocking))
-        return std::nullopt;
+        if (result.tag == ReadResult::Disconnect)
+            return {.tag = ReadMessage::Disconnect};
 
-    op.cursor = *n_bytes;
+        // blocking
+        if (result.tag == ReadResult::Timeout)
+            return {.tag = ReadMessage::Timeout};
 
-    return op;
+        op.cursor = result.n_bytes;
+    }
+
+    return {
+        .tag = ReadMessage::Read,
+        .op = op,
+    };
 }
 
 void reconnect_peer(Peer *peer)

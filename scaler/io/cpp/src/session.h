@@ -534,8 +534,9 @@ void client_listener_event(Client *client)
 
         // note: don't need to check for incomplete reads because
         // we're blocking until the entire identity is read
-        auto op = read_message(fd, false);
-        if (!op)
+        auto result = read_message(fd, false);
+
+        if (result.tag != ReadMessage::Read)
         {
             close(fd);
             continue;
@@ -543,7 +544,7 @@ void client_listener_event(Client *client)
 
         auto peer = new Peer{
             .client = client,
-            .identity = op->payload,
+            .identity = result.op.payload,
             .addr = addr,
             .type = PeerType::Connectee,
             .fd = fd};
@@ -556,19 +557,24 @@ void client_peer_recv_event(Peer *peer)
 {
     for (;;)
     {
-        auto read = read_message(peer->fd, true);
+        auto result = read_message(peer->fd, true);
+
+        if (result.tag == ReadMessage::NoData)
+            break;
 
         // connection lost
-        if (!read)
+        if (result.tag == ReadMessage::Disconnect || result.tag == ReadMessage::BadMagic)
         {
             reconnect_peer(peer);
             break;
         }
 
-        if (read->completed())
-            peer->recv_msg(read->payload);
-        else if (read->cursor)
-            peer->save_read(*read);
+        auto op = result.op;
+
+        if (op.completed())
+            peer->recv_msg(op.payload);
+        else
+            peer->save_read(op);
     }
 }
 
@@ -577,14 +583,13 @@ void resume_read(EpollData *data)
     auto peer = data->peer;
     auto op = &*data->read;
 
-    auto n_bytes = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, true, 2000);
+    auto result = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, ReadConfig::SoftBlock, 2000);
 
-    // disconnect!
-    if (!n_bytes)
+    if (result.tag == ReadResult::Disconnect || result.tag == ReadResult::Timeout)
         reconnect_peer(peer);
-    else
+    else if (result.tag == ReadResult::Read)
     {
-        op->cursor += *n_bytes;
+        op->cursor += result.n_bytes;
 
         // if we're done, clear the read operation
         if (op->completed())
@@ -598,7 +603,16 @@ void resume_read(EpollData *data)
 
             // reset the read operation
             data->read = std::nullopt;
+
+            // in this case it's possible that the socket has more data
+            // we are edge-triggered, so it's important that we drain the socket
+            // jump to the normal event handler
+            client_peer_recv_event(peer);
         }
+    }
+    else if (result.tag == ReadResult::NoData)
+    {
+        // no action needed
     }
 }
 
