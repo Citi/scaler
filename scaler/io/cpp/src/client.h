@@ -366,13 +366,19 @@ void Peer::recv_msg(Bytes payload)
                         panic("readexact(): poll failed: " + std::to_string(errno));
 
                     if (res == FdWait::Timeout)
+                    {
+                        std::cout << "writeall(): timeout" << std::endl;
                         return std::nullopt;
+                    }
                 }
             }
 
             // this is a disconnect
             if (errno == EPIPE || errno == ECONNRESET)
+            {
+                std::cout << "writeall(): EPIPE or ECONNRESET" << std::endl;
                 return std::nullopt;
+            }
 
             // todo: handle other errors?
             panic("write error: " + std::to_string(errno));
@@ -578,6 +584,8 @@ void reconnect_peer(Peer *peer)
     {
         // todo: put a limit on the number of retries?
         client_connect_peer(thread, peer);
+    } else {
+        delete peer;
     }
 }
 

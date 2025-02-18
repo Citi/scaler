@@ -119,7 +119,7 @@ struct ThreadContext
     Session *session;
     std::thread thread;
     std::vector<EpollData *> io_cache;
-    std::queue<Peer *> connecting;
+    std::vector<Peer *> connecting;
     ConcurrentQueue<ControlRequest> control_queue;
     int control_efd;
     int epoll_fd;
@@ -255,6 +255,9 @@ void ThreadContext::remove_client(Client *client)
 void ThreadContext::remove_peer(Peer *peer)
 {
     this->remove_epoll(peer->fd);
+
+    std::erase_if(this->connecting, [peer](Peer *p)
+                  { return p == peer; });
 }
 
 // must be called on io-thread
@@ -280,7 +283,7 @@ void ThreadContext::add_epoll(int fd, uint32_t flags, EpollType type, void *data
 // must be called on io-thread
 void ThreadContext::remove_epoll(int fd)
 {
-    if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, nullptr) < 0)
+    if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, NULL) < 0)
     {
         // we ignore enoent because it means the fd was already removed
         if (errno != ENOENT)
@@ -380,15 +383,15 @@ void accept_peer(ThreadContext *ctx, Peer *peer)
 // the peer's fd will be overwritten with the new socket
 void client_connect_peer(ThreadContext *ctx, Peer *peer)
 {
-    int fd = socket(peer->client->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    peer->fd = socket(peer->client->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
-    if (fd < 0)
+    if (peer->fd < 0)
     {
         panic("failed to create socket: " + std::to_string(errno));
     }
 
-    peer->fd = fd;
     set_sock_opts(peer->fd);
+
     auto res = connect(peer->fd, (sockaddr *)&peer->addr, sizeof(peer->addr));
 
     if (res < 0)
@@ -514,7 +517,8 @@ void client_recv_event(Client *client)
 
 std::optional<Bytes> exchange_identity(Client *client, int fd)
 {
-    if (!write_message(fd, &client->identity, false)) {
+    if (!write_message(fd, &client->identity, false))
+    {
         std::cout << "disconnect while writing identity" << std::endl;
         return std::nullopt;
     }
@@ -558,6 +562,8 @@ void client_listener_event(Client *client)
 
         if (!result)
         {
+            std::cout << "client_listener_event(): disconnect while exchanging identity" << std::endl;
+
             close(fd);
             continue;
         }
@@ -607,7 +613,8 @@ void resume_read(EpollData *data)
 
     auto result = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, ReadConfig::SoftBlock, 2000);
 
-    if (result.tag == ReadResult::Disconnect || result.tag == ReadResult::Timeout) {
+    if (result.tag == ReadResult::Disconnect || result.tag == ReadResult::Timeout)
+    {
         std::cout << "disconnect while resuming read" << std::endl;
         reconnect_peer(peer);
     }
@@ -648,7 +655,8 @@ void resume_write(EpollData *data)
     auto n_bytes = writeall(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, true);
 
     // disconnect!
-    if (!n_bytes) {
+    if (!n_bytes)
+    {
         std::cout << "disconnect while resuming write" << std::endl;
         reconnect_peer(peer);
     }
@@ -702,8 +710,8 @@ void io_thread_main(ThreadContext *ctx)
 
             while (!ctx->connecting.empty())
             {
-                auto peer = ctx->connecting.front();
-                ctx->connecting.pop();
+                auto peer = ctx->connecting.back();
+                ctx->connecting.pop_back();
 
                 client_connect_peer(ctx, peer);
             }
@@ -771,7 +779,7 @@ void io_thread_main(ThreadContext *ctx)
             // important to save this
             auto peer = data->peer;
             // this deallocates *data
-            ctx->remove_epoll(data->fd);
+            ctx->remove_epoll(peer->fd);
 
             int result;
             socklen_t result_len;
@@ -789,7 +797,7 @@ void io_thread_main(ThreadContext *ctx)
                 auto result = exchange_identity(peer->client, peer->fd);
                 if (!result)
                 {
-                    std::cout << "disconnect while exchanging identity (790)" << std::endl;
+                    std::cout << "disconnect while exchanging identity (790): " << std::to_string(peer->fd) << std::endl;
                     reconnect_peer(peer);
                     continue;
                 }
@@ -797,6 +805,9 @@ void io_thread_main(ThreadContext *ctx)
                 peer->identity = *result;
 
                 accept_peer(ctx, peer);
+
+                // we're edge-triggered so we need to check for more data
+                client_peer_recv_event(peer);
             }
             else
             {
@@ -805,7 +816,7 @@ void io_thread_main(ThreadContext *ctx)
                 {
                     std::cout << "connection refused" << std::endl;
 
-                    ctx->connecting.push(peer);
+                    ctx->connecting.push_back(peer);
 
                     // don't bother arming the timer if it's already armed
                     if (!ctx->timer_armed)
@@ -897,7 +908,7 @@ void session_init(Session *session, size_t num_threads)
             .session = session,
             .thread = std::thread(),
             .io_cache = std::vector<EpollData *>(),
-            .connecting = std::queue<Peer *>(),
+            .connecting = std::vector<Peer *>(),
             .control_queue = ConcurrentQueue<ControlRequest>(),
             .control_efd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
             .epoll_fd = epoll_create1(0),
