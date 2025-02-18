@@ -27,6 +27,11 @@ struct IntraProcessClient;
 #include "session.h"
 
 void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len);
+void intraprocess_bind(struct IntraProcessClient *client, const char *addr, size_t len);
+void intraprocess_connect(struct IntraProcessClient *client, const char *addr, size_t len);
+void intraprocess_send(struct IntraProcessClient *client, uint8_t *data, size_t len);
+void intraprocess_recv_sync(struct IntraProcessClient *client, struct Message *msg);
+void intraprocess_recv_async(void *future, struct IntraProcessClient *client);
 
 // -- structs --
 
@@ -77,6 +82,44 @@ void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *id
     session->intraprocess_mutex.lock();
     session->inprocs.push_back(client);
     session->intraprocess_mutex.unlock();
+}
+
+void intraprocess_bind(struct IntraProcessClient *client, const char *addr, size_t len)
+{
+    // use all params to avoid unused warnings
+    (void)client;
+    (void)addr;
+    (void)len;
+}
+
+void intraprocess_connect(struct IntraProcessClient *client, const char *addr, size_t len)
+{
+    // use all params to avoid unused warnings
+    (void)client;
+    (void)addr;
+    (void)len;
+}
+
+void intraprocess_send(struct IntraProcessClient *client, uint8_t *data, size_t len)
+{
+    // use all params to avoid unused warnings
+    (void)client;
+    (void)data;
+    (void)len;
+}
+
+void intraprocess_recv_sync(struct IntraProcessClient *client, struct Message *msg)
+{
+    // use all params to avoid unused warnings
+    (void)client;
+    (void)msg;
+}
+
+void intraprocess_recv_async(void *future, struct IntraProcessClient *client)
+{
+    // use all params to avoid unused warnings
+    (void)future;
+    (void)client;
 }
 
 #endif

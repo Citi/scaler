@@ -17,6 +17,7 @@
 #include <string>
 #include <iostream>
 #include <source_location>
+#include <semaphore>
 
 // System
 #include <sys/timerfd.h>
@@ -234,3 +235,60 @@ int8_t fd_wait(int fd, int timeout, short int events)
     close(signal_fd);
     return 0;
 }
+
+struct Completer
+{
+    ENUM Type{
+        Future,
+        Semaphore} type;
+
+    union
+    {
+        void *future;
+        std::binary_semaphore *sem;
+    };
+
+    // complete with a result
+    // may be NULL
+    void complete(void *result);
+};
+
+void Completer::complete(void *result)
+{
+    switch (this->type)
+    {
+    case Completer::Type::Future:
+        future_set_result(this->future, result);
+        break;
+    case Completer::Type::Semaphore:
+        this->sem->release();
+        break;
+    }
+}
+
+// this is an in-progress write operation
+// created only after the entire header has been written
+struct WriteOperation
+{
+    Completer completer;
+    Bytes payload;
+    size_t cursor;
+
+    bool completed() const
+    {
+        return cursor == payload.len;
+    }
+};
+
+// an in-progress read operation
+// created only after the entire header has been read
+struct ReadOperation
+{
+    Bytes payload;
+    size_t cursor;
+
+    bool completed() const
+    {
+        return cursor == payload.len;
+    }
+};

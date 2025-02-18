@@ -27,7 +27,6 @@ using moodycamel::ConcurrentQueue;
 
 struct Client;
 struct Peer;
-struct Completer;
 struct SendMessage;
 struct ReadMessage;
 struct ReadResult;
@@ -45,7 +44,7 @@ ENUM Transport : uint8_t;
 [[nodiscard]] ReadResult readexact(int fd, uint8_t *buf, size_t len, ReadConfig config, int timeout);
 [[nodiscard]] ReadMessage read_message(int fd, bool nonblocking);
 
-void write_to_peer(Peer *peer, Bytes payload, void *future);
+void write_to_peer(Peer *peer, Bytes payload, Completer completer);
 void reconnect_peer(Peer *peer);
 
 void client_init(struct Session *session, struct Client *client, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
@@ -58,23 +57,6 @@ void client_recv_sync(struct Client *client, struct Message *msg);
 void client_destroy(struct Client *client);
 
 // --- structs ---
-
-struct Completer
-{
-    ENUM Type{
-        Future,
-        Semaphore} type;
-
-    union
-    {
-        void *future;
-        std::binary_semaphore *sem;
-    };
-
-    // complete with a result
-    // may be NULL
-    void complete(void *result);
-};
 
 struct SendMessage
 {
@@ -116,12 +98,12 @@ struct Client
 
     int unmuted_event_fd; // event fd for when the client is no longer muted
 
-    int send_event_fd;                    // event fd for send queue
-    ConcurrentQueue<SendMessage> send_queue;  // the send queue for Python thread -> io thread communication
-    int recv_event_fd;                    // event fd for recv queue
-    ConcurrentQueue<void *> recv_queue;   // the recv queue for io thread -> Python thread communication
-    int recv_buffer_event_fd;             // event fd for recv buffer, only needed for sync clients
-    ConcurrentQueue<Message> recv_buffer; // these are messages that have been received
+    int send_event_fd;                       // event fd for send queue
+    ConcurrentQueue<SendMessage> send_queue; // the send queue for Python thread -> io thread communication
+    int recv_event_fd;                       // event fd for recv queue
+    ConcurrentQueue<void *> recv_queue;      // the recv queue for io thread -> Python thread communication
+    int recv_buffer_event_fd;                // event fd for recv buffer, only needed for sync clients
+    ConcurrentQueue<Message> recv_buffer;    // these are messages that have been received
 
     // must hold mutex
     bool peer_by_id(Bytes id, Peer **peer);
@@ -191,26 +173,13 @@ struct ReadMessage
     } tag;
 
     // only valid when tag == Read
-    ReadOperation op;
+    ReadOperation op = {};
 };
 
 #endif
 #if INCLUDE_DEFS
 
 // --- functions ---
-
-void Completer::complete(void *result)
-{
-    switch (this->type)
-    {
-    case Completer::Type::Future:
-        future_set_result(this->future, result);
-        break;
-    case Completer::Type::Semaphore:
-        this->sem->release();
-        break;
-    }
-}
 
 bool Client::peer_by_id(Bytes id, Peer **peer)
 {
@@ -625,7 +594,7 @@ void client_init(struct Session *session, struct Client *client, enum Transport 
 
 void client_bind(struct Client *client, const char *host, uint16_t port)
 {
-    int fd, status;
+    int fd = -1, status = -1;
     sockaddr_storage addr;
 
     switch (client->transport)
@@ -644,7 +613,7 @@ void client_bind(struct Client *client, const char *host, uint16_t port)
             .sun_family = AF_UNIX,
             .sun_path = {0}};
 
-        std::strncpy(server_addr.sun_path, host, sizeof(server_addr.sun_path));
+        std::strncpy(server_addr.sun_path, host, sizeof(server_addr.sun_path) - 1);
         std::memcpy(&addr, &server_addr, sizeof(server_addr));
 
         status = bind(fd, (sockaddr *)&server_addr, sizeof(server_addr));
@@ -703,7 +672,7 @@ void client_bind(struct Client *client, const char *host, uint16_t port)
 
 void client_connect(struct Client *client, const char *addr, uint16_t port)
 {
-    sockaddr_storage address = {0};
+    sockaddr_storage address;
 
     switch (client->transport)
     {
@@ -713,7 +682,7 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
             .sun_family = AF_UNIX,
             .sun_path = {0}};
 
-        std::strncpy(server_addr.sun_path, addr, sizeof(server_addr.sun_path));
+        std::strncpy(server_addr.sun_path, addr, sizeof(server_addr.sun_path) - 1);
         std::memcpy(&address, &server_addr, sizeof(server_addr));
     }
     break;

@@ -18,8 +18,6 @@
 // --- declarations ---
 
 struct EpollType;
-struct WriteOperation;
-struct ReadOperation;
 struct EpollData;
 ENUM ControlOperation : uint8_t;
 struct ControlRequest;
@@ -76,33 +74,6 @@ private:
     Value value;
 };
 
-// this is an in-progress write operation
-// created only after the entire header has been written
-struct WriteOperation
-{
-    Completer completer;
-    Bytes payload;
-    size_t cursor;
-
-    bool completed() const
-    {
-        return cursor == payload.len;
-    }
-};
-
-// an in-progress read operation
-// created only after the entire header has been read
-struct ReadOperation
-{
-    Bytes payload;
-    size_t cursor;
-
-    bool completed() const
-    {
-        return cursor == payload.len;
-    }
-};
-
 struct EpollData
 {
     int fd;
@@ -130,7 +101,7 @@ ENUM ControlOperation : uint8_t{
 struct ControlRequest
 {
     ControlOperation op;
-    std::optional<std::binary_semaphore> sem;
+    std::optional<std::binary_semaphore *> sem;
     std::optional<sockaddr_storage> addr;
 
     union
@@ -240,6 +211,8 @@ std::string EpollType::as_string() const
     case EpollType::Closed:
         return "Closed";
     }
+
+    panic("unreachable");
 }
 
 void ThreadContext::arm_timer()
@@ -644,7 +617,7 @@ void resume_write(EpollData *data)
 
 void intraprocess_recv_event(IntraProcessClient *client)
 {
-    panic("intraprocess_recv_event(): not implemented");
+    panic("intraprocess_recv_event(): not implemented: " + client->identity.as_string());
 }
 
 void io_thread_main(ThreadContext *ctx)
@@ -702,10 +675,15 @@ void io_thread_main(ThreadContext *ctx)
             case ControlOperation::Connect:
             {
                 auto peer = new Peer{
+                    .client = request.client,
+                    .identity = {
+                        .data = nullptr,
+                        .len = 0,
+                    },
+                    .addr = *request.addr,
+                    .type = PeerType::Connector,
                     // a real fd will be assigned later
                     .fd = -1,
-                    .client = request.client,
-                    .addr = *request.addr,
                 };
 
                 client_connect_peer(ctx, peer);
@@ -714,7 +692,7 @@ void io_thread_main(ThreadContext *ctx)
             }
 
             if (request.sem)
-                request.sem->release();
+                (*request.sem)->release();
 
             continue;
         }
@@ -792,6 +770,10 @@ void io_thread_main(ThreadContext *ctx)
 
                     client_peer_recv_event(data->peer);
                 }
+                break;
+
+                default:
+                panic("epoll: unexpected read event: " + data->type.as_string());
             }
             // clang-format on
 
@@ -821,7 +803,7 @@ void session_init(Session *session, size_t num_threads)
         .inprocs = std::vector<IntraProcessClient *>(),
         .intraprocess_mutex = std::shared_mutex(),
         .epoll_close_efd = eventfd(0, 0),
-    };
+        .thread_rr = 0};
 
     // exactly size the vector to avoid reallocation
     session->threads.reserve(num_threads);
