@@ -357,7 +357,17 @@ void Peer::recv_msg(Bytes payload)
                 if (nonblocking)
                     return total;
 
-                continue;
+                if (auto res = fd_wait(fd, 2000, POLLOUT))
+                {
+                    if (res > 0)
+                        panic("readexact(): received signal: " + std::to_string(res));
+
+                    if (res == FdWait::Other)
+                        panic("readexact(): poll failed: " + std::to_string(errno));
+
+                    if (res == FdWait::Timeout)
+                        return std::nullopt;
+                }
             }
 
             // this is a disconnect
@@ -399,7 +409,12 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
 
     // disconnect
     if (!n_bytes)
+    {
+        std::cout << "write_to_peer(): disconnect" << std::endl;
+
         reconnect_peer(peer);
+        return;
+    }
 
     // partial write, we need to resume later
     if (*n_bytes < payload.len)
@@ -456,10 +471,17 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
                 continue;
             }
 
+            if (errno == ECONNRESET || errno == EPIPE)
+                return {
+                    .tag = ReadResult::Disconnect,
+                    .n_bytes = total,
+                };
+
             // todo: handle other errors?
             panic("read error: " + std::to_string(errno));
         }
 
+        // graceful disconnect
         if (n == 0)
             return {
                 .tag = ReadResult::Disconnect,
@@ -548,6 +570,7 @@ void reconnect_peer(Peer *peer)
     thread->remove_peer(peer);
     client->remove_peer(peer);
 
+    std::cout << "closing fd: " << std::to_string(peer->fd) << std::endl;
     close(peer->fd);
 
     // retry the connection if we're the connector
@@ -710,7 +733,7 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
         .client = client,
     };
 
-    client->thread->control.enqueue(request);
+    client->thread->control(request);
 }
 
 void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)

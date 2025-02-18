@@ -102,7 +102,8 @@ struct Message
 };
 
 // free a received message
-void message_destroy(Message &msg) {
+void message_destroy(Message &msg)
+{
     // the address is owned by the Peer
     free(msg.payload.data);
 }
@@ -154,13 +155,16 @@ int eventfd_signal(int fd)
 
 int eventfd_reset(int fd)
 {
-    while (eventfd_wait(fd) == 0)
-        ;
+    for (;;)
+    {
+        if (eventfd_wait(fd) < 0)
+        {
+            if (errno == EAGAIN)
+                return 0;
 
-    if (errno == EAGAIN)
-        return 0;
-
-    return -1;
+            return -1;
+        }
+    }
 }
 
 enum FdWait : int8_t
@@ -210,13 +214,13 @@ int8_t fd_wait(int fd, int timeout, short int events)
     if (n == 0)
     {
         close(signal_fd);
-        return (int8_t) FdWait::Timeout;
+        return (int8_t)FdWait::Timeout;
     }
 
     if (n < 0)
     {
         close(signal_fd);
-        return (int8_t) FdWait::Other;
+        return (int8_t)FdWait::Other;
     }
 
     if (fds[1].revents & POLLIN)
