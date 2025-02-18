@@ -266,9 +266,7 @@ void Client::unmute()
     };
 
     if (eventfd_signal(this->unmuted_event_fd) < 0)
-    {
         panic("failed to write to eventfd: " + std::to_string(errno));
-    }
 }
 
 void Client::send(SendMessage send)
@@ -797,6 +795,9 @@ void client_recv_sync(struct Client *client, struct Message *msg)
         ; // wait
 }
 
-void client_destroy(struct Client *client);
+void client_destroy(struct Client *client)
+{
+    panic("todo: implement client_destroy: " + client->identity.as_string());
+}
 
 #endif

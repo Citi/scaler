@@ -125,13 +125,9 @@ struct ThreadContext
     bool timer_armed;
 
     void arm_timer();
-
     void accept_peer(Peer *peer);
-
     void add_client(Client *client);
-
     void remove_client(Client *client);
-
     void remove_peer(Peer *peer);
 
     // must be called on io-thread
@@ -287,6 +283,11 @@ void ThreadContext::remove_epoll(int fd)
         delete *edata;
         this->io_cache.erase(edata);
     }
+}
+
+void ThreadContext::accept_peer(Peer *peer)
+{
+    this->add_epoll(peer->fd, EPOLLIN | EPOLLET, EpollType::ClientPeerRecv, peer);
 }
 
 EpollData *ThreadContext::epoll_by_fd(int fd)
@@ -776,8 +777,6 @@ void io_thread_main(ThreadContext *ctx)
                 panic("epoll: unexpected read event: " + data->type.as_string());
             }
             // clang-format on
-
-            panic("epoll: unexpected read event");
         }
 
         if (event.events & EPOLLOUT)
