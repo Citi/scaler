@@ -28,13 +28,13 @@ using moodycamel::ConcurrentQueue;
 struct Client;
 struct Peer;
 struct SendMessage;
-struct ReadMessage;
 struct ReadResult;
-struct ReadMessage;
+ENUM ReadMessage : uint8_t;
 ENUM ReadConfig : uint8_t;
 ENUM PeerType : uint8_t;
 ENUM ConnectorType : uint8_t;
 ENUM Transport : uint8_t;
+ENUM PeerState : uint8_t;
 
 // First-party
 #include "session.h"
@@ -42,7 +42,7 @@ ENUM Transport : uint8_t;
 [[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking);
 [[nodiscard]] std::optional<size_t> write_message(int fd, Bytes *payload, bool nonblocking);
 [[nodiscard]] ReadResult readexact(int fd, uint8_t *buf, size_t len, ReadConfig config, int timeout);
-[[nodiscard]] ReadMessage read_message(int fd, bool nonblocking);
+[[nodiscard]] ReadMessage read_message(int fd, ReadOperation &op);
 
 void write_to_peer(Peer *peer, Bytes payload, Completer completer);
 void reconnect_peer(Peer *peer);
@@ -127,6 +127,12 @@ ENUM PeerType : uint8_t{
                     // the remote connected to us
                     Connectee};
 
+ENUM PeerState : uint8_t{
+                     Connecting,
+                     Connected,
+                     Disconnected,
+                 };
+
 struct Peer
 {
     Client *client;        // the binder that this peer belongs to
@@ -134,6 +140,11 @@ struct Peer
     sockaddr_storage addr; // the peer's address
     PeerType type;         // the type of peer
     int fd;                // the socket fd of this peer
+
+    PeerState state; // the state of the peer
+
+    std::optional<ReadOperation> read_op;   // the current read operation
+    std::optional<WriteOperation> write_op; // the current write operation
 
     void save_write(WriteOperation op);
     void save_read(ReadOperation op);
@@ -162,19 +173,12 @@ struct ReadResult
     size_t n_bytes;
 };
 
-struct ReadMessage
-{
-    ENUM Tag{
-        Read,       // the message was read, possibly partially
-        Timeout,    // the read timed out
-        Disconnect, // the connection was lost
-        NoData,     // there was no data available (EAGAIN || EWOULDBLOCK)
-        BadMagic,   // the magic didn't match
-    } tag;
-
-    // only valid when tag == Read
-    ReadOperation op = {};
-};
+ENUM ReadMessage : uint8_t{
+                       Read,       // data was read
+                       Timeout,    // the read timed out
+                       Disconnect, // the connection was lost
+                       BadMagic,   // the magic didn't match
+                   };
 
 #endif
 #if INCLUDE_DEFS
@@ -505,69 +509,85 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
     };
 }
 
-[[nodiscard]] ReadMessage read_message(int fd, bool nonblocking)
+[[nodiscard]] ReadMessage read_message(int fd, ReadOperation &op)
 {
+    switch (op.progress)
     {
-        uint8_t magic[4];
-        auto result = readexact(fd, magic, 4, nonblocking ? ReadConfig::SoftBlock : ReadConfig::HardBlock, 2000);
-
-        if (result.tag == ReadResult::NoData)
-            return {.tag = ReadMessage::NoData};
-
-        if (result.tag == ReadResult::Disconnect)
-            return {.tag = ReadMessage::Disconnect};
-
-        if (result.tag == ReadResult::Timeout)
-            return {.tag = ReadMessage::Timeout};
-
-        // the tag must be ReadResult::Read, and we're soft blocking so we read the whole magic
-
-        if (std::memcmp(magic, MAGIC, 4) != 0)
-            return {.tag = ReadMessage::BadMagic};
+    case ReadProgress::Magic:
+        goto magic;
+    case ReadProgress::Header:
+        goto header;
+    case ReadProgress::Payload:
+        goto payload;
     }
+
+magic:
+{
+    auto result = readexact(fd, op.buffer + op.cursor, 4 - op.cursor, ReadConfig::Nonblock, 2000);
+
+    if (result.tag == ReadResult::Disconnect)
+        return ReadMessage::Disconnect;
+
+    if (result.tag == ReadResult::Timeout)
+        return ReadMessage::Timeout;
+
+    op.cursor += result.n_bytes;
+
+    if (op.cursor < 4)
+        return ReadMessage::Read;
+
+    if (std::memcmp(op.buffer, MAGIC, 4) != 0)
+        return ReadMessage::BadMagic;
+
+    op.progress = ReadProgress::Header;
+    op.cursor = 0;
+}
+
+header:
+{
+    auto result = readexact(fd, op.buffer + op.cursor, 4 - op.cursor, ReadConfig::Nonblock, 2000);
+
+    if (result.tag == ReadResult::Disconnect)
+        return ReadMessage::Disconnect;
+
+    if (result.tag == ReadResult::Timeout)
+        return ReadMessage::Timeout;
+
+    op.cursor += result.n_bytes;
+
+    if (op.cursor < 4)
+        return ReadMessage::Read;
 
     uint32_t len;
+    deserialize_u32(op.buffer, &len);
+    len = ntohl(len);
 
-    {
-        uint8_t header[4];
-        auto result = readexact(fd, header, 4, ReadConfig::HardBlock, 2000);
-
-        if (result.tag == ReadResult::Disconnect)
-            return {.tag = ReadMessage::Disconnect};
-
-        if (result.tag == ReadResult::Timeout)
-            return {.tag = ReadMessage::Timeout};
-
-        deserialize_u32(header, &len);
-        len = ntohl(len);
-    }
-
-    ReadOperation op{
-        .payload = Bytes{
-            .data = (uint8_t *)malloc(len),
-            .len = len,
-        },
-        .cursor = 0,
+    op.progress = ReadProgress::Payload;
+    op.cursor = 0;
+    op.payload = Bytes{
+        .data = (uint8_t *)malloc(len),
+        .len = len,
     };
+}
 
-    {
-        double timeout = 1500.0 * std::log(len / 1024.0);
-        auto result = readexact(fd, op.payload.data, op.payload.len, nonblocking ? ReadConfig::Nonblock : ReadConfig::HardBlock, std::max(2000.0, timeout));
+payload:
+{
+    double timeout = 1500.0 * std::log(op.payload.len / 1024.0);
+    auto result = readexact(fd, op.payload.data, op.payload.len, ReadConfig::Nonblock, std::max(2000.0, timeout));
 
-        if (result.tag == ReadResult::Disconnect)
-            return {.tag = ReadMessage::Disconnect};
+    if (result.tag == ReadResult::Disconnect)
+        return ReadMessage::Disconnect;
 
-        // blocking
-        if (result.tag == ReadResult::Timeout)
-            return {.tag = ReadMessage::Timeout};
+    // blocking
+    if (result.tag == ReadResult::Timeout)
+        return ReadMessage::Timeout;
 
-        op.cursor = result.n_bytes;
-    }
+    op.cursor += result.n_bytes;
 
-    return {
-        .tag = ReadMessage::Read,
-        .op = op,
-    };
+    // always the same return value
+    // the caller must check `op` to see if the message is complete
+    return ReadMessage::Read;
+}
 }
 
 void reconnect_peer(Peer *peer)
@@ -586,7 +606,9 @@ void reconnect_peer(Peer *peer)
     {
         // todo: put a limit on the number of retries?
         client_connect_peer(thread, peer);
-    } else {
+    }
+    else
+    {
         delete peer;
     }
 }

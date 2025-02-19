@@ -284,15 +284,27 @@ struct WriteOperation
     }
 };
 
+ENUM ReadProgress : uint8_t{
+                        Magic,   // the magic is being read
+                        Header,  // the header is being read
+                        Payload, // the payload is being read
+                    };
+
 // an in-progress read operation
-// created only after the entire header has been read
 struct ReadOperation
 {
-    Bytes payload;
+    ReadProgress progress;
     size_t cursor;
 
-    bool completed() const
+    union
     {
-        return cursor == payload.len;
+        uint8_t buffer[4];
+        Bytes payload;
+    };
+
+    bool
+    completed() const
+    {
+        return progress == ReadProgress::Payload && cursor == payload.len;
     }
 };
