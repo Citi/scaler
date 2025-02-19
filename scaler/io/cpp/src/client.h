@@ -269,6 +269,7 @@ void Client::unmute()
         panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
+// panics if the client is muted
 void Client::send(SendMessage send)
 {
     switch (this->type)
@@ -298,7 +299,8 @@ void Client::send(SendMessage send)
     case ConnectorType::Pub:
     {
         // if the socket has no peers, the message is dropped
-        for (auto peer : this->peers)
+        // we need to copy the peers because the vector may be modified
+        for (auto peer : std::vector(this->peers))
             write_to_peer(peer, send.msg.payload, send.completer);
     }
     break;

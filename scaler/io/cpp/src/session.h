@@ -225,17 +225,15 @@ void ThreadContext::control(ControlRequest request)
 
 void ThreadContext::arm_timer()
 {
-    const time_t timeout_s = 3;
+    std::cout << "thread[" << this->id << "]: arming timer" << std::endl;
 
-    itimerspec timer{
+    itimerspec spec{
         .it_interval = {.tv_sec = 0, .tv_nsec = 0},
-        .it_value = {.tv_sec = timeout_s, .tv_nsec = 0},
+        .it_value = {.tv_sec = 3, .tv_nsec = 0},
     };
 
-    if (timerfd_settime(this->connect_timer_tfd, 0, &timer, nullptr) < 0)
-    {
+    if (timerfd_settime(this->connect_timer_tfd, 0, &spec, NULL) < 0)
         panic("failed to arm timer");
-    }
 
     this->timer_armed = true;
 }
@@ -409,19 +407,22 @@ void client_connect_peer(ThreadContext *ctx, Peer *peer)
 
     if (res == 0)
     {
+        // theory: this doesn't happen on Linux
+        panic("connect() returned immediately");
+
         // the socket connected immediately
-        auto result = exchange_identity(peer->client, peer->fd);
-        if (!result)
-        {
-            std::cout << "disconnect while exchanging identity (413)" << std::endl;
+        // auto result = exchange_identity(peer->client, peer->fd);
+        // if (!result)
+        // {
+        //     std::cout << "disconnect while exchanging identity (413)" << std::endl;
 
-            reconnect_peer(peer);
-            return;
-        }
+        //     reconnect_peer(peer);
+        //     return;
+        // }
 
-        peer->identity = *result;
+        // peer->identity = *result;
 
-        accept_peer(ctx, peer);
+        // accept_peer(ctx, peer);
     }
 }
 
@@ -682,7 +683,7 @@ void io_thread_main(ThreadContext *ctx)
     {
         std::cout << "thread[" << ctx->id << "]: epoll_wait()" << std::endl;
 
-        auto n_events = epoll_wait(ctx->epoll_fd, &event, 1, 1000);
+        auto n_events = epoll_wait(ctx->epoll_fd, &event, 1, -1);
 
         // spurrious wakeup
         if (n_events == 0)
@@ -697,6 +698,8 @@ void io_thread_main(ThreadContext *ctx)
 
         if (data->type == EpollType::ConnectTimer)
         {
+            std::cout << "thread[" << ctx->id << "]: connect timer" << std::endl;
+
             // the timer is no longer armed
             ctx->timer_armed = false;
 
@@ -773,13 +776,27 @@ void io_thread_main(ThreadContext *ctx)
 
         if (data->type == EpollType::PeerConnecting)
         {
-            std::cout << "thread[" << ctx->id << "]: peer connected! " << std::to_string(data->peer->fd) << std::endl;
-
-            // the peer connection was in progress and has become writeable
             // important to save this
             auto peer = data->peer;
             // this deallocates *data
-            ctx->remove_epoll(peer->fd);
+            ctx->remove_epoll(data->fd);
+
+            std::cout << "thread[" << ctx->id << "]: peer connected! " << std::to_string(data->peer->fd) << std::endl;
+
+            if (event.events & EPOLLERR || event.events & EPOLLHUP)
+            {
+                std::cout << "connection refused" << std::endl;
+
+                ctx->connecting.push_back(peer);
+
+                // don't bother arming the timer if it's already armed
+                if (!ctx->timer_armed)
+                    ctx->arm_timer();
+
+                return;
+            }
+
+            // the peer connection was in progress and has become writeable
 
             int result;
             socklen_t result_len;
@@ -810,21 +827,7 @@ void io_thread_main(ThreadContext *ctx)
                 client_peer_recv_event(peer);
             }
             else
-            {
-                // todo: are there other recoverable errors?
-                if (result == ECONNREFUSED || result == ETIMEDOUT)
-                {
-                    std::cout << "connection refused" << std::endl;
-
-                    ctx->connecting.push_back(peer);
-
-                    // don't bother arming the timer if it's already armed
-                    if (!ctx->timer_armed)
-                        ctx->arm_timer();
-                }
-                else
-                    panic("failed to connect to peer: " + std::to_string(result));
-            }
+                panic("failed to connect to peer: " + std::to_string(result));
 
             continue;
         }
