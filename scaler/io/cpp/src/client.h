@@ -588,7 +588,15 @@ void reconnect_peer(Peer *peer)
     if (peer->type == PeerType::Connector)
     {
         // todo: put a limit on the number of retries?
-        client_connect_peer(peer);
+        // client_connect_peer(peer);
+
+        auto thread = peer->client->thread;
+
+        peer->state = PeerState::Disconnected;
+        thread->connecting.push_back(peer);
+
+        if (!thread->timer_armed)
+            thread->arm_timer();
     }
     else
     {
@@ -704,6 +712,8 @@ void client_bind(struct Client *client, const char *host, uint16_t port)
     client->addr = addr;
 
     client->thread->add_epoll(client->fd, EPOLLIN | EPOLLET, EpollType::ClientListener, client);
+
+    std::cout << "client: " << client->identity.as_string() << ": bound to: " << host << ":" << std::to_string(port) << std::endl;
 }
 
 void client_connect(struct Client *client, const char *addr, uint16_t port)
@@ -724,13 +734,13 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
     break;
     case Transport::TCP:
     {
-        in_addr_t in_addr = strncmp(addr, "*", 1) ? inet_addr(addr) : INADDR_ANY;
+        std::cout << "connecting to: " << addr << ":" << std::to_string(port) << std::endl;
 
         sockaddr_in server_addr{
             .sin_family = AF_INET,
             .sin_port = htons(port),
             .sin_addr = {
-                .s_addr = in_addr},
+                .s_addr = inet_addr(addr)},
             .sin_zero = {0},
         };
 

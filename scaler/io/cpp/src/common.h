@@ -128,10 +128,10 @@ int timerfd_read(int fd, timerfd_t *value)
 {
     auto n = read(fd, value, sizeof(timerfd_t));
 
-    if (n != sizeof(timerfd_t))
-        return -1;
+    if (n > 0 && n != sizeof(timerfd_t))
+        return panic("failed to read timerfd: " + std::to_string(errno)), -1;
 
-    return 0;
+    return n;
 }
 
 // read a timerfd value and discard it

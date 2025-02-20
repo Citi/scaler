@@ -118,6 +118,7 @@ struct ThreadContext
     ConcurrentQueue<ControlRequest> control_queue;
     int control_efd;
     int epoll_fd;
+    int epoll_close_efd;
     int connect_timer_tfd;
     bool timer_armed;
 
@@ -147,8 +148,6 @@ struct Session
     std::vector<IntraProcessClient *> inprocs;
 
     std::shared_mutex intraprocess_mutex;
-
-    int epoll_close_efd;
 
     std::atomic_uint8_t thread_rr;
 
@@ -213,7 +212,7 @@ void ThreadContext::arm_timer()
 
     itimerspec spec{
         .it_interval = {.tv_sec = 0, .tv_nsec = 0},
-        .it_value = {.tv_sec = 3, .tv_nsec = 0},
+        .it_value = {.tv_sec = 30, .tv_nsec = 0},
     };
 
     if (timerfd_settime(this->connect_timer_tfd, 0, &spec, NULL) < 0)
@@ -284,11 +283,6 @@ void ThreadContext::remove_epoll(int fd)
         this->io_cache.erase(edata);
     }
 }
-
-// void ThreadContext::accept_peer(Peer *peer)
-// {
-//     this->add_epoll(peer->fd, EPOLLIN | EPOLLET, EpollType::ClientPeerRecv, peer);
-// }
 
 EpollData *ThreadContext::epoll_by_fd(int fd)
 {
@@ -387,6 +381,8 @@ void client_connect_peer(Peer *peer)
         // todo: handle other errors?
         panic("failed to connect to peer: " + std::to_string(errno));
     }
+
+    std::cout << "client: " << peer->client->identity.as_string() << ": connecting to peer: " << peer->identity.as_string() << std::endl;
 
     peer->state = PeerState::Connecting;
     peer->client->thread->add_peer(peer);
@@ -539,6 +535,8 @@ void client_listener_event(Client *client)
         // it may be possible to accept the peer immediately
         if (result->completed())
         {
+            std::cout << "client_listener_event(): accepting peer immediately" << std::endl;
+
             auto peer = new Peer{
                 .client = client,
                 .identity = result->payload,
@@ -555,6 +553,8 @@ void client_listener_event(Client *client)
         }
         else
         {
+            std::cout << "client_listener_event(): accepting peer in progress" << std::endl;
+
             auto peer = new Peer{
                 .client = client,
                 .identity = {
@@ -576,12 +576,24 @@ void client_listener_event(Client *client)
 
 void client_peer_event_connecting(epoll_event *event)
 {
+    std::cout << "client_peer_event_connecting()" << std::endl;
+
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
     if (event->events & EPOLLERR || event->events & EPOLLHUP)
     {
-        std::cout << "client_peer_event_connecting(): unexpected disconnect" << std::endl;
+        int result;
+        socklen_t result_len = sizeof(result);
+        if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
+        {
+            // error, fail somehow, close socket
+            return;
+        }
+
+        std::cout << "client_peer_event_connecting(): unexpected disconnect: " << std::to_string(result) << std::endl;
+
+        // panic("unexpected disconnect");
 
         reconnect_peer(peer);
         return;
@@ -589,7 +601,7 @@ void client_peer_event_connecting(epoll_event *event)
 
     // this means that the socket has connected
     // start exchanging the identity
-    if (event->events & EPOLLOUT)
+    if (event->events & EPOLLOUT && !peer->write_op)
     {
         auto result = exchange_identity(peer->client, peer->fd);
 
@@ -604,6 +616,7 @@ void client_peer_event_connecting(epoll_event *event)
         {
             peer->identity = result->payload;
             peer->state = PeerState::Connected;
+            return;
         }
         else
         {
@@ -635,7 +648,6 @@ void client_peer_event_connecting(epoll_event *event)
         {
             peer->identity = op.payload;
             peer->state = PeerState::Connected;
-
             peer->read_op = std::nullopt;
         }
     }
@@ -643,6 +655,8 @@ void client_peer_event_connecting(epoll_event *event)
 
 void client_peer_event_connected(epoll_event *event)
 {
+    std::cout << "client_peer_event_connected()" << std::endl;
+
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
@@ -654,7 +668,7 @@ void client_peer_event_connected(epoll_event *event)
         return;
     }
 
-    if (event->events & EPOLLOUT)
+    if (event->events & EPOLLOUT && peer->write_op)
         resume_write(peer);
 
     if (event->events & EPOLLIN)
@@ -745,30 +759,34 @@ void resume_write(Peer *peer)
     }
 }
 
-void connect_timer_event(Peer *peer)
+void connect_timer_event(ThreadContext *ctx)
 {
-    auto ctx = peer->client->thread;
-
-    std::cout << "thread[" << ctx->id << "]: connect timer" << std::endl;
-
     // the timer is no longer armed
     ctx->timer_armed = false;
 
-    if (timerfd_read2(ctx->connect_timer_tfd) < 0)
+    for (;;)
     {
-        if (errno == EAGAIN)
-            return;
+        std::cout << "thread[" << ctx->id << "]: connect timer" << std::endl;
 
-        panic("failed to read from connect timer: " + std::to_string(errno));
+        if (timerfd_read2(ctx->connect_timer_tfd) < 0)
+        {
+            if (errno == EAGAIN)
+                break;
+
+            panic("failed to read from connect timer: " + std::to_string(errno));
+        }
+
+        if (!ctx->connecting.empty())
+        {
+            auto peer = ctx->connecting.back();
+            ctx->connecting.pop_back();
+
+            client_connect_peer(peer);
+        }
     }
 
-    while (!ctx->connecting.empty())
-    {
-        auto peer = ctx->connecting.back();
-        ctx->connecting.pop_back();
-
-        client_connect_peer(peer);
-    }
+    if (!ctx->connecting.empty() && !ctx->timer_armed)
+        ctx->arm_timer();
 }
 
 void control_event(ThreadContext *ctx)
@@ -861,7 +879,7 @@ void io_thread_main(ThreadContext *ctx)
             // an inproc client has received a message
             case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc);      break;
             case EpollType::ClientPeer:             client_peer_event(&event);                  break;
-            case EpollType::ConnectTimer:           connect_timer_event(data->peer);            break;
+            case EpollType::ConnectTimer:           connect_timer_event(ctx);                   break;
             case EpollType::Control:                control_event(ctx);                         break;
             case EpollType::Closed: { return; }
 
@@ -880,7 +898,6 @@ void session_init(Session *session, size_t num_threads)
         .threads = std::vector<ThreadContext>(),
         .inprocs = std::vector<IntraProcessClient *>(),
         .intraprocess_mutex = std::shared_mutex(),
-        .epoll_close_efd = eventfd(0, 0),
         .thread_rr = 0};
 
     // exactly size the vector to avoid reallocation
@@ -898,13 +915,15 @@ void session_init(Session *session, size_t num_threads)
             .control_queue = ConcurrentQueue<ControlRequest>(),
             .control_efd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
             .epoll_fd = epoll_create1(0),
-            .connect_timer_tfd = timerfd_create(CLOCK_MONOTONIC, 0),
+            .epoll_close_efd = eventfd(0, 0),
+
+            .connect_timer_tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK),
             .timer_armed = false,
         });
 
         auto ctx = &session->threads.back();
 
-        ctx->add_epoll(session->epoll_close_efd, EPOLLIN, EpollType::Closed, nullptr);
+        ctx->add_epoll(ctx->epoll_close_efd, EPOLLIN, EpollType::Closed, nullptr);
         ctx->add_epoll(ctx->control_efd, EPOLLIN, EpollType::Control, nullptr);
         ctx->add_epoll(ctx->connect_timer_tfd, EPOLLIN, EpollType::ConnectTimer, nullptr);
 
@@ -915,11 +934,13 @@ void session_init(Session *session, size_t num_threads)
 // this must be called after all registered clients have been destroyed
 void session_destroy(Session *session)
 {
-    if (eventfd_signal(session->epoll_close_efd) < 0)
-        panic("failed to write to eventfd: " + std::to_string(errno));
-
     for (auto &ctx : session->threads)
+    {
+        if (eventfd_signal(ctx.epoll_close_efd) < 0)
+            panic("failed to write to eventfd: " + std::to_string(errno));
+
         ctx.thread.join();
+    }
 
     // run destructor in-place without freeing memory (it's owned by Python)
     session->~Session();
