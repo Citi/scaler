@@ -2,6 +2,7 @@ import os
 import time
 import unittest
 
+from scaler.worker import worker
 from tests.utility import get_available_tcp_port, logging_test_name
 
 from scaler import Client, Cluster, SchedulerClusterCombo
@@ -31,7 +32,7 @@ class TestBalance(unittest.TestCase):
         combo = SchedulerClusterCombo(
             address=address,
             n_workers=1,
-            per_worker_queue_size=N_TASKS,
+            workers_queue_sizes=[N_TASKS for _ in range(0, N_TASKS)],
             load_balance_seconds=1,  # FIXME: re-enable balancing as it's currently disabled by default
         )
 
@@ -55,6 +56,7 @@ class TestBalance(unittest.TestCase):
             logging_paths=combo._cluster._logging_paths,
             logging_level=combo._cluster._logging_level,
             logging_config_file=combo._cluster._logging_config_file,
+            workers_queue_sizes=[N_TASKS for _ in range(0, N_WORKERS - 1)],
         )
         new_cluster.start()
 

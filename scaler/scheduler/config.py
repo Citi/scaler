@@ -9,7 +9,6 @@ class SchedulerConfig:
     address: ZMQConfig
     io_threads: int
     max_number_of_tasks_waiting: int
-    per_worker_queue_size: int
     client_timeout_seconds: int
     worker_timeout_seconds: int
     object_retention_seconds: int
