@@ -170,7 +170,7 @@ int eventfd_reset(int fd)
 enum FdWait : int8_t
 {
     Ready = 0,
-    Timeout = -1,
+    FdTimeout = -1,
     Other = -2,
 };
 
@@ -214,7 +214,7 @@ int8_t fd_wait(int fd, int timeout, short int events)
     if (n == 0)
     {
         close(signal_fd);
-        return (int8_t)FdWait::Timeout;
+        return (int8_t)FdWait::FdTimeout;
     }
 
     if (n < 0)

@@ -29,13 +29,13 @@ struct Session;
 #include "intra_process.h"
 
 void set_sock_opts(int fd);
-void accept_peer(ThreadContext *ctx, Peer *peer);
-void client_connect_peer(ThreadContext *ctx, Peer *peer);
+void accept_peer(Peer *peer);
+void client_connect_peer(Peer *peer);
 
 std::optional<ReadOperation> exchange_identity(Client *client, int fd);
 
-void resume_read(EpollData *data);
-void resume_write(EpollData *data);
+void peer_read(Peer *peer);
+void resume_write(Peer *peer);
 
 // epoll handlers
 void client_send_event(Client *client);
@@ -79,8 +79,6 @@ struct EpollData
 {
     int fd;
     EpollType type;
-    std::optional<ReadOperation> read;
-    std::optional<WriteOperation> write;
 
     union
     {
@@ -89,8 +87,6 @@ struct EpollData
         IntraProcessClient *inproc;
         Peer *peer;
     };
-
-    void reset();
 };
 
 ENUM ControlOperation : uint8_t{
@@ -127,11 +123,12 @@ struct ThreadContext
 
     void arm_timer();
     void add_client(Client *client);
+    void add_peer(Peer *peer);
     void remove_client(Client *client);
     void remove_peer(Peer *peer);
 
     // must be called on io-thread
-    EpollData *add_epoll(int fd, uint32_t flags, EpollType type, void *data);
+    void add_epoll(int fd, uint32_t flags, EpollType type, void *data);
 
     // must be called on io-thread
     void remove_epoll(int fd);
@@ -139,9 +136,6 @@ struct ThreadContext
     EpollData *epoll_by_fd(int fd);
 
     void control(ControlRequest request);
-
-    void save_write(Peer *peer, WriteOperation op);
-    void save_read(Peer *peer, ReadOperation op);
 
     void start();
 };
@@ -179,12 +173,6 @@ struct Session
 #if INCLUDE_DEFS
 
 // --- functions ---
-
-void EpollData::reset()
-{
-    this->read = std::nullopt;
-    this->write = std::nullopt;
-}
 
 std::string EpollType::as_string() const
 {
@@ -240,6 +228,11 @@ void ThreadContext::add_client(Client *client)
     this->add_epoll(client->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ClientRecv, client);
 }
 
+void ThreadContext::add_peer(Peer *peer)
+{
+    this->add_epoll(peer->fd, EPOLLIN | EPOLLOUT | EPOLLET, EpollType::ClientPeer, peer);
+}
+
 void ThreadContext::remove_client(Client *client)
 {
     this->remove_epoll(client->send_event_fd);
@@ -255,13 +248,11 @@ void ThreadContext::remove_peer(Peer *peer)
 }
 
 // must be called on io-thread
-EpollData *ThreadContext::add_epoll(int fd, uint32_t flags, EpollType type, void *data)
+void ThreadContext::add_epoll(int fd, uint32_t flags, EpollType type, void *data)
 {
     auto edata = new EpollData{
         .fd = fd,
         .type = type,
-        .read = std::nullopt,
-        .write = std::nullopt,
         .ptr = data,
     };
 
@@ -312,31 +303,31 @@ EpollData *ThreadContext::epoll_by_fd(int fd)
     return nullptr;
 }
 
-void ThreadContext::save_write(Peer *peer, WriteOperation op)
-{
-    auto edata = this->epoll_by_fd(peer->fd);
+// void ThreadContext::save_write(Peer *peer, WriteOperation op)
+// {
+//     auto edata = this->epoll_by_fd(peer->fd);
 
-    if (!edata)
-        panic("failed to find epoll data for peer");
+//     if (!edata)
+//         panic("failed to find epoll data for peer");
 
-    if (edata->write)
-        panic("write operation already in progress");
+//     if (edata->write)
+//         panic("write operation already in progress");
 
-    edata->write = op;
-}
+//     edata->write = op;
+// }
 
-void ThreadContext::save_read(Peer *peer, ReadOperation op)
-{
-    auto edata = this->epoll_by_fd(peer->fd);
+// void ThreadContext::save_read(Peer *peer, ReadOperation op)
+// {
+//     auto edata = this->epoll_by_fd(peer->fd);
 
-    if (!edata)
-        panic("failed to find epoll data for peer");
+//     if (!edata)
+//         panic("failed to find epoll data for peer");
 
-    if (edata->read)
-        panic("read operation already in progress");
+//     if (edata->read)
+//         panic("read operation already in progress");
 
-    edata->read = op;
-}
+//     edata->read = op;
+// }
 
 void ThreadContext::start()
 {
@@ -359,7 +350,7 @@ void set_sock_opts(int fd)
 // complete acceptance of peer
 // - add it to client's peer list
 // - register with thread ctx
-void accept_peer(ThreadContext *ctx, Peer *peer)
+void accept_peer(Peer *peer)
 {
     auto was_muted = peer->client->muted();
     peer->client->peers.push_back(peer);
@@ -367,14 +358,12 @@ void accept_peer(ThreadContext *ctx, Peer *peer)
     std::cout << "client: " << peer->client->identity.as_string() << ": connected peer: " << peer->identity.as_string() << std::endl;
 
     if (was_muted)
-    {
         peer->client->unmute();
-    }
-} 
+}
 
 // begin the connection process for a peer
 // the peer's fd will be overwritten with the new socket
-void client_connect_peer(ThreadContext *ctx, Peer *peer)
+void client_connect_peer(Peer *peer)
 {
     peer->fd = socket(peer->client->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
@@ -387,35 +376,20 @@ void client_connect_peer(ThreadContext *ctx, Peer *peer)
 
     auto res = connect(peer->fd, (sockaddr *)&peer->addr, sizeof(peer->addr));
 
-    if (res < 0)
-    {
-        // need to wait for the connection to complete
-        if (errno == EINPROGRESS)
-            return;
-
-        // todo: handle other errors?
-        panic("failed to connect to peer: " + std::to_string(errno));
-    }
-
     if (res == 0)
     {
         // theory: this doesn't happen on Linux
         panic("connect() returned immediately");
-
-        // the socket connected immediately
-        // auto result = exchange_identity(peer->client, peer->fd);
-        // if (!result)
-        // {
-        //     std::cout << "disconnect while exchanging identity (413)" << std::endl;
-
-        //     reconnect_peer(peer);
-        //     return;
-        // }
-
-        // peer->identity = *result;
-
-        // accept_peer(ctx, peer);
     }
+
+    if (res < 0 && errno != EINPROGRESS)
+    {
+        // todo: handle other errors?
+        panic("failed to connect to peer: " + std::to_string(errno));
+    }
+
+    peer->state = PeerState::Connecting;
+    peer->client->thread->add_peer(peer);
 }
 
 // epoll handlers
@@ -576,7 +550,8 @@ void client_listener_event(Client *client)
                 .write_op = std::nullopt,
             };
 
-            accept_peer(client->thread, peer);
+            client->thread->add_peer(peer);
+            accept_peer(peer);
         }
         else
         {
@@ -593,87 +568,164 @@ void client_listener_event(Client *client)
                 .write_op = std::nullopt,
             };
 
-            
+            // identity exchange is in progress
+            client->thread->add_peer(peer);
         }
     }
 }
 
-// void client_peer_recv_event(Peer *peer)
-// {
-//     for (;;)
-//     {
-//         auto result = read_message(peer->fd, true);
-
-//         if (result.tag == ReadMessage::NoData)
-//             break;
-
-//         // connection lost
-//         if (result.tag == ReadMessage::Disconnect || result.tag == ReadMessage::BadMagic)
-//         {
-//             std::cout << "disconnect while reading message" << std::endl;
-
-//             reconnect_peer(peer);
-//             break;
-//         }
-
-//         auto op = result.op;
-
-//         if (op.completed())
-//             peer->recv_msg(op.payload);
-//         else
-//             peer->save_read(op);
-//     }
-// }
-
-void client_peer_event(Peer *peer)
+void client_peer_event_connecting(epoll_event *event)
 {
+    auto edata = (EpollData *)event->data.ptr;
+    auto peer = edata->peer;
+
+    if (event->events & EPOLLERR || event->events & EPOLLHUP)
+    {
+        std::cout << "client_peer_event_connecting(): unexpected disconnect" << std::endl;
+
+        reconnect_peer(peer);
+        return;
+    }
+
+    // this means that the socket has connected
+    // start exchanging the identity
+    if (event->events & EPOLLOUT)
+    {
+        auto result = exchange_identity(peer->client, peer->fd);
+
+        if (!result)
+        {
+            std::cout << "disconnect while exchanging identity (596): " << std::to_string(peer->fd) << std::endl;
+            reconnect_peer(peer);
+            return;
+        }
+
+        if (result->completed())
+        {
+            peer->identity = result->payload;
+            peer->state = PeerState::Connected;
+        }
+        else
+        {
+            // if we didn't complete, save it and wait for the fd to become readable
+            peer->read_op = *result;
+        }
+    }
+
+    // we're connecting, so we should only be reading
+    // this is the first read, so we need to read the identity
+    if (event->events & EPOLLIN)
+    {
+        if (!peer->read_op)
+            panic("client_peer_event_connecting(): no read operation");
+
+        auto &op = *peer->read_op;
+        auto result = read_message(peer->fd, op);
+
+        if (result != ReadMessage::Read)
+        {
+            std::cout << "disconnect while resuming read" << std::endl;
+            reconnect_peer(peer);
+            return;
+        }
+
+        // set the identity and update the peer state
+        // also clear the read operation
+        if (op.completed())
+        {
+            peer->identity = op.payload;
+            peer->state = PeerState::Connected;
+
+            peer->read_op = std::nullopt;
+        }
+    }
 }
 
-void resume_read(EpollData *data)
+void client_peer_event_connected(epoll_event *event)
 {
-    auto peer = data->peer;
-    auto op = &*data->read;
+    auto edata = (EpollData *)event->data.ptr;
+    auto peer = edata->peer;
 
-    auto result = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, ReadConfig::SoftBlock, 2000);
-
-    if (result.tag == ReadResult::Disconnect || result.tag == ReadResult::Timeout)
+    if (event->events & EPOLLERR || event->events & EPOLLHUP)
     {
-        std::cout << "disconnect while resuming read" << std::endl;
+        std::cout << "client_peer_event_connected(): unexpected disconnect" << std::endl;
+
         reconnect_peer(peer);
+        return;
     }
-    else if (result.tag == ReadResult::Read)
-    {
-        op->cursor += result.n_bytes;
 
-        // if we're done, clear the read operation
-        if (op->completed())
-        {
-            Message message{
-                .address = peer->identity,
-                .payload = op->payload,
+    if (event->events & EPOLLOUT)
+        resume_write(peer);
+
+    if (event->events & EPOLLIN)
+        peer_read(peer);
+}
+
+void client_peer_event(epoll_event *event)
+{
+    auto edata = (EpollData *)event->data.ptr;
+    auto peer = edata->peer;
+
+    if (peer->state == PeerState::Disconnected)
+        panic("client_peer_event(): peer disconnected");
+
+    if (peer->state == PeerState::Connecting)
+        client_peer_event_connecting(event);
+    else if (peer->state == PeerState::Connected)
+        client_peer_event_connected(event);
+}
+
+void peer_read(Peer *peer)
+{
+    for (;;)
+    {
+        if (!peer->read_op)
+            peer->read_op = ReadOperation{
+                .progress = ReadProgress::Magic,
+                .cursor = 0,
+                .buffer = {0},
             };
 
-            peer->client->recv_msg(std::move(message));
+        auto op = &*peer->read_op;
 
-            // reset the read operation
-            data->read = std::nullopt;
+        auto result = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, ReadConfig::SoftBlock, 2000);
 
-            // in this case it's possible that the socket has more data
-            // we are edge-triggered, so it's important that we drain the socket
-            // jump to the normal event handler
-            client_peer_recv_event(peer);
+        if (result.tag == ReadResult::Disconnect || result.tag == ReadResult::Timeout)
+        {
+            std::cout << "disconnect while resuming read" << std::endl;
+            reconnect_peer(peer);
         }
-    }
-    else if (result.tag == ReadResult::NoData)
-    {
-        // no action needed
+        else if (result.tag == ReadResult::Read)
+        {
+            op->cursor += result.n_bytes;
+
+            // if we're done, clear the read operation
+            if (op->completed())
+            {
+                Message message{
+                    .address = peer->identity,
+                    .payload = op->payload,
+                };
+
+                peer->client->recv_msg(std::move(message));
+
+                // reset the read operation
+                peer->read_op = std::nullopt;
+
+                // continue loop
+            }
+        }
+        else if (result.tag == ReadResult::NoData)
+            break;
     }
 }
 
-void resume_write(EpollData *data)
+void resume_write(Peer *peer)
 {
-    auto peer = data->peer;
-    auto op = &*data->write;
+    if (!peer->write_op)
+        panic("resume_write(): no write operation");
+
+    auto op = &*peer->write_op;
 
     auto n_bytes = writeall(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, true);
 
@@ -689,7 +741,86 @@ void resume_write(EpollData *data)
 
         // if we're done, clear the write operation
         if (op->cursor == op->payload.len)
-            data->write = std::nullopt;
+            peer->write_op = std::nullopt;
+    }
+}
+
+void connect_timer_event(Peer *peer)
+{
+    auto ctx = peer->client->thread;
+
+    std::cout << "thread[" << ctx->id << "]: connect timer" << std::endl;
+
+    // the timer is no longer armed
+    ctx->timer_armed = false;
+
+    if (timerfd_read2(ctx->connect_timer_tfd) < 0)
+    {
+        if (errno == EAGAIN)
+            return;
+
+        panic("failed to read from connect timer: " + std::to_string(errno));
+    }
+
+    while (!ctx->connecting.empty())
+    {
+        auto peer = ctx->connecting.back();
+        ctx->connecting.pop_back();
+
+        client_connect_peer(peer);
+    }
+}
+
+void control_event(ThreadContext *ctx)
+{
+    for (;;)
+    {
+        if (eventfd_wait(ctx->control_efd) < 0)
+        {
+            if (errno == EAGAIN)
+                break;
+
+            panic("failed to read from control eventfd: " + std::to_string(errno));
+        }
+
+        // a control request has been received
+        ControlRequest request;
+        while (!ctx->control_queue.try_dequeue(request))
+            ; // wait
+
+        switch (request.op)
+        {
+        case ControlOperation::AddClient:
+            ctx->add_client(request.client);
+            break;
+        case ControlOperation::RemoveClient:
+            ctx->remove_client(request.client);
+            break;
+        case ControlOperation::Connect:
+        {
+            auto peer = new Peer{
+                .client = request.client,
+                .identity = {
+                    .data = nullptr,
+                    .len = 0,
+                },
+                .addr = *request.addr,
+                .type = PeerType::Connector,
+                .fd = -1, // a real fd will be assigned later
+                .state = PeerState::Disconnected,
+                .read_op = std::nullopt,
+                .write_op = std::nullopt,
+            };
+
+            client_connect_peer(peer);
+        }
+        break;
+        }
+
+        if (request.sem)
+            (*request.sem)->release();
+
+        continue;
     }
 }
 
@@ -718,202 +849,26 @@ void io_thread_main(ThreadContext *ctx)
 
         std::cout << "thread[" << ctx->id << "]: event: " << data->type.as_string() << std::endl;
 
-        if (data->type == EpollType::ConnectTimer)
+        // clang-format off
+        switch (data->type)
         {
-            std::cout << "thread[" << ctx->id << "]: connect timer" << std::endl;
+            // the client has issued a send() call
+            case EpollType::ClientSend:             client_send_event(data->client);            break;
+            // the client has issued a recv() call
+            case EpollType::ClientRecv:             client_recv_event(data->client);            break;
+            // we are bound and have a connection to accept
+            case EpollType::ClientListener:         client_listener_event(data->client);        break;
+            // an inproc client has received a message
+            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc);      break;
+            case EpollType::ClientPeer:             client_peer_event(&event);                  break;
+            case EpollType::ConnectTimer:           connect_timer_event(data->peer);            break;
+            case EpollType::Control:                control_event(ctx);                         break;
+            case EpollType::Closed: { return; }
 
-            // the timer is no longer armed
-            ctx->timer_armed = false;
-
-            if (timerfd_read2(ctx->connect_timer_tfd) < 0)
-            {
-                if (errno == EAGAIN)
-                    continue;
-
-                panic("failed to read from connect timer: " + std::to_string(errno));
-            }
-
-            while (!ctx->connecting.empty())
-            {
-                auto peer = ctx->connecting.back();
-                ctx->connecting.pop_back();
-
-                client_connect_peer(ctx, peer);
-            }
-
-            continue;
+            default:
+            panic("epoll: unexpected read event: " + data->type.as_string());
         }
-
-        if (data->type == EpollType::Control)
-        {
-            for (;;)
-            {
-                if (eventfd_wait(ctx->control_efd) < 0)
-                {
-                    if (errno == EAGAIN)
-                        break;
-
-                    panic("failed to read from control eventfd: " + std::to_string(errno));
-                }
-
-                // a control request has been received
-                ControlRequest request;
-                while (!ctx->control_queue.try_dequeue(request))
-                    ; // wait
-
-                switch (request.op)
-                {
-                case ControlOperation::AddClient:
-                    ctx->add_client(request.client);
-                    break;
-                case ControlOperation::RemoveClient:
-                    ctx->remove_client(request.client);
-                    break;
-                case ControlOperation::Connect:
-                {
-                    auto peer = new Peer{
-                        .client = request.client,
-                        .identity = {
-                            .data = nullptr,
-                            .len = 0,
-                        },
-                        .addr = *request.addr,
-                        .type = PeerType::Connector,
-                        // a real fd will be assigned later
-                        .fd = -1,
-                    };
-
-                    client_connect_peer(ctx, peer);
-                }
-                break;
-                }
-
-                if (request.sem)
-                    (*request.sem)->release();
-
-                continue;
-            }
-            continue;
-        }
-
-        if (data->type == EpollType::ClientPeer)
-        {
-            client_peer_event(data->peer);
-            continue;
-        }
-
-        if (data->type == EpollType::PeerConnecting)
-        {
-            // important to save this
-            auto peer = data->peer;
-            // this deallocates *data
-            ctx->remove_epoll(data->fd);
-
-            std::cout << "thread[" << ctx->id << "]: peer connected! " << std::to_string(data->peer->fd) << std::endl;
-
-            if (event.events & EPOLLERR || event.events & EPOLLHUP)
-            {
-                std::cout << "connection refused" << std::endl;
-
-                ctx->connecting.push_back(peer);
-
-                // don't bother arming the timer if it's already armed
-                if (!ctx->timer_armed)
-                    ctx->arm_timer();
-
-                return;
-            }
-
-            // the peer connection was in progress and has become writeable
-
-            int result;
-            socklen_t result_len;
-            if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
-            {
-                // close(data->fd);
-                // delete data->peer;
-
-                panic("failed to get socket error: " + std::to_string(peer->fd) + ": " + std::to_string(errno));
-            }
-
-            if (result == 0)
-            {
-                // success, peer is connected
-                auto result = exchange_identity(peer->client, peer->fd);
-                if (!result)
-                {
-                    std::cout << "disconnect while exchanging identity (790): " << std::to_string(peer->fd) << std::endl;
-                    reconnect_peer(peer);
-                    continue;
-                }
-
-                peer->identity = *result;
-
-                accept_peer(ctx, peer);
-
-                // we're edge-triggered so we need to check for more data
-                client_peer_recv_event(peer);
-            }
-            else
-                panic("failed to connect to peer: " + std::to_string(result));
-
-            continue;
-        }
-
-        if (data->type == EpollType::Closed)
-        {
-            // the session is closing
-            // todo: cleanup logic(?)
-            return;
-        }
-
-        if (event.events & EPOLLIN)
-        {
-            // clang-format off
-            switch (data->type)
-            {
-                // the client has issued a send() call
-                case EpollType::ClientSend:             client_send_event(data->client);            break;
-
-                // the client has issued a recv() call
-                case EpollType::ClientRecv:             client_recv_event(data->client);            break;
-
-                // we are bound and have a connection to accept
-                case EpollType::ClientListener:         client_listener_event(data->client);        break;
-
-                // an inproc client has received a message
-                case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc);      break;
-
-                // we have received a message from a peer
-                case EpollType::ClientPeerRecv:
-                {
-                    if (data->read)
-                    {
-                        resume_read(data);
-                        continue;
-                    }
-
-                    client_peer_recv_event(data->peer);
-                }
-                break;
-
-                default:
-                panic("epoll: unexpected read event: " + data->type.as_string());
-            }
-            // clang-format on
-        }
-
-        if (event.events & EPOLLOUT)
-        {
-            if (data->write)
-            {
-                resume_write(data);
-                continue;
-            }
-
-            // this is an error
-            panic("unexpected write event");
-        }
+        // clang-format on
     }
 }
 

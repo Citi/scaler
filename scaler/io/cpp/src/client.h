@@ -146,9 +146,6 @@ struct Peer
     std::optional<ReadOperation> read_op;   // the current read operation
     std::optional<WriteOperation> write_op; // the current write operation
 
-    void save_write(WriteOperation op);
-    void save_read(ReadOperation op);
-
     void recv_msg(Bytes payload);
 };
 
@@ -324,16 +321,6 @@ void Client::send(SendMessage send)
     }
 }
 
-void Peer::save_write(WriteOperation op)
-{
-    this->client->thread->save_write(this, op);
-}
-
-void Peer::save_read(ReadOperation op)
-{
-    this->client->thread->save_read(this, op);
-}
-
 void Peer::recv_msg(Bytes payload)
 {
     Message message{
@@ -371,7 +358,7 @@ void Peer::recv_msg(Bytes payload)
                     if (res == FdWait::Other)
                         panic("readexact(): poll failed: " + std::to_string(errno));
 
-                    if (res == FdWait::Timeout)
+                    if (res == FdWait::FdTimeout)
                     {
                         std::cout << "writeall(): timeout" << std::endl;
                         return std::nullopt;
@@ -430,15 +417,11 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
 
     // partial write, we need to resume later
     if (*n_bytes < payload.len)
-    {
-        auto op = WriteOperation{
+        peer->write_op = WriteOperation{
             .completer = completer,
             .payload = payload,
             .cursor = *n_bytes,
         };
-
-        peer->save_write(op);
-    }
 }
 
 [[nodiscard]] ReadResult readexact(int fd, uint8_t *buf, size_t len, ReadConfig config, int timeout)
@@ -473,7 +456,7 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
                     if (res == FdWait::Other)
                         panic("readexact(): poll failed: " + std::to_string(errno));
 
-                    if (res == FdWait::Timeout)
+                    if (res == FdWait::FdTimeout)
                         return {
                             .tag = ReadResult::Timeout,
                             .n_bytes = total,
@@ -605,7 +588,7 @@ void reconnect_peer(Peer *peer)
     if (peer->type == PeerType::Connector)
     {
         // todo: put a limit on the number of retries?
-        client_connect_peer(thread, peer);
+        client_connect_peer(peer);
     }
     else
     {
