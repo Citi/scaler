@@ -843,9 +843,9 @@ void client_recv_sync(struct Client *client, struct Message *msg)
         ; // wait
 }
 
-void client_destroy(struct Client *client)
+void client_destroy([[maybe_unused]] Client *client)
 {
-    panic("todo: implement client_destroy: " + client->identity.as_string());
+    // panic("todo: implement client_destroy: " + client->identity.as_string());
 }
 
 #endif

@@ -195,7 +195,7 @@ std::string EpollType::as_string() const
         return "Closed";
     }
 
-    panic("unreachable");
+    panic("unreachable: " + std::to_string(value));
 }
 
 void ThreadContext::control(ControlRequest request)
@@ -702,7 +702,7 @@ void peer_read(Peer *peer)
 
         auto op = &*peer->read_op;
 
-        auto result = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, ReadConfig::SoftBlock, 2000);
+        auto result = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, ReadConfig::Nonblock, 2000);
 
         if (result.tag == ReadResult::Disconnect || result.tag == ReadResult::Timeout)
         {
@@ -761,9 +761,6 @@ void resume_write(Peer *peer)
 
 void connect_timer_event(ThreadContext *ctx)
 {
-    // the timer is no longer armed
-    ctx->timer_armed = false;
-
     for (;;)
     {
         std::cout << "thread[" << ctx->id << "]: connect timer" << std::endl;
@@ -787,6 +784,8 @@ void connect_timer_event(ThreadContext *ctx)
 
     if (!ctx->connecting.empty() && !ctx->timer_armed)
         ctx->arm_timer();
+    else
+        ctx->timer_armed = false;
 }
 
 void control_event(ThreadContext *ctx)
