@@ -172,6 +172,7 @@ struct ReadResult
 
 ENUM ReadMessage : uint8_t{
                        Read,       // data was read
+                       Blocked,    // we might have read some data, but the fd blocked
                        Timeout,    // the read timed out
                        Disconnect, // the connection was lost
                        BadMagic,   // the magic didn't match
@@ -517,7 +518,7 @@ magic:
     op.cursor += result.n_bytes;
 
     if (op.cursor < 4)
-        return ReadMessage::Read;
+        return ReadMessage::Blocked;
 
     if (std::memcmp(op.buffer, MAGIC, 4) != 0)
         return ReadMessage::BadMagic;
@@ -539,7 +540,7 @@ header:
     op.cursor += result.n_bytes;
 
     if (op.cursor < 4)
-        return ReadMessage::Read;
+        return ReadMessage::Blocked;
 
     uint32_t len;
     deserialize_u32(op.buffer, &len);
@@ -567,8 +568,9 @@ payload:
 
     op.cursor += result.n_bytes;
 
-    // always the same return value
-    // the caller must check `op` to see if the message is complete
+    if (!op.completed())
+        return ReadMessage::Blocked;
+
     return ReadMessage::Read;
 }
 }

@@ -635,6 +635,10 @@ void client_peer_event_connecting(epoll_event *event)
         auto &op = *peer->read_op;
         auto result = read_message(peer->fd, op);
 
+        // maybe read data, but not enough to complete the operation
+        if (result == ReadMessage::Blocked)
+            return;
+
         if (result != ReadMessage::Read)
         {
             std::cout << "disconnect while resuming read" << std::endl;
@@ -644,12 +648,9 @@ void client_peer_event_connecting(epoll_event *event)
 
         // set the identity and update the peer state
         // also clear the read operation
-        if (op.completed())
-        {
-            peer->identity = op.payload;
-            peer->state = PeerState::Connected;
-            peer->read_op = std::nullopt;
-        }
+        peer->identity = op.payload;
+        peer->state = PeerState::Connected;
+        peer->read_op = std::nullopt;
     }
 }
 
@@ -669,10 +670,16 @@ void client_peer_event_connected(epoll_event *event)
     }
 
     if (event->events & EPOLLOUT && peer->write_op)
+    {
+        std::cout << "client_peer_event_connected(): resuming write" << std::endl;
         resume_write(peer);
+    }
 
     if (event->events & EPOLLIN)
+    {
+        std::cout << "client_peer_event_connected(): resuming read" << std::endl;
         peer_read(peer);
+    }
 }
 
 void client_peer_event(epoll_event *event)
@@ -702,35 +709,29 @@ void peer_read(Peer *peer)
 
         auto op = &*peer->read_op;
 
-        auto result = readexact(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, ReadConfig::Nonblock, 2000);
+        auto result = read_message(peer->fd, *op);
 
-        if (result.tag == ReadResult::Disconnect || result.tag == ReadResult::Timeout)
+        // maybe read data, but not enough to complete the operation
+        if (result == ReadMessage::Blocked)
+            break;
+
+        if (result != ReadMessage::Read)
         {
             std::cout << "disconnect while resuming read" << std::endl;
             reconnect_peer(peer);
         }
-        else if (result.tag == ReadResult::Read)
-        {
-            op->cursor += result.n_bytes;
 
-            // if we're done, clear the read operation
-            if (op->completed())
-            {
-                Message message{
-                    .address = peer->identity,
-                    .payload = op->payload,
-                };
+        Message message{
+            .address = peer->identity,
+            .payload = op->payload,
+        };
 
-                peer->client->recv_msg(std::move(message));
+        peer->client->recv_msg(std::move(message));
 
-                // reset the read operation
-                peer->read_op = std::nullopt;
+        // reset the read operation
+        peer->read_op = std::nullopt;
 
-                // continue loop
-            }
-        }
-        else if (result.tag == ReadResult::NoData)
-            break;
+        // continue loop
     }
 }
 
@@ -754,7 +755,7 @@ void resume_write(Peer *peer)
         op->cursor += *n_bytes;
 
         // if we're done, clear the write operation
-        if (op->cursor == op->payload.len)
+        if (op->completed())
             peer->write_op = std::nullopt;
     }
 }
