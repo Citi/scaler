@@ -267,6 +267,8 @@ void ThreadContext::add_epoll(int fd, uint32_t flags, EpollType type, void *data
 // must be called on io-thread
 void ThreadContext::remove_epoll(int fd)
 {
+    std::cout << "removing epoll fd: " << std::to_string(fd) << std::endl;
+
     if (epoll_ctl(this->epoll_fd, EPOLL_CTL_DEL, fd, NULL) < 0)
     {
         // we ignore enoent because it means the fd was already removed
@@ -279,7 +281,7 @@ void ThreadContext::remove_epoll(int fd)
 
     if (edata != this->io_cache.end())
     {
-        delete *edata;
+        // delete *edata;
         this->io_cache.erase(edata);
     }
 }
@@ -492,7 +494,9 @@ std::optional<ReadOperation> exchange_identity(Client *client, int fd)
         .buffer = {0},
     };
 
-    if (read_message(fd, op) != ReadMessage::Read)
+    auto result = read_message(fd, op);
+
+    if (result != ReadMessage::Read && result != ReadMessage::Blocked)
     {
         std::cout << "disconnect while reading identity" << std::endl;
         return std::nullopt;
@@ -522,55 +526,24 @@ void client_listener_event(Client *client)
 
         std::cout << "client: " << client->identity.as_string() << ": accepting connection: " << std::to_string(fd) << std::endl;
 
-        auto result = exchange_identity(client, fd);
+        // create the peer and add it to the epoll
+        // when it becomes writable the common logic
+        // will take care of exchanging the identity
+        // and all the other stuff
+        auto peer = new Peer{
+            .client = client,
+            .identity = {
+                .data = nullptr,
+                .len = 0},
+            .addr = addr,
+            .type = PeerType::Connectee,
+            .fd = fd,
+            .state = PeerState::Connecting,
+            .read_op = std::nullopt,
+            .write_op = std::nullopt,
+        };
 
-        if (!result)
-        {
-            std::cout << "client_listener_event(): disconnect while exchanging identity" << std::endl;
-
-            close(fd);
-            continue;
-        }
-
-        // it may be possible to accept the peer immediately
-        if (result->completed())
-        {
-            std::cout << "client_listener_event(): accepting peer immediately" << std::endl;
-
-            auto peer = new Peer{
-                .client = client,
-                .identity = result->payload,
-                .addr = addr,
-                .type = PeerType::Connectee,
-                .fd = fd,
-                .state = PeerState::Connected,
-                .read_op = std::nullopt,
-                .write_op = std::nullopt,
-            };
-
-            client->thread->add_peer(peer);
-            accept_peer(peer);
-        }
-        else
-        {
-            std::cout << "client_listener_event(): accepting peer in progress" << std::endl;
-
-            auto peer = new Peer{
-                .client = client,
-                .identity = {
-                    .data = nullptr,
-                    .len = 0},
-                .addr = addr,
-                .type = PeerType::Connectee,
-                .fd = fd,
-                .state = PeerState::Connecting,
-                .read_op = *result,
-                .write_op = std::nullopt,
-            };
-
-            // identity exchange is in progress
-            client->thread->add_peer(peer);
-        }
+        client->thread->add_peer(peer);
     }
 }
 
@@ -581,7 +554,14 @@ void client_peer_event_connecting(epoll_event *event)
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
-    if (event->events & EPOLLERR || event->events & EPOLLHUP)
+    if (event->events & EPOLLHUP) {
+        std::cout << "client_peer_event_connecting(): unexpected disconnect" << std::endl;
+
+        reconnect_peer(peer);
+        return;
+    }
+
+    if (event->events & EPOLLERR)
     {
         int result;
         socklen_t result_len = sizeof(result);
@@ -591,7 +571,7 @@ void client_peer_event_connecting(epoll_event *event)
             return;
         }
 
-        std::cout << "client_peer_event_connecting(): unexpected disconnect: " << std::to_string(result) << std::endl;
+        std::cout << "client_peer_event_connecting(): unexpected error: " << std::to_string(result) << std::endl;
 
         // panic("unexpected disconnect");
 

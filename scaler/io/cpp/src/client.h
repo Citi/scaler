@@ -467,11 +467,14 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
                 continue;
             }
 
-            if (errno == ECONNRESET || errno == EPIPE)
+            if (errno == ECONNRESET || errno == EPIPE) {
+                std::cout << "readexact(): ECONNRESET or EPIPE: " << std::to_string(errno) << std::endl;
+
                 return {
                     .tag = ReadResult::Disconnect,
                     .n_bytes = total,
                 };
+            }
 
             // todo: handle other errors?
             panic("read error: " + std::to_string(errno));
