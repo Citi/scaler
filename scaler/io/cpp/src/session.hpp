@@ -35,9 +35,6 @@ void client_connect_peer(Peer *peer);
 void read_identity(Peer *peer);
 void write_identity(Peer *peer);
 
-void peer_read(Peer *peer);
-void resume_write(Peer *peer);
-
 // epoll handlers
 void client_send_event(Client *client);
 void client_recv_event(Client *client);
@@ -213,7 +210,7 @@ void ThreadContext::arm_timer()
 
     itimerspec spec{
         .it_interval = {.tv_sec = 0, .tv_nsec = 0},
-        .it_value = {.tv_sec = 30, .tv_nsec = 0},
+        .it_value = {.tv_sec = 3, .tv_nsec = 0},
     };
 
     if (timerfd_settime(this->connect_timer_tfd, 0, &spec, NULL) < 0)
@@ -239,6 +236,7 @@ void ThreadContext::remove_client(Client *client)
     this->remove_epoll(client->recv_event_fd);
 }
 
+// this free's the peer's EpollData
 void ThreadContext::remove_peer(Peer *peer)
 {
     this->remove_epoll(peer->fd);
@@ -282,7 +280,7 @@ void ThreadContext::remove_epoll(int fd)
 
     if (edata != this->io_cache.end())
     {
-        // delete *edata;
+        delete *edata;
         this->io_cache.erase(edata);
     }
 }
@@ -482,6 +480,7 @@ void client_recv_event(Client *client)
     }
 }
 
+// may call reconnect_peer()
 void write_identity(Peer *peer)
 {
     if (peer->state != PeerState::WritingIdentity)
@@ -508,6 +507,7 @@ void write_identity(Peer *peer)
     }
 }
 
+// may call reconnect_peer()
 void read_identity(Peer *peer)
 {
     if (peer->state != PeerState::ReadingIdentity)
@@ -613,16 +613,63 @@ void client_peer_event_connected(epoll_event *event)
     if (event->events & EPOLLOUT && peer->write_op)
     {
         std::cout << "client_peer_event_connected(): resuming write" << std::endl;
-        resume_write(peer);
+
+        if (!peer->write_op)
+            panic("resume_write(): no write operation");
+
+        auto result = write_message(peer->fd, &*peer->write_op);
+
+        switch (result)
+        {
+        case WriteResult::Blocked1:
+            break;
+        case WriteResult::Disconnect1:
+            std::cout << "disconnect while resuming write" << std::endl;
+            reconnect_peer(peer);
+            return; // we need to go back to epoll_wait() after calling reconnect_peer()
+        case WriteResult::Done1:
+            peer->write_op->completer.complete();
+            peer->write_op = std::nullopt;
+        }
     }
 
     if (event->events & EPOLLIN)
     {
         std::cout << "client_peer_event_connected(): resuming read" << std::endl;
-        peer_read(peer);
+
+        for (;;)
+        {
+            if (!peer->read_op)
+                peer->read_op = IoOperation::read();
+
+            auto result = read_message(peer->fd, &*peer->read_op);
+
+            switch (result)
+            {
+            case ReadResult::Blocked2:
+                return; // return from fn, note: no way to break loop
+            case ReadResult::Disconnect2:
+            case ReadResult::BadMagic:
+                std::cout << "disconnect while resuming read" << std::endl;
+                reconnect_peer(peer);
+                return;
+            case ReadResult::Read:
+                Message message{
+                    .address = peer->identity,
+                    .payload = peer->read_op->payload,
+                };
+
+                peer->client->recv_msg(std::move(message));
+
+                // reset the read operation
+                peer->read_op->completer.complete();
+                peer->read_op = std::nullopt;
+            }
+        }
     }
 }
 
+// may call reconnect_peer()
 void client_peer_event(epoll_event *event)
 {
     auto edata = (EpollData *)event->data.ptr;
@@ -660,66 +707,11 @@ void client_peer_event(epoll_event *event)
         client_peer_event_connected(event);
 }
 
-void peer_read(Peer *peer)
-{
-    for (;;)
-    {
-        if (!peer->read_op)
-            peer->read_op = IoOperation::read();
-
-        auto result = read_message(peer->fd, &*peer->read_op);
-
-        switch (result)
-        {
-        case ReadResult::Blocked2:
-            return;
-        case ReadResult::Disconnect2:
-        case ReadResult::BadMagic:
-            std::cout << "disconnect while resuming read" << std::endl;
-            reconnect_peer(peer);
-            return;
-        case ReadResult::Read:
-            Message message{
-                .address = peer->identity,
-                .payload = peer->read_op->payload,
-            };
-
-            peer->client->recv_msg(std::move(message));
-
-            // reset the read operation
-            peer->read_op->completer.complete();
-            peer->read_op = std::nullopt;
-        }
-    }
-}
-
-void resume_write(Peer *peer)
-{
-    if (!peer->write_op)
-        panic("resume_write(): no write operation");
-
-    auto result = write_message(peer->fd, &*peer->write_op);
-
-    switch (result)
-    {
-    case WriteResult::Blocked1:
-        return;
-    case WriteResult::Disconnect1:
-
-        std::cout << "disconnect while resuming write" << std::endl;
-        reconnect_peer(peer);
-        return;
-    case WriteResult::Done1:
-        peer->write_op->completer.complete();
-        peer->write_op = std::nullopt;
-    }
-}
-
 void connect_timer_event(ThreadContext *ctx)
 {
-    for (;;)
+    for (int i = 0;; i++)
     {
-        std::cout << "thread[" << ctx->id << "]: connect timer" << std::endl;
+        std::cout << "thread[" << ctx->id << "]: connect timer; " << i << std::endl;
 
         if (timerfd_read2(ctx->connect_timer_tfd) < 0)
         {

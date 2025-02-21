@@ -423,6 +423,8 @@ void Peer::recv_msg(Bytes payload)
     panic("unreachable");
 }
 
+// note: peer may be in reconnecting state after calling this
+// the peer's EpollData may have been freed
 void write_to_peer(Peer *peer, Bytes payload, Completer completer)
 {
     auto op = IoOperation::write(payload, completer);
@@ -555,6 +557,8 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
     panic("unreachable");
 }
 
+// must return to epoll_wait() after ccalling this
+// this frees the peer's EpollData and deletes the *peer
 void reconnect_peer(Peer *peer)
 {
     auto client = peer->client;
@@ -569,11 +573,15 @@ void reconnect_peer(Peer *peer)
     // retry the connection if we're the connector
     if (peer->type == PeerType::Connector)
     {
-        // todo: put a limit on the number of retries?
-        // client_connect_peer(peer);
-
         auto thread = peer->client->thread;
 
+        free(peer->identity.data);
+        peer->identity = {
+            .data = nullptr,
+            .len = 0,
+        };
+
+        peer->fd = -1;
         peer->state = PeerState::Disconnected;
         thread->connecting.push_back(peer);
 

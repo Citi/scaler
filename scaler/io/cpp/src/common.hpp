@@ -124,14 +124,21 @@ void deserialize_u32(const uint8_t buffer[4], uint32_t *x)
 typedef uint64_t timerfd_t;
 
 // timerfd analogue of eventfd_read()
-int timerfd_read(int fd, timerfd_t *value)
+// 0 -> ok, read the value from the buffer
+// -1 -> error, check errno
+int timerfd_read(int fd, uint8_t *buffer)
 {
-    auto n = read(fd, value, sizeof(timerfd_t));
+    auto n = read(fd, buffer, sizeof(timerfd_t));
 
-    if (n > 0 && n != sizeof(timerfd_t))
-        return panic("failed to read timerfd: " + std::to_string(errno)), -1;
+    if (n > 0)
+    {
+        if (n != sizeof(timerfd_t))
+            panic("failed to read timerfd: " + std::to_string(errno));
 
-    return n;
+        return 0;
+    }
+
+    return -1;
 }
 
 // read a timerfd value and discard it
@@ -139,7 +146,7 @@ int timerfd_read(int fd, timerfd_t *value)
 int timerfd_read2(int fd)
 {
     timerfd_t value;
-    return timerfd_read(fd, &value);
+    return timerfd_read(fd, (uint8_t *)&value);
 }
 
 int eventfd_wait(int fd)
