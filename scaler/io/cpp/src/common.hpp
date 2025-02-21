@@ -282,7 +282,7 @@ struct Completer
     }
 };
 
-void Completer::complete(void *result)
+void Completer::complete(void *result = NULL)
 {
     switch (this->type)
     {

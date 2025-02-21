@@ -492,18 +492,20 @@ void write_identity(Peer *peer)
 
     auto result = write_message(peer->fd, &*peer->write_op);
 
-    if (result == WriteResult::Disconnect1)
+    switch (result)
     {
+    case WriteResult::Done1:
+        peer->state = PeerState::ReadingIdentity;
+        peer->write_op->completer.complete();
+        peer->write_op = std::nullopt;
+        return;
+    case WriteResult::Disconnect1:
         std::cout << "disconnect while writing identity" << std::endl;
         reconnect_peer(peer);
         return;
-    }
-
-    if (result == WriteResult::Blocked1)
+    case WriteResult::Blocked1:
         return;
-
-    peer->state = PeerState::ReadingIdentity;
-    peer->write_op = std::nullopt;
+    }
 }
 
 void read_identity(Peer *peer)
@@ -516,22 +518,24 @@ void read_identity(Peer *peer)
 
     auto result = read_message(peer->fd, &*peer->read_op);
 
-    if (result == ReadResult::Disconnect2)
+    switch (result)
     {
+    case ReadResult::Blocked2:
+        return;
+    case ReadResult::Disconnect2:
+    case ReadResult::BadMagic:
         std::cout << "disconnect while reading identity" << std::endl;
         reconnect_peer(peer);
         return;
+
+    case ReadResult::Read:
+        peer->identity = peer->read_op->payload;
+        peer->state = PeerState::Connected;
+        peer->read_op->completer.complete();
+        peer->read_op = std::nullopt;
+
+        std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
     }
-
-    if (result == ReadResult::Blocked2)
-        return;
-
-    // set the peer's identity
-    peer->identity = peer->read_op->payload;
-    peer->state = PeerState::Connected;
-    peer->read_op = std::nullopt;
-
-    std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
 }
 
 void client_listener_event(Client *client)
@@ -683,6 +687,7 @@ void peer_read(Peer *peer)
             peer->client->recv_msg(std::move(message));
 
             // reset the read operation
+            peer->read_op->completer.complete();
             peer->read_op = std::nullopt;
         }
     }
@@ -705,6 +710,7 @@ void resume_write(Peer *peer)
         reconnect_peer(peer);
         return;
     case WriteResult::Done1:
+        peer->write_op->completer.complete();
         peer->write_op = std::nullopt;
     }
 }
