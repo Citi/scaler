@@ -387,7 +387,8 @@ void client_connect_peer(Peer *peer)
 
     std::cout << "client: " << peer->client->identity.as_string() << ": connecting to peer: " << peer->identity.as_string() << std::endl;
 
-    peer->state = PeerState::Connecting;
+    // when the socket connects we need to write the identity
+    peer->state = PeerState::WritingIdentity;
     peer->client->thread->add_peer(peer);
 }
 
@@ -483,9 +484,7 @@ void client_recv_event(Client *client)
 
 void write_identity(Peer *peer)
 {
-    if (peer->state == PeerState::Connecting)
-        peer->state = PeerState::WritingIdentity; // we connected, now we need to write the identity
-    else if (peer->state != PeerState::WritingIdentity)
+    if (peer->state != PeerState::WritingIdentity)
         panic("write_identity(): peer not in WritingIdentity state");
 
     if (!peer->write_op)
@@ -531,6 +530,8 @@ void read_identity(Peer *peer)
     peer->identity = peer->read_op->payload;
     peer->state = PeerState::Connected;
     peer->read_op = std::nullopt;
+
+    std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
 }
 
 void client_listener_event(Client *client)
@@ -566,7 +567,8 @@ void client_listener_event(Client *client)
             .addr = addr,
             .type = PeerType::Connectee,
             .fd = fd,
-            .state = PeerState::Connecting,
+            // when the socket connects we need to write the identity
+            .state = PeerState::WritingIdentity,
             .read_op = std::nullopt,
             .write_op = std::nullopt,
         };
@@ -575,41 +577,24 @@ void client_listener_event(Client *client)
     }
 }
 
-void client_peer_event_connecting(epoll_event *event)
+void client_peer_event_write_identity(epoll_event *event)
 {
-    std::cout << "client_peer_event_connecting()" << std::endl;
+    std::cout << "client_peer_event_write_identity()" << std::endl;
 
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
-    if (event->events & EPOLLHUP)
-    {
-        std::cout << "client_peer_event_connecting(): unexpected disconnect" << std::endl;
-
-        reconnect_peer(peer);
-        return;
-    }
-
-    if (event->events & EPOLLERR)
-    {
-        int result;
-        socklen_t result_len = sizeof(result);
-        if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
-            panic("failed to getsockopt: " + std::to_string(errno));
-
-        std::cout << "client_peer_event_connecting(): unexpected error: " << std::to_string(result) << std::endl;
-
-        reconnect_peer(peer);
-        return;
-    }
-
-    // this means that the socket has connected
-    // start exchanging the identity
     if (event->events & EPOLLOUT)
         write_identity(peer);
+}
 
-    // we're connecting, so we should only be reading
-    // this is the first read, so we need to read the identity
+void client_peer_event_read_identity(epoll_event *event)
+{
+    std::cout << "client_peer_event_read_identity()" << std::endl;
+
+    auto edata = (EpollData *)event->data.ptr;
+    auto peer = edata->peer;
+
     if (event->events & EPOLLIN)
         read_identity(peer);
 }
@@ -620,14 +605,6 @@ void client_peer_event_connected(epoll_event *event)
 
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
-
-    if (event->events & EPOLLERR || event->events & EPOLLHUP)
-    {
-        std::cout << "client_peer_event_connected(): unexpected disconnect" << std::endl;
-
-        reconnect_peer(peer);
-        return;
-    }
 
     if (event->events & EPOLLOUT && peer->write_op)
     {
@@ -647,11 +624,34 @@ void client_peer_event(epoll_event *event)
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
-    if (peer->state == PeerState::Disconnected)
-        panic("client_peer_event(): peer disconnected");
+    if (event->events & EPOLLHUP)
+    {
+        std::cout << "client_peer_event(): unexpected hangup" << std::endl;
 
-    if (peer->state == PeerState::Connecting)
-        client_peer_event_connecting(event);
+        reconnect_peer(peer);
+        return;
+    }
+
+    if (event->events & EPOLLERR)
+    {
+        int result;
+        socklen_t result_len = sizeof(result);
+        if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
+            panic("failed to getsockopt: " + std::to_string(errno));
+
+        std::cout << "client_peer_event(): unexpected error: " << std::to_string(result) << std::endl;
+
+        reconnect_peer(peer);
+        return;
+    }
+
+    if (peer->state == PeerState::Disconnected)
+        panic("client_peer_event(): peer is disconnected");
+
+    if (peer->state == PeerState::WritingIdentity)
+        client_peer_event_write_identity(event);
+    else if (peer->state == PeerState::ReadingIdentity)
+        client_peer_event_read_identity(event);
     else if (peer->state == PeerState::Connected)
         client_peer_event_connected(event);
 }

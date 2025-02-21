@@ -127,7 +127,6 @@ ENUM PeerType : uint8_t{
                     Connectee};
 
 ENUM PeerState : uint8_t{
-                     Connecting,
                      WritingIdentity,
                      ReadingIdentity,
                      Connected,
