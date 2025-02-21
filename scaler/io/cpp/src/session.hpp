@@ -32,14 +32,15 @@ void set_sock_opts(int fd);
 void accept_peer(Peer *peer);
 void client_connect_peer(Peer *peer);
 
-void read_identity(Peer *peer);
-void write_identity(Peer *peer);
+bool read_identity(Peer *peer);
+bool write_identity(Peer *peer);
 
 // epoll handlers
 void client_send_event(Client *client);
 void client_recv_event(Client *client);
 void client_listener_event(Client *client);
-void client_peer_recv_event(Peer *peer);
+void client_peer_event_connecting(epoll_event *event);
+void client_peer_event_connected(epoll_event *event);
 void intraprocess_recv_event(IntraProcessClient *client);
 
 void io_thread_main(ThreadContext *ctx);
@@ -385,8 +386,13 @@ void client_connect_peer(Peer *peer)
 
     std::cout << "client: " << peer->client->identity.as_string() << ": connecting to peer: " << peer->identity.as_string() << std::endl;
 
-    // when the socket connects we need to write the identity
-    peer->state = PeerState::WritingIdentity;
+    // set peer states
+    peer->state = PeerState::Connecting;
+    // write our identity
+    peer->write_op = IoOperation::write(peer->client->identity);
+    // read the peer's identity
+    peer->read_op = IoOperation::read();
+
     peer->client->thread->add_peer(peer);
 }
 
@@ -481,53 +487,49 @@ void client_recv_event(Client *client)
 }
 
 // may call reconnect_peer()
-void write_identity(Peer *peer)
+// true -> ok
+// false -> disconnected
+bool write_identity(Peer *peer)
 {
-    if (peer->state != PeerState::WritingIdentity)
-        panic("write_identity(): peer not in WritingIdentity state");
-
-    if (!peer->write_op)
-        peer->write_op = IoOperation::write(peer->client->identity);
-
     auto result = write_message(peer->fd, &*peer->write_op);
 
     switch (result)
     {
     case WriteResult::Done1:
-        peer->state = PeerState::ReadingIdentity;
         peer->write_op->completer.complete();
         peer->write_op = std::nullopt;
-        return;
+        std::cout << "client: " << peer->client->identity.as_string() << ": wrote identity to peer: " << peer->identity.as_string() << std::endl;
+        return true;
     case WriteResult::Disconnect1:
         std::cout << "disconnect while writing identity" << std::endl;
         reconnect_peer(peer);
-        return;
+        return false;
     case WriteResult::Blocked1:
-        return;
+        return true;
     }
+
+    panic("unreachable");
 }
 
 // may call reconnect_peer()
-void read_identity(Peer *peer)
+// true -> ok
+// false -> disconnected
+bool read_identity(Peer *peer)
 {
-    if (peer->state != PeerState::ReadingIdentity)
-        panic("read_identity(): peer not in ReadingIdentity state");
-
-    if (!peer->read_op)
-        peer->read_op = IoOperation::read();
-
     auto result = read_message(peer->fd, &*peer->read_op);
 
     switch (result)
     {
     case ReadResult::Blocked2:
-        return;
-    case ReadResult::Disconnect2:
+        return true;
     case ReadResult::BadMagic:
+        std::cout << "bad magic while reading identity" << std::endl;
+        reconnect_peer(peer);
+        return false;
+    case ReadResult::Disconnect2:
         std::cout << "disconnect while reading identity" << std::endl;
         reconnect_peer(peer);
-        return;
-
+        return false ;
     case ReadResult::Read:
         peer->identity = peer->read_op->payload;
         peer->state = PeerState::Connected;
@@ -535,7 +537,10 @@ void read_identity(Peer *peer)
         peer->read_op = std::nullopt;
 
         std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
+        return true;
     }
+
+    panic("unreachable");
 }
 
 void client_listener_event(Client *client)
@@ -571,36 +576,36 @@ void client_listener_event(Client *client)
             .addr = addr,
             .type = PeerType::Connectee,
             .fd = fd,
-            // when the socket connects we need to write the identity
-            .state = PeerState::WritingIdentity,
-            .read_op = std::nullopt,
-            .write_op = std::nullopt,
+            // connecting state
+            .state = PeerState::Connecting,
+            // we need to read the peer's identity
+            .read_op = IoOperation::read(),
+            // we need to write our identity
+            .write_op = IoOperation::write(client->identity),
         };
 
         client->thread->add_peer(peer);
     }
 }
 
-void client_peer_event_write_identity(epoll_event *event)
+void client_peer_event_connecting(epoll_event *event)
 {
-    std::cout << "client_peer_event_write_identity()" << std::endl;
+    auto data = (EpollData *)event->data.ptr;
+    auto peer = data->peer;
 
-    auto edata = (EpollData *)event->data.ptr;
-    auto peer = edata->peer;
+    if (event->events & EPOLLIN && peer->read_op)
+        if (!read_identity(peer))
+            return;
 
-    if (event->events & EPOLLOUT)
-        write_identity(peer);
-}
+    if (event->events & EPOLLOUT && peer->write_op)
+        if (!write_identity(peer))
+            return;
 
-void client_peer_event_read_identity(epoll_event *event)
-{
-    std::cout << "client_peer_event_read_identity()" << std::endl;
-
-    auto edata = (EpollData *)event->data.ptr;
-    auto peer = edata->peer;
-
-    if (event->events & EPOLLIN)
-        read_identity(peer);
+    // check if we're done
+    if (!peer->read_op && !peer->write_op) {
+        std::cout << "client_peer_event_connecting(): CONNECTED" << std::endl;
+        peer->state = PeerState::Connected;
+    }
 }
 
 void client_peer_event_connected(epoll_event *event)
@@ -699,10 +704,8 @@ void client_peer_event(epoll_event *event)
     if (peer->state == PeerState::Disconnected)
         panic("client_peer_event(): peer is disconnected");
 
-    if (peer->state == PeerState::WritingIdentity)
-        client_peer_event_write_identity(event);
-    else if (peer->state == PeerState::ReadingIdentity)
-        client_peer_event_read_identity(event);
+    if (peer->state == PeerState::Connecting)
+        client_peer_event_connecting(event);
     else if (peer->state == PeerState::Connected)
         client_peer_event_connected(event);
 }

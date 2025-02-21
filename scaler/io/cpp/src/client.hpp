@@ -127,8 +127,7 @@ ENUM PeerType : uint8_t{
                     Connectee};
 
 ENUM PeerState : uint8_t{
-                     WritingIdentity,
-                     ReadingIdentity,
+                     Connecting,
                      Connected,
                      Disconnected,
                  };
@@ -510,7 +509,7 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
         if (result.tag == IoResult::Blocked)
             return ReadResult::Blocked2;
 
-        if (!std::memcmp((char *)op->buffer, MAGIC, 4))
+        if (std::memcmp((char *)op->buffer, MAGIC, 4) != 0)
             return ReadResult::BadMagic;
 
         op->progress = IoProgress::Header;
