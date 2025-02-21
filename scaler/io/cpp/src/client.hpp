@@ -19,7 +19,7 @@
 #include "third_party/concurrentqueue.h"
 
 // Common
-#include "common.h"
+#include "common.hpp"
 
 using moodycamel::ConcurrentQueue;
 
@@ -27,22 +27,21 @@ using moodycamel::ConcurrentQueue;
 
 struct Client;
 struct Peer;
-struct SendMessage;
-struct ReadResult;
-ENUM ReadMessage : uint8_t;
-ENUM ReadConfig : uint8_t;
+struct IoResult;
+ENUM ReadResult : uint8_t;
+ENUM WriteResult : uint8_t;
 ENUM PeerType : uint8_t;
 ENUM ConnectorType : uint8_t;
 ENUM Transport : uint8_t;
 ENUM PeerState : uint8_t;
 
 // First-party
-#include "session.h"
+#include "session.hpp"
 
-[[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking);
-[[nodiscard]] std::optional<size_t> write_message(int fd, Bytes *payload, bool nonblocking);
-[[nodiscard]] ReadResult readexact(int fd, uint8_t *buf, size_t len, ReadConfig config, int timeout);
-[[nodiscard]] ReadMessage read_message(int fd, ReadOperation &op);
+[[nodiscard]] IoResult writeall(int fd, uint8_t *data, size_t len);
+[[nodiscard]] WriteResult write_message(int fd, IoOperation *op);
+[[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len);
+[[nodiscard]] ReadResult read_message(int fd, IoOperation *op);
 
 void write_to_peer(Peer *peer, Bytes payload, Completer completer);
 void reconnect_peer(Peer *peer);
@@ -129,6 +128,8 @@ ENUM PeerType : uint8_t{
 
 ENUM PeerState : uint8_t{
                      Connecting,
+                     WritingIdentity,
+                     ReadingIdentity,
                      Connected,
                      Disconnected,
                  };
@@ -143,40 +144,35 @@ struct Peer
 
     PeerState state; // the state of the peer
 
-    std::optional<ReadOperation> read_op;   // the current read operation
-    std::optional<WriteOperation> write_op; // the current write operation
+    std::optional<IoOperation> read_op;  // the current read operation
+    std::optional<IoOperation> write_op; // the current write operation
 
     void recv_msg(Bytes payload);
 };
 
-ENUM ReadConfig : uint8_t{
-                      Nonblock,  // read will return immediately if the fd blocks
-                      HardBlock, // read will block until all data is read, or timeout
-                      SoftBlock, // read will block until all data is read, or exit with NoData if the fd blocks before any data is read
-                  };
-
-struct ReadResult
+struct IoResult
 {
-    // the type of result
     ENUM Tag{
-        Read,       // successfully read all bytes (all)
-        Blocked,    // nonblocking read blocked (nonblocking)
-        Timeout,    // the read timed out (softblock or hardblock)
-        Disconnect, // the connection was lost (all)
-        NoData,     // there was no data available (EAGAIN || EWOULDBLOCK) (softblock)
+        Done,       // the read or write is complete
+        Blocked,    // the operation blocked, but some progress may have been made
+        Disconnect, // the connection was lost
     } tag;
 
-    // always valid
     size_t n_bytes;
 };
 
-ENUM ReadMessage : uint8_t{
-                       Read,       // data was read
-                       Blocked,    // we might have read some data, but the fd blocked
-                       Timeout,    // the read timed out
-                       Disconnect, // the connection was lost
-                       BadMagic,   // the magic didn't match
+ENUM WriteResult : uint8_t{
+                       Done1,       // the read or write is complete
+                       Blocked1,    // the operation blocked, but some progress may have been made
+                       Disconnect1, // the connection was lost
                    };
+
+ENUM ReadResult : uint8_t{
+                      Read,        // data was read
+                      Blocked2,    // we might have read some data, but the fd blocked
+                      Disconnect2, // the connection was lost
+                      BadMagic,    // the magic didn't match
+                  };
 
 #endif
 #if INCLUDE_DEFS
@@ -336,7 +332,7 @@ void Peer::recv_msg(Bytes payload)
 // - returns the number of bytes written or empty if the connection was lost
 // - if nonblocking is true, the function will return immediately if the fd blocks (EAGAIN or EWOULDBLOCK)
 //   otherwise, the function will block until all data is written
-[[nodiscard]] std::optional<size_t> writeall(int fd, uint8_t *data, size_t len, bool nonblocking)
+[[nodiscard]] IoResult writeall(int fd, uint8_t *data, size_t len)
 {
     size_t total = 0;
 
@@ -347,32 +343,16 @@ void Peer::recv_msg(Bytes payload)
         if (n < 0)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                if (nonblocking)
-                    return total;
+                return {
+                    .tag = IoResult::Blocked,
+                    .n_bytes = total,
+                };
 
-                if (auto res = fd_wait(fd, 2000, POLLOUT))
-                {
-                    if (res > 0)
-                        panic("readexact(): received signal: " + std::to_string(res));
-
-                    if (res == FdWait::Other)
-                        panic("readexact(): poll failed: " + std::to_string(errno));
-
-                    if (res == FdWait::FdTimeout)
-                    {
-                        std::cout << "writeall(): timeout" << std::endl;
-                        return std::nullopt;
-                    }
-                }
-            }
-
-            // this is a disconnect
             if (errno == EPIPE || errno == ECONNRESET)
-            {
-                std::cout << "writeall(): EPIPE or ECONNRESET" << std::endl;
-                return std::nullopt;
-            }
+                return {
+                    .tag = IoResult::Disconnect,
+                    .n_bytes = total,
+                };
 
             // todo: handle other errors?
             panic("write error: " + std::to_string(errno));
@@ -381,51 +361,98 @@ void Peer::recv_msg(Bytes payload)
         total += n;
     }
 
-    return total;
+    return {
+        .tag = IoResult::Done,
+        .n_bytes = total,
+    };
 }
 
-// returns the number of payload bytes written or empty if the connection was lost
-// blocks until message and header are written
-// if nonblocking is true, the function will return immediately if the fd blocks (EAGAIN or EWOULDBLOCK)
-// otherwise, the function will block until all data is written
-[[nodiscard]] std::optional<size_t> write_message(int fd, Bytes *payload, bool nonblocking)
+[[nodiscard]] WriteResult write_message(int fd, IoOperation *op)
 {
-    if (!writeall(fd, MAGIC, 4, false))
-        return std::nullopt;
+    switch (op->progress)
+    {
+    case IoProgress::Magic:
+    {
+        auto result = writeall(fd, MAGIC + op->cursor, 4 - op->cursor);
+        op->cursor += result.n_bytes;
 
-    uint8_t header[4];
-    serialize_u32(htonl((uint32_t)payload->len), header);
+        if (result.tag == IoResult::Disconnect)
+            return WriteResult::Disconnect1;
 
-    if (!writeall(fd, header, 4, false))
-        return std::nullopt;
+        if (result.tag == IoResult::Blocked)
+            return WriteResult::Blocked1;
 
-    return writeall(fd, payload->data, payload->len, nonblocking);
+        op->progress = IoProgress::Header;
+        op->cursor = 0;
+    }
+        [[fallthrough]];
+    case IoProgress::Header:
+    {
+        // serialize the header
+        // this may happen multiple times if we get blocked
+        uint8_t header[4];
+        serialize_u32(htonl((uint32_t)op->payload.len), header);
+
+        auto result = writeall(fd, header + op->cursor, 4 - op->cursor);
+        op->cursor += result.n_bytes;
+
+        if (result.tag == IoResult::Disconnect)
+            return WriteResult::Disconnect1;
+
+        if (result.tag == IoResult::Blocked)
+            return WriteResult::Blocked1;
+
+        op->progress = IoProgress::Payload;
+        op->cursor = 0;
+    }
+        [[fallthrough]];
+    case IoProgress::Payload:
+    {
+        auto result = writeall(fd, op->payload.data + op->cursor, op->payload.len - op->cursor);
+        op->cursor += result.n_bytes;
+
+        if (result.tag == IoResult::Disconnect)
+            return WriteResult::Disconnect1;
+
+        if (result.tag == IoResult::Blocked)
+            return WriteResult::Blocked1;
+
+        return WriteResult::Done1;
+    }
+    }
+
+    panic("unreachable");
 }
 
-// perform a non-blocking write to a peer
 void write_to_peer(Peer *peer, Bytes payload, Completer completer)
 {
-    auto n_bytes = write_message(peer->fd, &payload, true);
+    auto op = IoOperation::write(payload, completer);
+    auto result = write_message(peer->fd, &op);
 
-    // disconnect
-    if (!n_bytes)
+    switch (result)
+    {
+    case WriteResult::Disconnect1:
     {
         std::cout << "write_to_peer(): disconnect" << std::endl;
 
         reconnect_peer(peer);
         return;
     }
-
-    // partial write, we need to resume later
-    if (*n_bytes < payload.len)
-        peer->write_op = WriteOperation{
-            .completer = completer,
-            .payload = payload,
-            .cursor = *n_bytes,
-        };
+    case WriteResult::Blocked1:
+    {
+        // save the write operation
+        peer->write_op = op;
+        return;
+    }
+    case WriteResult::Done1:
+    {
+        // the write is complete
+        break;
+    }
+    }
 }
 
-[[nodiscard]] ReadResult readexact(int fd, uint8_t *buf, size_t len, ReadConfig config, int timeout)
+[[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len)
 {
     size_t total = 0;
 
@@ -436,45 +463,16 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
         if (n < 0)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                if (config == ReadConfig::Nonblock)
-                    return {
-                        .tag = ReadResult::Blocked,
-                        .n_bytes = total,
-                    };
-
-                if (config == ReadConfig::SoftBlock && total == 0)
-                    return {
-                        .tag = ReadResult::NoData,
-                        .n_bytes = total,
-                    };
-
-                if (auto res = fd_wait(fd, timeout, POLLIN))
-                {
-                    if (res > 0)
-                        panic("readexact(): received signal: " + std::to_string(res));
-
-                    if (res == FdWait::Other)
-                        panic("readexact(): poll failed: " + std::to_string(errno));
-
-                    if (res == FdWait::FdTimeout)
-                        return {
-                            .tag = ReadResult::Timeout,
-                            .n_bytes = total,
-                        };
-                }
-
-                continue;
-            }
-
-            if (errno == ECONNRESET || errno == EPIPE) {
-                std::cout << "readexact(): ECONNRESET or EPIPE: " << std::to_string(errno) << std::endl;
-
                 return {
-                    .tag = ReadResult::Disconnect,
+                    .tag = IoResult::Blocked,
                     .n_bytes = total,
                 };
-            }
+
+            if (errno == ECONNRESET || errno == EPIPE)
+                return {
+                    .tag = IoResult::Disconnect,
+                    .n_bytes = total,
+                };
 
             // todo: handle other errors?
             panic("read error: " + std::to_string(errno));
@@ -483,7 +481,7 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
         // graceful disconnect
         if (n == 0)
             return {
-                .tag = ReadResult::Disconnect,
+                .tag = IoResult::Disconnect,
                 .n_bytes = total,
             };
 
@@ -491,91 +489,71 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
     }
 
     return {
-        .tag = ReadResult::Read,
+        .tag = IoResult::Done,
         .n_bytes = total,
     };
 }
 
-[[nodiscard]] ReadMessage read_message(int fd, ReadOperation &op)
+[[nodiscard]] ReadResult read_message(int fd, IoOperation *op)
 {
-    switch (op.progress)
+    switch (op->progress)
     {
-    case ReadProgress::Magic:
-        goto magic;
-    case ReadProgress::Header:
-        goto header;
-    case ReadProgress::Payload:
-        goto payload;
+    case IoProgress::Magic:
+    {
+        auto result = readexact(fd, op->buffer + op->cursor, 4 - op->cursor);
+        op->cursor += result.n_bytes;
+
+        if (result.tag == IoResult::Disconnect)
+            return ReadResult::Disconnect2;
+
+        if (result.tag == IoResult::Blocked)
+            return ReadResult::Blocked2;
+
+        if (!std::memcmp((char *)op->buffer, MAGIC, 4))
+            return ReadResult::BadMagic;
+
+        op->progress = IoProgress::Header;
+        op->cursor = 0;
+    }
+        [[fallthrough]];
+    case IoProgress::Header:
+    {
+        auto result = readexact(fd, op->buffer + op->cursor, 4 - op->cursor);
+        op->cursor += result.n_bytes;
+
+        if (result.tag == IoResult::Disconnect)
+            return ReadResult::Disconnect2;
+
+        if (result.tag == IoResult::Blocked)
+            return ReadResult::Blocked2;
+
+        uint32_t len;
+        deserialize_u32(op->buffer, &len);
+        len = ntohl(len);
+
+        op->progress = IoProgress::Payload;
+        op->cursor = 0;
+        op->payload = Bytes{
+            .data = (uint8_t *)malloc(len),
+            .len = len,
+        };
+    }
+        [[fallthrough]];
+    case IoProgress::Payload:
+    {
+        auto result = readexact(fd, op->payload.data + op->cursor, op->payload.len - op->cursor);
+        op->cursor += result.n_bytes;
+
+        if (result.tag == IoResult::Disconnect)
+            return ReadResult::Disconnect2;
+
+        if (result.tag == IoResult::Blocked)
+            return ReadResult::Blocked2;
+    }
+        return ReadResult::Read;
     }
 
-magic:
-{
-    auto result = readexact(fd, op.buffer + op.cursor, 4 - op.cursor, ReadConfig::Nonblock, 2000);
-
-    if (result.tag == ReadResult::Disconnect)
-        return ReadMessage::Disconnect;
-
-    if (result.tag == ReadResult::Timeout)
-        return ReadMessage::Timeout;
-
-    op.cursor += result.n_bytes;
-
-    if (op.cursor < 4)
-        return ReadMessage::Blocked;
-
-    if (std::memcmp(op.buffer, MAGIC, 4) != 0)
-        return ReadMessage::BadMagic;
-
-    op.progress = ReadProgress::Header;
-    op.cursor = 0;
-}
-
-header:
-{
-    auto result = readexact(fd, op.buffer + op.cursor, 4 - op.cursor, ReadConfig::Nonblock, 2000);
-
-    if (result.tag == ReadResult::Disconnect)
-        return ReadMessage::Disconnect;
-
-    if (result.tag == ReadResult::Timeout)
-        return ReadMessage::Timeout;
-
-    op.cursor += result.n_bytes;
-
-    if (op.cursor < 4)
-        return ReadMessage::Blocked;
-
-    uint32_t len;
-    deserialize_u32(op.buffer, &len);
-    len = ntohl(len);
-
-    op.progress = ReadProgress::Payload;
-    op.cursor = 0;
-    op.payload = Bytes{
-        .data = (uint8_t *)malloc(len),
-        .len = len,
-    };
-}
-
-payload:
-{
-    double timeout = 1500.0 * std::log(op.payload.len / 1024.0);
-    auto result = readexact(fd, op.payload.data, op.payload.len, ReadConfig::Nonblock, std::max(2000.0, timeout));
-
-    if (result.tag == ReadResult::Disconnect)
-        return ReadMessage::Disconnect;
-
-    // blocking
-    if (result.tag == ReadResult::Timeout)
-        return ReadMessage::Timeout;
-
-    op.cursor += result.n_bytes;
-
-    if (!op.completed())
-        return ReadMessage::Blocked;
-
-    return ReadMessage::Read;
-}
+    panic("unreachable");
 }
 
 void reconnect_peer(Peer *peer)
@@ -769,10 +747,7 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
 void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
     SendMessage send{
-        .completer = {
-            .type = Completer::Future,
-            .future = future,
-        },
+        .completer = Completer::future(future),
         .msg = {
             .address = {
                 .data = to,
@@ -805,12 +780,8 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
 
     auto sem = std::binary_semaphore(0);
 
-    // todo, support semaphore completion?
-    // - this or need some other way to synchronously wait for the message to be sent
     SendMessage send{
-        .completer = {
-            .type = Completer::Semaphore,
-            .sem = &sem},
+        .completer = Completer::semaphore(&sem),
         .msg = {
             .address = {
                 .data = to,
@@ -824,7 +795,6 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
     };
 
     client->send(send);
-
     sem.acquire();
 }
 

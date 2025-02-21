@@ -13,7 +13,7 @@
 #include <sys/timerfd.h>
 
 // Common
-#include "common.h"
+#include "common.hpp"
 
 // --- declarations ---
 
@@ -25,14 +25,15 @@ struct ThreadContext;
 struct Session;
 
 // First-party
-#include "client.h"
-#include "intra_process.h"
+#include "client.hpp"
+#include "intra_process.hpp"
 
 void set_sock_opts(int fd);
 void accept_peer(Peer *peer);
 void client_connect_peer(Peer *peer);
 
-std::optional<ReadOperation> exchange_identity(Client *client, int fd);
+void read_identity(Peer *peer);
+void write_identity(Peer *peer);
 
 void peer_read(Peer *peer);
 void resume_write(Peer *peer);
@@ -480,29 +481,56 @@ void client_recv_event(Client *client)
     }
 }
 
-std::optional<ReadOperation> exchange_identity(Client *client, int fd)
+void write_identity(Peer *peer)
 {
-    if (!write_message(fd, &client->identity, false))
+    if (peer->state == PeerState::Connecting)
+        peer->state = PeerState::WritingIdentity; // we connected, now we need to write the identity
+    else if (peer->state != PeerState::WritingIdentity)
+        panic("write_identity(): peer not in WritingIdentity state");
+
+    if (!peer->write_op)
+        peer->write_op = IoOperation::write(peer->client->identity);
+
+    auto result = write_message(peer->fd, &*peer->write_op);
+
+    if (result == WriteResult::Disconnect1)
     {
         std::cout << "disconnect while writing identity" << std::endl;
-        return std::nullopt;
+        reconnect_peer(peer);
+        return;
     }
 
-    ReadOperation op{
-        .progress = ReadProgress::Magic,
-        .cursor = 0,
-        .buffer = {0},
-    };
+    if (result == WriteResult::Blocked1)
+        return;
 
-    auto result = read_message(fd, op);
+    peer->state = PeerState::ReadingIdentity;
+    peer->write_op = std::nullopt;
+}
 
-    if (result != ReadMessage::Read && result != ReadMessage::Blocked)
+void read_identity(Peer *peer)
+{
+    if (peer->state != PeerState::ReadingIdentity)
+        panic("read_identity(): peer not in ReadingIdentity state");
+
+    if (!peer->read_op)
+        peer->read_op = IoOperation::read();
+
+    auto result = read_message(peer->fd, &*peer->read_op);
+
+    if (result == ReadResult::Disconnect2)
     {
         std::cout << "disconnect while reading identity" << std::endl;
-        return std::nullopt;
+        reconnect_peer(peer);
+        return;
     }
 
-    return op;
+    if (result == ReadResult::Blocked2)
+        return;
+
+    // set the peer's identity
+    peer->identity = peer->read_op->payload;
+    peer->state = PeerState::Connected;
+    peer->read_op = std::nullopt;
 }
 
 void client_listener_event(Client *client)
@@ -554,7 +582,8 @@ void client_peer_event_connecting(epoll_event *event)
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
-    if (event->events & EPOLLHUP) {
+    if (event->events & EPOLLHUP)
+    {
         std::cout << "client_peer_event_connecting(): unexpected disconnect" << std::endl;
 
         reconnect_peer(peer);
@@ -566,14 +595,9 @@ void client_peer_event_connecting(epoll_event *event)
         int result;
         socklen_t result_len = sizeof(result);
         if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
-        {
-            // error, fail somehow, close socket
-            return;
-        }
+            panic("failed to getsockopt: " + std::to_string(errno));
 
         std::cout << "client_peer_event_connecting(): unexpected error: " << std::to_string(result) << std::endl;
-
-        // panic("unexpected disconnect");
 
         reconnect_peer(peer);
         return;
@@ -581,57 +605,13 @@ void client_peer_event_connecting(epoll_event *event)
 
     // this means that the socket has connected
     // start exchanging the identity
-    if (event->events & EPOLLOUT && !peer->write_op)
-    {
-        auto result = exchange_identity(peer->client, peer->fd);
-
-        if (!result)
-        {
-            std::cout << "disconnect while exchanging identity (596): " << std::to_string(peer->fd) << std::endl;
-            reconnect_peer(peer);
-            return;
-        }
-
-        if (result->completed())
-        {
-            peer->identity = result->payload;
-            peer->state = PeerState::Connected;
-            return;
-        }
-        else
-        {
-            // if we didn't complete, save it and wait for the fd to become readable
-            peer->read_op = *result;
-        }
-    }
+    if (event->events & EPOLLOUT)
+        write_identity(peer);
 
     // we're connecting, so we should only be reading
     // this is the first read, so we need to read the identity
     if (event->events & EPOLLIN)
-    {
-        if (!peer->read_op)
-            panic("client_peer_event_connecting(): no read operation");
-
-        auto &op = *peer->read_op;
-        auto result = read_message(peer->fd, op);
-
-        // maybe read data, but not enough to complete the operation
-        if (result == ReadMessage::Blocked)
-            return;
-
-        if (result != ReadMessage::Read)
-        {
-            std::cout << "disconnect while resuming read" << std::endl;
-            reconnect_peer(peer);
-            return;
-        }
-
-        // set the identity and update the peer state
-        // also clear the read operation
-        peer->identity = op.payload;
-        peer->state = PeerState::Connected;
-        peer->read_op = std::nullopt;
-    }
+        read_identity(peer);
 }
 
 void client_peer_event_connected(epoll_event *event)
@@ -681,37 +661,30 @@ void peer_read(Peer *peer)
     for (;;)
     {
         if (!peer->read_op)
-            peer->read_op = ReadOperation{
-                .progress = ReadProgress::Magic,
-                .cursor = 0,
-                .buffer = {0},
-            };
+            peer->read_op = IoOperation::read();
 
-        auto op = &*peer->read_op;
+        auto result = read_message(peer->fd, &*peer->read_op);
 
-        auto result = read_message(peer->fd, *op);
-
-        // maybe read data, but not enough to complete the operation
-        if (result == ReadMessage::Blocked)
-            break;
-
-        if (result != ReadMessage::Read)
+        switch (result)
         {
+        case ReadResult::Blocked2:
+            return;
+        case ReadResult::Disconnect2:
+        case ReadResult::BadMagic:
             std::cout << "disconnect while resuming read" << std::endl;
             reconnect_peer(peer);
+            return;
+        case ReadResult::Read:
+            Message message{
+                .address = peer->identity,
+                .payload = peer->read_op->payload,
+            };
+
+            peer->client->recv_msg(std::move(message));
+
+            // reset the read operation
+            peer->read_op = std::nullopt;
         }
-
-        Message message{
-            .address = peer->identity,
-            .payload = op->payload,
-        };
-
-        peer->client->recv_msg(std::move(message));
-
-        // reset the read operation
-        peer->read_op = std::nullopt;
-
-        // continue loop
     }
 }
 
@@ -720,23 +693,19 @@ void resume_write(Peer *peer)
     if (!peer->write_op)
         panic("resume_write(): no write operation");
 
-    auto op = &*peer->write_op;
+    auto result = write_message(peer->fd, &*peer->write_op);
 
-    auto n_bytes = writeall(peer->fd, op->payload.data + op->cursor, op->payload.len - op->cursor, true);
-
-    // disconnect!
-    if (!n_bytes)
+    switch (result)
     {
+    case WriteResult::Blocked1:
+        return;
+    case WriteResult::Disconnect1:
+
         std::cout << "disconnect while resuming write" << std::endl;
         reconnect_peer(peer);
-    }
-    else
-    {
-        op->cursor += *n_bytes;
-
-        // if we're done, clear the write operation
-        if (op->completed())
-            peer->write_op = std::nullopt;
+        return;
+    case WriteResult::Done1:
+        peer->write_op = std::nullopt;
     }
 }
 

@@ -15,7 +15,7 @@
 #include "third_party/concurrentqueue.h"
 
 // Common
-#include "common.h"
+#include "common.hpp"
 
 using moodycamel::ConcurrentQueue;
 
@@ -23,8 +23,8 @@ using moodycamel::ConcurrentQueue;
 struct IntraProcessClient;
 
 // First-party
-#include "common.h"
-#include "session.h"
+#include "common.hpp"
+#include "session.hpp"
 
 void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len);
 void intraprocess_bind(struct IntraProcessClient *client, const char *addr, size_t len);

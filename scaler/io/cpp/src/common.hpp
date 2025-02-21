@@ -243,26 +243,53 @@ int8_t fd_wait(int fd, int timeout, short int events)
 struct Completer
 {
     ENUM Type{
+        None,
         Future,
         Semaphore} type;
 
     union
     {
-        void *future;
+        void *future_ptr;
         std::binary_semaphore *sem;
     };
 
     // complete with a result
     // may be NULL
     void complete(void *result);
+
+    static constexpr Completer none()
+    {
+        return {
+            .type = Type::None,
+            .future_ptr = nullptr,
+        };
+    }
+
+    static Completer future(void *future)
+    {
+        return {
+            .type = Type::Future,
+            .future_ptr = future,
+        };
+    }
+
+    static Completer semaphore(std::binary_semaphore *sem)
+    {
+        return {
+            .type = Type::Semaphore,
+            .sem = sem,
+        };
+    }
 };
 
 void Completer::complete(void *result)
 {
     switch (this->type)
     {
+    case Completer::Type::None:
+        break;
     case Completer::Type::Future:
-        future_set_result(this->future, result);
+        future_set_result(this->future_ptr, result);
         break;
     case Completer::Type::Semaphore:
         this->sem->release();
@@ -270,30 +297,17 @@ void Completer::complete(void *result)
     }
 }
 
-// this is an in-progress write operation
-// created only after the entire header has been written
-struct WriteOperation
+ENUM IoProgress : uint8_t{
+                      Magic,   // the magic is being read
+                      Header,  // the header is being read
+                      Payload, // the payload is being read
+                  };
+
+// an in-progress io operation
+struct IoOperation
 {
+    IoProgress progress;
     Completer completer;
-    Bytes payload;
-    size_t cursor;
-
-    bool completed() const
-    {
-        return cursor == payload.len;
-    }
-};
-
-ENUM ReadProgress : uint8_t{
-                        Magic,   // the magic is being read
-                        Header,  // the header is being read
-                        Payload, // the payload is being read
-                    };
-
-// an in-progress read operation
-struct ReadOperation
-{
-    ReadProgress progress;
     size_t cursor;
 
     union
@@ -305,6 +319,26 @@ struct ReadOperation
     bool
     completed() const
     {
-        return progress == ReadProgress::Payload && cursor == payload.len;
+        return progress == IoProgress::Payload && cursor == payload.len;
+    }
+
+    static IoOperation read(Completer completer = Completer::none())
+    {
+        return {
+            .progress = IoProgress::Magic,
+            .completer = completer,
+            .cursor = 0,
+            .buffer = {0},
+        };
+    }
+
+    static IoOperation write(Bytes payload, Completer completer = Completer::none())
+    {
+        return {
+            .progress = IoProgress::Magic,
+            .completer = completer,
+            .cursor = 0,
+            .payload = payload,
+        };
     }
 };

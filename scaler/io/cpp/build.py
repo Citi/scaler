@@ -9,7 +9,7 @@ builder.cdef(defs)
 
 builder.set_source(
     "cpp",
-    '#include "../src/main.h"',
+    '#include "../src/main.hpp"',
     source_extension=".cpp",
     extra_compile_args=["-std=gnu++23", "-Wall", "-Wextra", "-Werror"],
     language="c++",
