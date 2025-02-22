@@ -90,6 +90,8 @@ void intraprocess_bind(struct IntraProcessClient *client, const char *addr, size
     (void)client;
     (void)addr;
     (void)len;
+
+    panic("intraprocess_bind(): not implemented");
 }
 
 void intraprocess_connect(struct IntraProcessClient *client, const char *addr, size_t len)
@@ -98,6 +100,8 @@ void intraprocess_connect(struct IntraProcessClient *client, const char *addr, s
     (void)client;
     (void)addr;
     (void)len;
+
+    panic("intraprocess_connect(): not implemented");
 }
 
 void intraprocess_send(struct IntraProcessClient *client, uint8_t *data, size_t len)
@@ -106,6 +110,8 @@ void intraprocess_send(struct IntraProcessClient *client, uint8_t *data, size_t 
     (void)client;
     (void)data;
     (void)len;
+
+    panic("intraprocess_send(): not implemented");
 }
 
 void intraprocess_recv_sync(struct IntraProcessClient *client, struct Message *msg)
@@ -113,6 +119,8 @@ void intraprocess_recv_sync(struct IntraProcessClient *client, struct Message *m
     // use all params to avoid unused warnings
     (void)client;
     (void)msg;
+
+    panic("intraprocess_recv_sync(): not implemented");
 }
 
 void intraprocess_recv_async(void *future, struct IntraProcessClient *client)
@@ -120,6 +128,8 @@ void intraprocess_recv_async(void *future, struct IntraProcessClient *client)
     // use all params to avoid unused warnings
     (void)future;
     (void)client;
+
+    panic("intraprocess_recv_async(): not implemented");
 }
 
 #endif

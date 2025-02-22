@@ -29,7 +29,7 @@ struct Session;
 #include "intra_process.hpp"
 
 void set_sock_opts(int fd);
-void accept_peer(Peer *peer);
+void complete_peer_connect(Peer *peer);
 void client_connect_peer(Peer *peer);
 
 bool read_identity(Peer *peer);
@@ -299,32 +299,6 @@ EpollData *ThreadContext::epoll_by_fd(int fd)
     return nullptr;
 }
 
-// void ThreadContext::save_write(Peer *peer, WriteOperation op)
-// {
-//     auto edata = this->epoll_by_fd(peer->fd);
-
-//     if (!edata)
-//         panic("failed to find epoll data for peer");
-
-//     if (edata->write)
-//         panic("write operation already in progress");
-
-//     edata->write = op;
-// }
-
-// void ThreadContext::save_read(Peer *peer, ReadOperation op)
-// {
-//     auto edata = this->epoll_by_fd(peer->fd);
-
-//     if (!edata)
-//         panic("failed to find epoll data for peer");
-
-//     if (edata->read)
-//         panic("read operation already in progress");
-
-//     edata->read = op;
-// }
-
 void ThreadContext::start()
 {
     this->thread = std::thread(io_thread_main, this);
@@ -344,10 +318,10 @@ void set_sock_opts(int fd)
 }
 
 // complete acceptance of peer
-// - add it to client's peer list
-// - register with thread ctx
-void accept_peer(Peer *peer)
+void complete_peer_connect(Peer *peer)
 {
+    peer->state = PeerState::Connected;
+
     auto was_muted = peer->client->muted();
     peer->client->peers.push_back(peer);
 
@@ -384,8 +358,6 @@ void client_connect_peer(Peer *peer)
         panic("failed to connect to peer: " + std::to_string(errno));
     }
 
-    std::cout << "client: " << peer->client->identity.as_string() << ": connecting to peer: " << peer->identity.as_string() << std::endl;
-
     // set peer states
     peer->state = PeerState::Connecting;
     // write our identity
@@ -403,6 +375,8 @@ void client_send_event(Client *client)
     {
         if (client->muted())
         {
+            std::cout << "client: " << client->identity.as_string() << ": muted" << std::endl;
+
             // zero the semaphore
             if (eventfd_reset(client->unmuted_event_fd) < 0)
                 panic("failed to reset eventfd: " + std::to_string(errno));
@@ -426,10 +400,12 @@ void client_send_event(Client *client)
         while (!client->send_queue.try_dequeue(send))
             ; // wait
 
+        std::cout << "client: " << client->identity.as_string() << ": sending message to: " << send.msg.address.as_string() << std::endl;
+
         client->send(send);
 
         // resolve the completer
-        send.completer.complete(NULL);
+        send.completer.complete();
     }
 }
 
@@ -453,7 +429,7 @@ void client_recv_event(Client *client)
         // decrement the semaphore
         if (eventfd_read(client->recv_event_fd, &value) < 0)
         {
-            // the semaphore is zero, we can epoll_wait again (edge-triggered)
+            // this should never happen because the epoll proc'd and there's no one to race with us
             if (errno == EAGAIN)
             {
                 // we need to re-increment the semaphore because we didn't process the message
@@ -476,6 +452,8 @@ void client_recv_event(Client *client)
         Message msg;
         while (!client->recv_buffer.try_dequeue(msg))
             ; // wait
+
+        std::cout << "client_recv_event(): completing future" << std::endl;
 
         // this is the address of a stack variable
         // ok because the called code copies the message immediately
@@ -529,7 +507,7 @@ bool read_identity(Peer *peer)
     case ReadResult::Disconnect2:
         std::cout << "disconnect while reading identity" << std::endl;
         reconnect_peer(peer);
-        return false ;
+        return false;
     case ReadResult::Read:
         peer->identity = peer->read_op->payload;
         peer->state = PeerState::Connected;
@@ -602,9 +580,11 @@ void client_peer_event_connecting(epoll_event *event)
             return;
 
     // check if we're done
-    if (!peer->read_op && !peer->write_op) {
+    if (!peer->read_op && !peer->write_op)
+    {
         std::cout << "client_peer_event_connecting(): CONNECTED" << std::endl;
-        peer->state = PeerState::Connected;
+
+        complete_peer_connect(peer);
     }
 }
 
@@ -652,19 +632,17 @@ void client_peer_event_connected(epoll_event *event)
             switch (result)
             {
             case ReadResult::Blocked2:
+                std::cout << "client_peer_event_connected(): blocked" << std::endl;
                 return; // return from fn, note: no way to break loop
             case ReadResult::Disconnect2:
             case ReadResult::BadMagic:
-                std::cout << "disconnect while resuming read" << std::endl;
+                std::cout << "client_peer_event_connected(): disconnect" << std::endl;
                 reconnect_peer(peer);
                 return;
             case ReadResult::Read:
-                Message message{
-                    .address = peer->identity,
-                    .payload = peer->read_op->payload,
-                };
+                std::cout << "client_peer_event_connected(): read message" << std::endl;
 
-                peer->client->recv_msg(std::move(message));
+                peer->recv_msg(peer->read_op->payload);
 
                 // reset the read operation
                 peer->read_op->completer.complete();

@@ -323,8 +323,7 @@ struct IoOperation
         Bytes payload;
     };
 
-    bool
-    completed() const
+    bool completed() const
     {
         return progress == IoProgress::Payload && cursor == payload.len;
     }

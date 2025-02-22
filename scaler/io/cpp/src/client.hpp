@@ -221,6 +221,8 @@ void Client::recv_msg(Message &&msg)
     // if there's a waiting recv, complete it immediately
     if (eventfd_wait(this->recv_event_fd) == 0)
     {
+        std::cout << "Client::recv_msg(): completing future" << std::endl;
+
         void *future;
         while (!this->recv_queue.try_dequeue(future))
             ; // wait
@@ -230,6 +232,8 @@ void Client::recv_msg(Message &&msg)
     }
     else
     {
+        std::cout << "Client::recv_msg(): buffering message" << std::endl;
+
         // buffer the message
         this->recv_buffer.enqueue(msg);
 
@@ -272,6 +276,8 @@ void Client::send(SendMessage send)
     {
     case ConnectorType::Pair:
     {
+        std::cout << "pair: " << this->identity.as_string() << ": sending message" << std::endl;
+
         if (this->peers.empty())
             panic("pair: muted");
 
@@ -282,6 +288,8 @@ void Client::send(SendMessage send)
     break;
     case ConnectorType::Router:
     {
+        std::cout << "router: " << this->identity.as_string() << ": sending message to: " << send.msg.address.as_string() << std::endl;
+
         Peer *peer;
         if (!this->peer_by_id(send.msg.address, &peer))
         {
@@ -294,6 +302,8 @@ void Client::send(SendMessage send)
     break;
     case ConnectorType::Pub:
     {
+        std::cout << "pub: " << this->identity.as_string() << ": sending message to " << std::to_string(this->peers.size()) << " peers" << std::endl;
+
         // if the socket has no peers, the message is dropped
         // we need to copy the peers because the vector may be modified
         for (auto peer : std::vector(this->peers))
@@ -302,6 +312,8 @@ void Client::send(SendMessage send)
     break;
     case ConnectorType::Dealer:
     {
+        std::cout << "dealer: " << this->identity.as_string() << ": sending message" << std::endl;
+
         if (this->peers.empty())
             panic("dealer: muted");
 
@@ -415,6 +427,8 @@ void Peer::recv_msg(Bytes payload)
         if (result.tag == IoResult::Blocked)
             return WriteResult::Blocked1;
 
+        std::cout << "write_message(): wrote to: " << std::to_string(fd) << std::endl;
+
         return WriteResult::Done1;
     }
     }
@@ -440,12 +454,16 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
     }
     case WriteResult::Blocked1:
     {
+        std::cout << "write_to_peer(): blocked" << std::endl;
+
         // save the write operation
         peer->write_op = op;
         return;
     }
     case WriteResult::Done1:
     {
+        std::cout << "write_to_peer(): done" << std::endl;
+
         // the write is complete
         break;
     }
@@ -579,7 +597,6 @@ void reconnect_peer(Peer *peer)
             .data = nullptr,
             .len = 0,
         };
-
         peer->fd = -1;
         peer->state = PeerState::Disconnected;
         thread->connecting.push_back(peer);
