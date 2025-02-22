@@ -477,13 +477,13 @@ bool write_identity(Peer *peer)
         peer->write_op->completer.complete();
         peer->write_op = std::nullopt;
         std::cout << "client: " << peer->client->identity.as_string() << ": wrote identity to peer: " << peer->identity.as_string() << std::endl;
+        [[fallthrough]];
+    case WriteResult::Blocked1:
         return true;
     case WriteResult::Disconnect1:
         std::cout << "disconnect while writing identity" << std::endl;
         reconnect_peer(peer);
         return false;
-    case WriteResult::Blocked1:
-        return true;
     }
 
     panic("unreachable");
@@ -498,24 +498,23 @@ bool read_identity(Peer *peer)
 
     switch (result)
     {
-    case ReadResult::Blocked2:
-        return true;
-    case ReadResult::BadMagic:
-        std::cout << "bad magic while reading identity" << std::endl;
-        reconnect_peer(peer);
-        return false;
-    case ReadResult::Disconnect2:
-        std::cout << "disconnect while reading identity" << std::endl;
-        reconnect_peer(peer);
-        return false;
     case ReadResult::Read:
         peer->identity = peer->read_op->payload;
-        peer->state = PeerState::Connected;
         peer->read_op->completer.complete();
         peer->read_op = std::nullopt;
 
         std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
+
+        [[fallthrough]];
+    case ReadResult::Blocked2:
         return true;
+    case ReadResult::BadMagic:
+        std::cout << "bad magic while reading identity" << std::endl;
+        [[fallthrough]];
+    case ReadResult::Disconnect2:
+        std::cout << "disconnect while reading identity" << std::endl;
+        reconnect_peer(peer);
+        return false;
     }
 
     panic("unreachable");

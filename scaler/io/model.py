@@ -1,9 +1,22 @@
-__ALL__ = ["Session", "Client", "Message", "Callback", "ConnectorType", "TcpAddr", "InprocAddr", "Addr", "Protocol", "InprocClient"]
+__ALL__ = [
+    "Session",
+    "Client",
+    "Message",
+    "Callback",
+    "ConnectorType",
+    "TcpAddr",
+    "InprocAddr",
+    "Addr",
+    "Protocol",
+    "InprocClient",
+]
 
 import sys
 from os import path
+
 sys.path.append(path.join(path.dirname(__file__), "cpp"))
 from ffi import FFITypes, ffi, lib as C, c_async, c_async_wrapper
+
 sys.path.pop()
 
 import asyncio
@@ -12,11 +25,12 @@ from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Awaitable, Callable, TypeAlias
 
-class BorrowedMessage:
+
+class Message:
     _payload: bytes
     _address: bytes
 
-    def __init__(self, obj: "FFITypes.CData"): # Message *
+    def __init__(self, obj: "FFITypes.CData"):  # Message *
         # copy the payload
         self._payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
         # copy the address
@@ -32,6 +46,7 @@ class BorrowedMessage:
     def address(self) -> bytes:
         return self._address
 
+
 # this is called from C to inform the asyncio runtime that a future was completed
 @ffi.def_extern()
 def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData") -> None:
@@ -40,13 +55,14 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
     else:
         msg = ffi.cast("struct Message *", result)
 
-        result = BorrowedMessage(msg)
+        result = Message(msg)
 
     future: asyncio.Future = ffi.from_handle(future_handle)
 
     # using `call_soon_threadsafe()` is very important:
     # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
     future.get_loop().call_soon_threadsafe(future.set_result, result)
+
 
 class Session:
     _obj: "FFITypes.CData"
@@ -77,24 +93,14 @@ class Session:
 
     def __enter__(self) -> "Session":
         return self
-    
+
     def __exit__(self, _exc_type, _exc_value, _traceback) -> None:
         self.__del__()
 
-@dataclass
-class Message:
-    __match_args__ = ("addr", "payload")
 
-    addr: bytes | None
-    payload: bytes
+BinderCallback: TypeAlias = Callable[[bytes, Message], Awaitable[None]]
+ConnectorCallback: TypeAlias = Callable[[Message], Awaitable[None]]
 
-    @property
-    def has_source(self) -> bool:
-        return self.addr is not None
-
-
-BinderCallback: TypeAlias = Callable[[bytes, BorrowedMessage], Awaitable[None]]
-ConnectorCallback: TypeAlias = Callable[[BorrowedMessage], Awaitable[None]]
 
 @unique
 class ConnectorType(IntEnum):
@@ -104,11 +110,13 @@ class ConnectorType(IntEnum):
     Dealer = C.Dealer
     Router = C.Router
 
+
 @unique
 class Protocol(IntEnum):
     TCP = C.TCP
     IntraProcess = C.IntraProcess
     InterProcess = C.InterProcess
+
 
 class Address(ABC):
     @property
@@ -140,7 +148,7 @@ class TCPAddress(Address):
     def __init__(self, host: str, port: int):
         if not isinstance(host, str):
             raise TypeError(f"host must be a string; is {type(host)}")
-        
+
         if not isinstance(port, int):
             raise TypeError(f"port must be an integer; is {type(port)}")
 
@@ -149,7 +157,7 @@ class TCPAddress(Address):
 
     def __str__(self) -> str:
         return f"tcp://{self.host}:{self.port}"
-    
+
     def copywith(self, host: str | None = None, port: int | None = None) -> "TCPAddress":
         return TCPAddress(host=host or self.host, port=port or self.port)
 
@@ -170,13 +178,13 @@ class TCPAddress(Address):
             raise TypeError(f"port must be an integer; is {type(port)}")
 
         return TCPAddress(host="127.0.0.1", port=port)
-    
+
     def from_str(addr: str) -> "TCPAddress":
         addr = Address.from_str(addr)
 
         if not isinstance(addr, TCPAddress):
             raise ValueError(f"expected a tcp address, got: {addr}")
-        
+
         return addr
 
 
@@ -194,7 +202,8 @@ class IntraProcessAddress(Address):
     @property
     def protocol(self) -> Protocol:
         return Protocol.IntraProcess
-    
+
+
 class InterProcessAddress(Address):
     __match_args__ = ("path",)
 
@@ -210,6 +219,7 @@ class InterProcessAddress(Address):
     def protocol(self) -> Protocol:
         return Protocol.InterProcess
 
+
 class IntraProcessClient:
     _obj: "FFITypes.CData"
 
@@ -219,8 +229,7 @@ class IntraProcessClient:
 
         session.register_client(self)
 
-    def destroy(self) -> None:
-        ... # TODO
+    def destroy(self) -> None: ...  # TODO
 
     def bind(self, addr: str) -> None:
         C.intraprocess_bind(self._obj, addr.encode(), len(addr))
@@ -231,15 +240,15 @@ class IntraProcessClient:
     def send(self, data: bytes) -> None:
         C.intraprocess_send(self._obj, data, len(data))
 
-    def recv_sync(self) -> BorrowedMessage:
+    def recv_sync(self) -> Message:
         msg = ffi.new("struct Message *")
         C.intraprocess_recv_sync(self._obj, msg)
 
-        return BorrowedMessage(msg)
+        return Message(msg)
 
-    async def recv(self) -> BorrowedMessage:
-        intraprocess_recv = c_async_wrapper(C.intraprocess_recv_async)
-        return await intraprocess_recv(self._obj)
+    async def recv(self) -> Message:
+        return await c_async(C.intraprocess_recv_async, self._obj)
+
 
 class Client:
     _obj: "FFITypes.CData"
@@ -257,7 +266,7 @@ class Client:
     def destroy(self) -> None:
         if self._destroyed:
             return
-        
+
         C.client_destroy(self._obj)
         self._destroyed = True
 
@@ -275,7 +284,7 @@ class Client:
                 ...
             case _:
                 raise ValueError("either addr or host and port must be provided")
-            
+
         C.client_bind(self._obj, host.encode(), port)
 
     def connect(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
@@ -288,7 +297,7 @@ class Client:
                 ...
             case _:
                 raise ValueError("either addr or host and port must be provided")
-            
+
         C.client_connect(self._obj, host.encode(), port)
 
     async def send(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
@@ -311,7 +320,7 @@ class Client:
             to_len = len(to)
 
         return await c_async(C.client_send, self._obj, to, to_len, data, len(data))
-    
+
     def send_sync(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
 
@@ -333,18 +342,18 @@ class Client:
 
         C.client_send_sync(self._obj, to, to_len, data, len(data))
 
-    def recv_sync(self) -> BorrowedMessage:
+    def recv_sync(self) -> Message:
         self.__check_destroyed()
 
         msg = ffi.new("struct Message *")
-        msg.payload.data = ffi.NULL
         C.client_recv_sync(self._obj, msg)
-        return BorrowedMessage(msg)
+        return Message(msg)
 
-    async def recv(self) -> BorrowedMessage:
+    async def recv(self) -> Message:
         self.__check_destroyed()
 
         return await c_async(C.client_recv, self._obj)
+
 
 # if __name__ == "__main__":
 #     import asyncio, json
@@ -414,7 +423,7 @@ class Client:
 #         await t1
 #         await t2
 #         await t3
-    
+
 #     asyncio.run(main())
 
 if __name__ == "__main__":
@@ -474,8 +483,8 @@ if __name__ == "__main__":
 
 #     asyncio.run(main())
 
-    # msg = p2.recv_sync()
-    # print(msg)
+# msg = p2.recv_sync()
+# print(msg)
 
-    # msg = p1.recv_sync()
-    # print(msg)
+# msg = p1.recv_sync()
+# print(msg)
