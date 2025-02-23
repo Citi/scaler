@@ -97,7 +97,7 @@ ENUM ControlOperation : uint8_t{
 struct ControlRequest
 {
     ControlOperation op;
-    std::optional<std::binary_semaphore *> sem;
+    Completer completer;
     std::optional<sockaddr_storage> addr;
 
     union
@@ -105,6 +105,11 @@ struct ControlRequest
         void *data;
         Client *client;
     };
+
+    void complete(void *result = NULL)
+    {
+        completer.complete(result);
+    }
 };
 
 struct ThreadContext
@@ -474,7 +479,7 @@ bool write_identity(Peer *peer)
     switch (result)
     {
     case WriteResult::Done1:
-        peer->write_op->completer.complete();
+        peer->write_op->complete();
         peer->write_op = std::nullopt;
         std::cout << "client: " << peer->client->identity.as_string() << ": wrote identity to peer: " << peer->identity.as_string() << std::endl;
         [[fallthrough]];
@@ -500,7 +505,7 @@ bool read_identity(Peer *peer)
     {
     case ReadResult::Read:
         peer->identity = peer->read_op->payload;
-        peer->read_op->completer.complete();
+        peer->read_op->complete();
         peer->read_op = std::nullopt;
 
         std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
@@ -612,7 +617,7 @@ void client_peer_event_connected(epoll_event *event)
             reconnect_peer(peer);
             return; // we need to go back to epoll_wait() after calling reconnect_peer()
         case WriteResult::Done1:
-            peer->write_op->completer.complete();
+            peer->write_op->complete();
             peer->write_op = std::nullopt;
         }
     }
@@ -644,7 +649,7 @@ void client_peer_event_connected(epoll_event *event)
                 peer->recv_msg(peer->read_op->payload);
 
                 // reset the read operation
-                peer->read_op->completer.complete();
+                peer->read_op->complete();
                 peer->read_op = std::nullopt;
             }
         }
@@ -762,8 +767,7 @@ void control_event(ThreadContext *ctx)
         break;
         }
 
-        if (request.sem)
-            (*request.sem)->release();
+        request.complete();
 
         continue;
     }

@@ -328,6 +328,11 @@ struct IoOperation
         return progress == IoProgress::Payload && cursor == payload.len;
     }
 
+    void complete()
+    {
+        completer.complete();
+    }
+
     static IoOperation read(Completer completer = Completer::none())
     {
         return {
@@ -338,6 +343,7 @@ struct IoOperation
         };
     }
 
+    // the payload must live as long as the operation does
     static IoOperation write(Bytes payload, Completer completer = Completer::none())
     {
         return {

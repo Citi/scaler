@@ -464,6 +464,8 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
     {
         std::cout << "write_to_peer(): done" << std::endl;
 
+        op.complete();
+
         // the write is complete
         break;
     }
@@ -567,8 +569,9 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
 
         if (result.tag == IoResult::Blocked)
             return ReadResult::Blocked2;
-    }
+
         return ReadResult::Read;
+    }
     }
 
     panic("unreachable");
@@ -644,19 +647,21 @@ void client_init(struct Session *session, struct Client *client, enum Transport 
 
 void client_bind(struct Client *client, const char *host, uint16_t port)
 {
-    int fd = -1, status = -1;
-    sockaddr_storage addr;
+    if (client->fd > 0)
+        panic("client already bound");
+
+    sockaddr_storage address;
 
     switch (client->transport)
     {
     case Transport::InterProcess:
     {
-        fd = socket(
+        client->fd = socket(
             AF_UNIX,
             SOCK_STREAM | SOCK_NONBLOCK,
             0);
 
-        if (fd < 0)
+        if (client->fd < 0)
             panic("failed to create socket: " + std::to_string(errno));
 
         sockaddr_un server_addr{
@@ -664,24 +669,25 @@ void client_bind(struct Client *client, const char *host, uint16_t port)
             .sun_path = {0}};
 
         std::strncpy(server_addr.sun_path, host, sizeof(server_addr.sun_path) - 1);
-        std::memcpy(&addr, &server_addr, sizeof(server_addr));
-
-        status = bind(fd, (sockaddr *)&server_addr, sizeof(server_addr));
+        std::memcpy(&address, &server_addr, sizeof(server_addr));
     }
     break;
     case Transport::TCP:
     {
-        fd = socket(
+        client->fd = socket(
             AF_INET,
             SOCK_STREAM | SOCK_NONBLOCK,
             0);
 
-        if (fd < 0)
+        if (client->fd < 0)
             panic("failed to create socket: " + std::to_string(errno));
 
-        set_sock_opts(fd);
+        set_sock_opts(client->fd);
 
-        in_addr_t in_addr = strncmp(host, "*", 1) ? inet_addr(host) : INADDR_ANY;
+        in_addr_t in_addr = strcmp(host, "*") ? inet_addr(host) : INADDR_ANY;
+
+        if (in_addr == INADDR_NONE)
+            panic("failed to parse address: " + std::string(host));
 
         sockaddr_in server_addr{
             .sin_family = AF_INET,
@@ -691,15 +697,16 @@ void client_bind(struct Client *client, const char *host, uint16_t port)
             .sin_zero = {0},
         };
 
-        std::memcpy(&addr, &server_addr, sizeof(server_addr));
-        status = bind(fd, (sockaddr *)&server_addr, sizeof(server_addr));
+        std::memcpy(&address, &server_addr, sizeof(server_addr));
     }
     break;
     case Transport::IntraProcess:
         panic("Client does not support IntraProcess transport");
     }
 
-    if (status < 0)
+    client->addr = address;
+
+    if (bind(client->fd, (sockaddr *)&address, sizeof(address)) < 0)
     {
         if (errno == EADDRINUSE)
         {
@@ -709,13 +716,10 @@ void client_bind(struct Client *client, const char *host, uint16_t port)
         panic("failed to bind socket: " + std::to_string(errno));
     }
 
-    if (listen(fd, 128) < 0)
+    if (listen(client->fd, 128) < 0)
     {
         panic("failed to listen on socket");
     }
-
-    client->fd = fd;
-    client->addr = addr;
 
     client->thread->add_epoll(client->fd, EPOLLIN | EPOLLET, EpollType::ClientListener, client);
 
@@ -759,7 +763,7 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
 
     ControlRequest request{
         .op = ControlOperation::Connect,
-        .sem = std::nullopt,
+        .completer = Completer::none(),
         .addr = address,
         .client = client,
     };
