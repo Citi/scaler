@@ -15,7 +15,7 @@ import sys
 from os import path
 
 sys.path.append(path.join(path.dirname(__file__), "cpp"))
-from ffi import FFITypes, ffi, lib as C, c_async, c_async_wrapper
+from ffi import FFITypes, ffi, lib as C, c_async, c_async_wrapper, Message
 
 sys.path.pop()
 
@@ -26,42 +26,7 @@ from abc import ABC, abstractmethod
 from typing import Awaitable, Callable, TypeAlias
 
 
-class Message:
-    _payload: bytes
-    _address: bytes
 
-    def __init__(self, obj: "FFITypes.CData"):  # Message *
-        # copy the payload
-        self._payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
-        # copy the address
-        self._address = bytes(ffi.buffer(obj.address.data, obj.address.len))
-
-    @property
-    def payload(self) -> bytes:
-        if self._payload is None:
-            self._payload = bytes(self._payload_buffer)
-        return self._payload
-
-    @property
-    def address(self) -> bytes:
-        return self._address
-
-
-# this is called from C to inform the asyncio runtime that a future was completed
-@ffi.def_extern()
-def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData") -> None:
-    if result == ffi.NULL:
-        result = None
-    else:
-        msg = ffi.cast("struct Message *", result)
-
-        result = Message(msg)
-
-    future: asyncio.Future = ffi.from_handle(future_handle)
-
-    # using `call_soon_threadsafe()` is very important:
-    # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
-    future.get_loop().call_soon_threadsafe(future.set_result, result)
 
 
 class Session:

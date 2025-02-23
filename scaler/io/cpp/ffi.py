@@ -77,17 +77,69 @@ lib: LibType
 import asyncio
 from typing import Callable, ParamSpec, TypeVar, Concatenate, Coroutine
 
+__futures_cache = {}
+
+class Message:
+    _payload: bytes
+    _address: bytes
+
+    def __init__(self, obj: "FFITypes.CData"):  # Message *
+        # copy the payload
+        self._payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
+        # copy the address
+        self._address = bytes(ffi.buffer(obj.address.data, obj.address.len))
+
+    @property
+    def payload(self) -> bytes:
+        if self._payload is None:
+            self._payload = bytes(self._payload_buffer)
+        return self._payload
+
+    @property
+    def address(self) -> bytes:
+        return self._address
+
+# for some reason, we get invalid state errors sometimes
+# this needs to be investigated
+def safe_set_result(future: asyncio.Future, result) -> None:
+    try:
+        future.set_result(result)
+    except asyncio.InvalidStateError:
+        pass
+
+# this is called from C to inform the asyncio runtime that a future was completed
+@ffi.def_extern()
+def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData") -> None:
+    if result == ffi.NULL:
+        result = None
+    else:
+        msg = ffi.cast("struct Message *", result)
+
+        result = Message(msg)
+
+    future: asyncio.Future = ffi.from_handle(future_handle)
+
+    if future.done():
+        return
+
+    # using `call_soon_threadsafe()` is very important:
+    # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
+    future.get_loop().call_soon_threadsafe(safe_set_result, future, result)
+
 # these type variables make type hints work
 # in Python 3.12+ we can use the new syntax instead of defining these:
 # async def c_async[**P, R](...): ...
 P = ParamSpec("P")
 R = TypeVar("R")
 
+__cache = set()
+
 # c_async is a helper function to call async C functions
 # example: c_async(lib.async_binder_recv, binder)
 async def c_async(fn: Callable[Concatenate["FFITypes.CData", P], R], *args: P.args, **kwargs: P.kwargs) -> R:
     future = asyncio.get_running_loop().create_future()
     handle = ffi.new_handle(future)
+    __cache.add(handle)
     fn(handle, *args, **kwargs)
     return await future
 

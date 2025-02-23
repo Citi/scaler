@@ -22,7 +22,7 @@ CAPNP_MESSAGE_SIZE_LIMIT = 2**64 - 1
 # SCHEDULER SPECIFIC OPTIONS
 
 # number of io threads
-DEFAULT_IO_THREADS = 2
+DEFAULT_IO_THREADS = 1
 
 # if all workers are full and busy working, this option determine how many additional tasks scheduler can receive and
 # queued, if additional number of tasks received exceeded this number, scheduler will reject tasks
