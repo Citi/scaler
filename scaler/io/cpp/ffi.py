@@ -107,6 +107,10 @@ def safe_set_result(future: asyncio.Future, result) -> None:
     except asyncio.InvalidStateError:
         pass
 
+# TODO: This should not be necessary and probably means
+# that futures are being duplicated in the C code
+__futures_cache = set()
+
 # this is called from C to inform the asyncio runtime that a future was completed
 @ffi.def_extern()
 def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData") -> None:
@@ -132,14 +136,12 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
 P = ParamSpec("P")
 R = TypeVar("R")
 
-__cache = set()
-
 # c_async is a helper function to call async C functions
 # example: c_async(lib.async_binder_recv, binder)
 async def c_async(fn: Callable[Concatenate["FFITypes.CData", P], R], *args: P.args, **kwargs: P.kwargs) -> R:
     future = asyncio.get_running_loop().create_future()
     handle = ffi.new_handle(future)
-    __cache.add(handle)
+    __futures_cache.add(handle)
     fn(handle, *args, **kwargs)
     return await future
 
