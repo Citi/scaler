@@ -1,7 +1,7 @@
 #pragma once
 
-// cffi generates C code, which doesn't like
-// C++'s enum class, so we use plain enums during compilation
+// cffi generates C code, which doesn't like C++'s enum class
+// so we use plain enums during compilation
 // you can set the TYPECK define in your IDE for safer enum typing
 #ifdef TYPECK
 #define ENUM enum class

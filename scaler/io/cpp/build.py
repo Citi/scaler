@@ -11,7 +11,8 @@ builder.set_source(
     "cpp",
     '#include "../src/main.hpp"',
     source_extension=".cpp",
-    extra_compile_args=["-std=gnu++23", "-Wall", "-Wextra", "-Werror"],
+    # runs gcc like it's g++ and links the C++ standard library
+    extra_compile_args=["-xc++", "-lstdc++", "-shared-libgcc", "-std=gnu++23", "-Wall", "-Wextra", "-Werror"],
     language="c++",
 )
 
