@@ -1,6 +1,5 @@
 #include "session.hpp"
 
-
 std::string EpollType::as_string() const
 {
     switch (value)
@@ -597,9 +596,42 @@ void control_event(ThreadContext *ctx)
     }
 }
 
+// either recv() was called or a message was buffered -- same handler
 void intraprocess_recv_event(IntraProcessClient *client)
 {
-    panic("intraprocess_recv_event(): not implemented: " + client->identity.as_string());
+    if (eventfd_wait(client->recv_buffer_event_fd) < 0)
+    {
+        if (errno == EAGAIN)
+            return;
+
+        panic("failed to read from eventfd: " + std::to_string(errno));
+    }
+
+    if (eventfd_wait(client->recv_event_fd) < 0)
+    {
+        if (errno == EAGAIN)
+        {
+            // we need to re-increment the semaphore because we didn't process the message
+            if (eventfd_signal(client->recv_buffer_event_fd) < 0)
+                panic("failed to write to eventfd: " + std::to_string(errno));
+
+            return;
+        }
+
+        panic("failed to read from eventfd: " + std::to_string(errno));
+    }
+
+    Message message;
+    while (client->queue.try_dequeue(message))
+        ; // wait
+
+    void *future;
+    while (client->recv.try_dequeue(future))
+        ; // wait
+
+    // this is the address of a stack variable
+    // ok because the called code copies the message immediately
+    future_set_result(future, &message);
 }
 
 void io_thread_main(ThreadContext *ctx)

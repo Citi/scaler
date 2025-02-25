@@ -51,6 +51,13 @@ void future_set_result(void *future, void *data);
     exit(1);
 }
 
+uint8_t *datadup(const uint8_t *data, size_t len)
+{
+    uint8_t *dup = (uint8_t *)malloc(len * sizeof(uint8_t));
+    memcpy(dup, data, len);
+    return dup;
+}
+
 struct Bytes
 {
     uint8_t *data;
@@ -84,6 +91,22 @@ struct Bytes
         }
 
         return std::string((char *)data, len);
+    }
+
+    static Bytes copy(const uint8_t *data, size_t len)
+    {
+        return {
+            .data = datadup(data, len),
+            .len = len,
+        };
+    }
+
+    static Bytes clone(const Bytes &bytes)
+    {
+        return {
+            .data = datadup(bytes.data, bytes.len),
+            .len = bytes.len,
+        };
     }
 };
 

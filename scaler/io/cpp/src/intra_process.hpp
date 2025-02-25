@@ -38,16 +38,22 @@ void intraprocess_recv_async(void *future, struct IntraProcessClient *client);
 struct IntraProcessClient
 {
     Session *session;
+    ThreadContext *thread;
 
     ConcurrentQueue<Message> queue;
     ConcurrentQueue<void *> recv;
 
     int recv_buffer_event_fd;
     int recv_event_fd;
-
-    std::optional<std::string> connecting;
-
+    int unmuted_event_fd;
+    
     Bytes identity;
     std::optional<std::string> bind;
-    std::optional<size_t> peer;
+    std::optional<std::string> connecting;
+    std::optional<IntraProcessClient *> peer;
+
+    bool epoll;
+
+    void ensure_epoll();
+    void remove_from_epoll();
 };
