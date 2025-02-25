@@ -1,3 +1,6 @@
+// this file contains C-compatible definitions for the C++ code in the other files
+// this is the interface exposed to Python
+
 struct Bytes
 {
     uint8_t *data;
@@ -28,6 +31,9 @@ enum Transport
 
 struct Session
 {
+    // this means that Python doesn't know about the internals of the struct
+    // the compiler will figure out the size of the struct for us
+    // based upon the full definition in the C++ code
     ...;
 };
 
