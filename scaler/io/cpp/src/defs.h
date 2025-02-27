@@ -7,8 +7,15 @@ struct Bytes
     size_t len;
 };
 
+enum MessageType {
+    Data,
+    Identity,
+    Disconnect,
+};
+
 struct Message
 {
+    enum MessageType type;
     struct Bytes address;
     struct Bytes payload;
 };

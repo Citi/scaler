@@ -106,7 +106,7 @@ void Client::send(SendMessage send)
 
         auto peer = this->peers[0];
 
-        write_to_peer(peer, send.msg.payload, send.completer);
+        write_to_peer(peer, send);
     }
     break;
     case ConnectorType::Router:
@@ -120,7 +120,7 @@ void Client::send(SendMessage send)
             break;
         }
 
-        write_to_peer(peer, send.msg.payload, send.completer);
+        write_to_peer(peer, send);
     }
     break;
     case ConnectorType::Pub:
@@ -130,7 +130,7 @@ void Client::send(SendMessage send)
         // if the socket has no peers, the message is dropped
         // we need to copy the peers because the vector may be modified
         for (auto peer : std::vector(this->peers))
-            write_to_peer(peer, send.msg.payload, send.completer);
+            write_to_peer(peer, send);
     }
     break;
     case ConnectorType::Dealer:
@@ -143,7 +143,7 @@ void Client::send(SendMessage send)
         // dealers round-robin their peers
         auto peer = this->peers[this->peer_rr()];
 
-        write_to_peer(peer, send.msg.payload, send.completer);
+        write_to_peer(peer, send);
     }
     break;
     default:
@@ -154,6 +154,7 @@ void Client::send(SendMessage send)
 void Peer::recv_msg(Bytes payload)
 {
     Message message{
+        .type = MessageType::Data,
         .address = this->identity,
         .payload = payload,
     };
@@ -239,6 +240,22 @@ void Peer::recv_msg(Bytes payload)
         op->cursor = 0;
     }
         [[fallthrough]];
+    case IoProgress::Type:
+    {
+        uint8_t type[] = {(uint8_t)op->type};
+
+        auto result = writeall(fd, type, 1);
+
+        if (result.tag == IoResult::Disconnect)
+            return WriteResult::Disconnect1;
+
+        if (result.tag == IoResult::Blocked)
+            return WriteResult::Blocked1;
+
+        op->progress = IoProgress::Payload;
+        op->cursor = 0;
+    }
+        [[fallthrough]];
     case IoProgress::Payload:
     {
         auto result = writeall(fd, op->payload.data + op->cursor, op->payload.len - op->cursor);
@@ -259,40 +276,59 @@ void Peer::recv_msg(Bytes payload)
     panic("unreachable");
 }
 
+// process the send queue until the socket blocks or the queue is exhausted
+ControlFlow epollout_peer(Peer *peer) {
+    for (;;) {
+        if (!peer->write_op) {
+            if (peer->queue.empty())
+                return ControlFlow::Continue; // done
+
+            auto send = peer->queue.front();
+            peer->queue.pop();
+
+            peer->write_op = IoOperation::write(send.msg.payload, send.msg.type, send.completer);
+        }
+
+        auto result = write_message(peer->fd, &*peer->write_op);
+
+        switch (result)
+        {
+        case WriteResult::Blocked1:
+            return ControlFlow::Continue;
+        case WriteResult::Disconnect1:
+            reconnect_peer(peer);
+            return ControlFlow::Break; // we need to go back to epoll_wait() after calling reconnect_peer()
+        case WriteResult::Done1:
+            peer->write_op->complete();
+
+            if (peer->write_op->type == MessageType::Disconnect)
+            {
+                remove_peer(peer);
+                if (peer->client->peers.empty())
+                {
+                    // the client is being destroyed and the last peer has disconnected
+
+                    // TODO!!!!
+                }
+                delete peer;
+
+                return ControlFlow::Break;
+            }
+
+            peer->write_op = std::nullopt;
+
+            return ControlFlow::Continue;
+        }
+    }
+}
+
 // note: peer may be in reconnecting state after calling this
 // the peer's EpollData may have been freed
-void write_to_peer(Peer *peer, Bytes payload, Completer completer)
+void write_to_peer(Peer *peer, SendMessage send)
 {
-    auto op = IoOperation::write(payload, completer);
-    auto result = write_message(peer->fd, &op);
-
-    switch (result)
-    {
-    case WriteResult::Disconnect1:
-    {
-        std::cout << "write_to_peer(): disconnect" << std::endl;
-
-        reconnect_peer(peer);
-        return;
-    }
-    case WriteResult::Blocked1:
-    {
-        std::cout << "write_to_peer(): blocked" << std::endl;
-
-        // save the write operation
-        peer->write_op = op;
-        return;
-    }
-    case WriteResult::Done1:
-    {
-        std::cout << "write_to_peer(): done" << std::endl;
-
-        op.complete();
-
-        // the write is complete
-        break;
-    }
-    }
+    peer->queue.push(send);
+    epollout_peer(peer);
+    return;
 }
 
 [[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len)
@@ -382,6 +418,20 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
         };
     }
         [[fallthrough]];
+    case IoProgress::Type:
+    {
+        auto result = readexact(fd, (uint8_t *)&op->type, 1);
+
+        if (result.tag == IoResult::Disconnect)
+            return ReadResult::Disconnect2;
+
+        if (result.tag == IoResult::Blocked)
+            return ReadResult::Blocked2;
+
+        op->progress = IoProgress::Payload;
+        op->cursor = 0;
+    }
+        [[fallthrough]];
     case IoProgress::Payload:
     {
         auto result = readexact(fd, op->payload.data + op->cursor, op->payload.len - op->cursor);
@@ -400,9 +450,7 @@ void write_to_peer(Peer *peer, Bytes payload, Completer completer)
     panic("unreachable");
 }
 
-// must return to epoll_wait() after ccalling this
-// this frees the peer's EpollData and deletes the *peer
-void reconnect_peer(Peer *peer)
+void remove_peer(Peer *peer)
 {
     auto client = peer->client;
     auto thread = client->thread;
@@ -412,6 +460,13 @@ void reconnect_peer(Peer *peer)
 
     std::cout << "closing fd: " << std::to_string(peer->fd) << std::endl;
     close(peer->fd);
+}
+
+// must return to epoll_wait() after ccalling this
+// this frees the peer's EpollData and deletes the *peer
+void reconnect_peer(Peer *peer)
+{
+    remove_peer(peer);
 
     // retry the connection if we're the connector
     if (peer->type == PeerType::Connector)
@@ -438,7 +493,7 @@ void reconnect_peer(Peer *peer)
 
 // --- public api ---
 
-void client_init(struct Session *session, struct Client *client, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type)
+void client_init(Session *session, Client *client, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
 {
     uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
     std::memcpy(identity_dup, identity, len);
@@ -463,6 +518,7 @@ void client_init(struct Session *session, struct Client *client, enum Transport 
         .recv_queue = ConcurrentQueue<void *>(),
         .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv_buffer = ConcurrentQueue<Message>(),
+        .destroy = std::nullopt,
     };
 
     client->thread->add_client(client);
@@ -599,6 +655,7 @@ void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len
     SendMessage send{
         .completer = Completer::future(future),
         .msg = {
+            .type = MessageType::Data,
             .address = {
                 .data = to,
                 .len = to_len,
@@ -633,6 +690,7 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
     SendMessage send{
         .completer = Completer::semaphore(&sem),
         .msg = {
+            .type = MessageType::Data,
             .address = {
                 .data = to,
                 .len = to_len,
@@ -670,5 +728,20 @@ void client_recv_sync(struct Client *client, struct Message *msg)
 
 void client_destroy([[maybe_unused]] Client *client)
 {
-    // panic("todo: implement client_destroy: " + client->identity.as_string());
+    std::counting_semaphore<64> csem(0);
+
+    ControlRequest request{
+        .op = ControlOperation::DestroyClient,
+        .completer = Completer::csemaphore(&csem),
+        .addr = std::nullopt,
+        .client = client,
+    };
+
+    client->thread->control(request);
+
+    // wait for the client to be destroyed
+    csem.acquire();
+
+    // call the destructor in-place
+    client->~Client();
 }

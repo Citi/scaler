@@ -51,6 +51,34 @@ void future_set_result(void *future, void *data);
     exit(1);
 }
 
+// how to control flow
+// continue is truthy
+// break is falsy
+struct ControlFlow
+{
+    enum Value
+    {
+        Continue,
+        Break
+    } value;
+
+    constexpr ControlFlow(Value value) : value(value) {}
+    constexpr operator Value() const { return value; }
+
+    operator bool() const
+    {
+        switch (this->value)
+        {
+        case Continue:
+            return true;
+        case Break:
+            return false;
+        }
+
+        panic("unreachable");
+    }
+};
+
 uint8_t *datadup(const uint8_t *data, size_t len)
 {
     uint8_t *dup = (uint8_t *)malloc(len * sizeof(uint8_t));
@@ -77,7 +105,7 @@ struct Bytes
         return len == 0 || data == nullptr;
     }
 
-    bool empty() const
+    bool is_empty() const
     {
         return len == 0 || data == nullptr;
     }
@@ -85,12 +113,20 @@ struct Bytes
     // debugging utility
     std::string as_string() const
     {
-        if (empty())
+        if (is_empty())
         {
             return "[EMPTY]";
         }
 
         return std::string((char *)data, len);
+    }
+
+    static Bytes empty()
+    {
+        return {
+            .data = nullptr,
+            .len = 0,
+        };
     }
 
     static Bytes copy(const uint8_t *data, size_t len)
@@ -110,8 +146,16 @@ struct Bytes
     }
 };
 
+ENUM MessageType : uint8_t{
+                       Data,
+                       Identity,
+                       Disconnect,
+                   };
+
 struct Message
 {
+    MessageType type;
+
     // the address the message was received from, or to send to
     //
     // for received messages, the address data is
@@ -276,12 +320,14 @@ struct Completer
     ENUM Type{
         None,
         Future,
-        Semaphore} type;
+        Semaphore,
+        CountingSemaphore} type;
 
     union
     {
         void *future_ptr;
         std::binary_semaphore *sem;
+        std::counting_semaphore<64> *csem;
     };
 
     // complete with a result
@@ -311,6 +357,14 @@ struct Completer
             .sem = sem,
         };
     }
+
+    static Completer csemaphore(std::counting_semaphore<64> *csem)
+    {
+        return {
+            .type = Type::CountingSemaphore,
+            .csem = csem,
+        };
+    }
 };
 
 void Completer::complete(void *result = NULL)
@@ -322,6 +376,9 @@ void Completer::complete(void *result = NULL)
     case Completer::Type::Future:
         future_set_result(this->future_ptr, result);
         break;
+    case Completer::Type::CountingSemaphore:
+        this->csem->release();
+        break;
     case Completer::Type::Semaphore:
         this->sem->release();
         break;
@@ -331,6 +388,7 @@ void Completer::complete(void *result = NULL)
 ENUM IoProgress : uint8_t{
                       Magic,   // the magic is being read
                       Header,  // the header is being read
+                      Type,    // the message type is being read
                       Payload, // the payload is being read
                   };
 
@@ -344,7 +402,13 @@ struct IoOperation
     union
     {
         uint8_t buffer[4];
-        Bytes payload;
+
+        // i don't want to name this struct but it makes the ide happy
+        struct
+        {
+            MessageType type;
+            Bytes payload;
+        };
     };
 
     bool completed() const
@@ -368,13 +432,18 @@ struct IoOperation
     }
 
     // the payload must live as long as the operation does
-    static IoOperation write(Bytes payload, Completer completer = Completer::none())
+    static IoOperation write(Bytes payload, MessageType type = MessageType::Data, Completer completer = Completer::none())
     {
         return {
             .progress = IoProgress::Magic,
             .completer = completer,
             .cursor = 0,
+
+// vscode can't handle this, so exclude it from intellisense
+#ifndef __INTELLISENSE__
+            .type = type,
             .payload = payload,
+#endif
         };
     }
 };

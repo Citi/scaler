@@ -89,7 +89,7 @@ struct EpollData
 
 ENUM ControlOperation : uint8_t{
                             AddClient,
-                            RemoveClient,
+                            DestroyClient,
                             Connect,
                         };
 

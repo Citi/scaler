@@ -17,8 +17,9 @@
 // Third-party
 #include "third_party/concurrentqueue.h"
 
-// Common
+// First-party
 #include "common.hpp"
+#include "session.hpp"
 
 using moodycamel::ConcurrentQueue;
 
@@ -27,6 +28,7 @@ using moodycamel::ConcurrentQueue;
 struct Client;
 struct Peer;
 struct IoResult;
+struct SendMessage;
 ENUM ReadResult : uint8_t;
 ENUM WriteResult : uint8_t;
 ENUM PeerType : uint8_t;
@@ -34,16 +36,15 @@ ENUM ConnectorType : uint8_t;
 ENUM Transport : uint8_t;
 ENUM PeerState : uint8_t;
 
-// First-party
-#include "session.hpp"
-
 [[nodiscard]] IoResult writeall(int fd, uint8_t *data, size_t len);
 [[nodiscard]] WriteResult write_message(int fd, IoOperation *op);
 [[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len);
 [[nodiscard]] ReadResult read_message(int fd, IoOperation *op);
 
-void write_to_peer(Peer *peer, Bytes payload, Completer completer);
+void write_to_peer(Peer *peer, SendMessage send);
 void reconnect_peer(Peer *peer);
+void remove_peer(Peer *peer);
+ControlFlow epollout_peer(Peer *peer);
 
 void client_init(struct Session *session, struct Client *client, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
 void client_bind(struct Client *client, const char *host, uint16_t port);
@@ -103,6 +104,8 @@ struct Client
     int recv_buffer_event_fd;                // event fd for recv buffer, only needed for sync clients
     ConcurrentQueue<Message> recv_buffer;    // these are messages that have been received
 
+    std::optional<Completer> destroy; // this semaphore is used to wait for the destruction of a client
+
     // must hold mutex
     bool peer_by_id(Bytes id, Peer **peer);
     void remove_peer(Peer *peer);
@@ -139,6 +142,8 @@ struct Peer
     PeerType type;         // the type of peer
     int fd;                // the socket fd of this peer
 
+    std::queue<SendMessage> queue; // messages to be sent by this peer
+
     PeerState state; // the state of the peer
 
     std::optional<IoOperation> read_op;  // the current read operation
@@ -149,7 +154,7 @@ struct Peer
 
 struct IoResult
 {
-    ENUM Tag{
+    enum Tag{
         Done,       // the read or write is complete
         Blocked,    // the operation blocked, but some progress may have been made
         Disconnect, // the connection was lost

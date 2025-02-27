@@ -120,9 +120,7 @@ EpollData *ThreadContext::epoll_by_fd(int fd)
                               { return d->fd == fd; });
 
     if (edata != this->io_cache.end())
-    {
         return *edata;
-    }
 
     return nullptr;
 }
@@ -189,7 +187,7 @@ void client_connect_peer(Peer *peer)
     // set peer states
     peer->state = PeerState::Connecting;
     // write our identity
-    peer->write_op = IoOperation::write(peer->client->identity);
+    peer->write_op = IoOperation::write(peer->client->identity, MessageType::Identity);
     // read the peer's identity
     peer->read_op = IoOperation::read();
 
@@ -231,9 +229,6 @@ void client_send_event(Client *client)
         std::cout << "client: " << client->identity.as_string() << ": sending message to: " << send.msg.address.as_string() << std::endl;
 
         client->send(send);
-
-        // resolve the completer
-        send.completer.complete();
     }
 }
 
@@ -327,9 +322,22 @@ bool read_identity(Peer *peer)
     switch (result)
     {
     case ReadResult::Read:
-        peer->identity = peer->read_op->payload;
-        peer->read_op->complete();
-        peer->read_op = std::nullopt;
+        switch (peer->read_op->type)
+        {
+        case MessageType::Data:
+            std::cout << "bad message type while reading identity: data" << std::endl;
+            reconnect_peer(peer);
+            return false;
+        case MessageType::Disconnect:
+            remove_peer(peer);
+            return false; // explicit disconnect
+        case MessageType::Identity:
+            break; // fall through   
+        }
+
+        peer->identity = peer->read_op->payload; // set identity
+        peer->read_op->complete();               // complete the op
+        peer->read_op = std::nullopt;            // reset
 
         std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
 
@@ -381,12 +389,13 @@ void client_listener_event(Client *client)
             .addr = addr,
             .type = PeerType::Connectee,
             .fd = fd,
+            .queue = std::queue<SendMessage>(),
             // connecting state
             .state = PeerState::Connecting,
             // we need to read the peer's identity
             .read_op = IoOperation::read(),
             // we need to write our identity
-            .write_op = IoOperation::write(client->identity),
+            .write_op = IoOperation::write(client->identity, MessageType::Identity),
         };
 
         client->thread->add_peer(peer);
@@ -422,28 +431,9 @@ void client_peer_event_connected(epoll_event *event)
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
-    if (event->events & EPOLLOUT && peer->write_op)
-    {
-        std::cout << "client_peer_event_connected(): resuming write" << std::endl;
-
-        if (!peer->write_op)
-            panic("resume_write(): no write operation");
-
-        auto result = write_message(peer->fd, &*peer->write_op);
-
-        switch (result)
-        {
-        case WriteResult::Blocked1:
-            break;
-        case WriteResult::Disconnect1:
-            std::cout << "disconnect while resuming write" << std::endl;
-            reconnect_peer(peer);
-            return; // we need to go back to epoll_wait() after calling reconnect_peer()
-        case WriteResult::Done1:
-            peer->write_op->complete();
-            peer->write_op = std::nullopt;
-        }
-    }
+    if (event->events & EPOLLOUT)
+        if (!epollout_peer(peer))
+            return;
 
     if (event->events & EPOLLIN)
     {
@@ -469,7 +459,22 @@ void client_peer_event_connected(epoll_event *event)
             case ReadResult::Read:
                 std::cout << "client_peer_event_connected(): read message" << std::endl;
 
-                peer->recv_msg(peer->read_op->payload);
+                switch (peer->read_op->type)
+                {
+                case MessageType::Data:
+                    peer->recv_msg(peer->read_op->payload);
+                    break;
+                case MessageType::Identity:
+                    std::cout << "client_peer_event_connected(): unexpected identity message" << std::endl;
+                    reconnect_peer(peer);
+                    break;
+                case MessageType::Disconnect:
+                    std::cout << "client_peer_event_connected(): disconnect message!!!" << std::endl;
+
+                    // todo delete peer
+                    remove_peer(peer);
+                    break;
+                }
 
                 // reset the read operation
                 peer->read_op->complete();
@@ -566,9 +571,32 @@ void control_event(ThreadContext *ctx)
         case ControlOperation::AddClient:
             ctx->add_client(request.client);
             break;
-        case ControlOperation::RemoveClient:
-            ctx->remove_client(request.client);
-            break;
+        case ControlOperation::DestroyClient:
+        {
+            auto client = request.client;
+            auto peers = &client->peers;
+
+            // this semaphore will be completed
+            // once all the peers have disconnected
+            // or the timeout has been reached
+            // and the client has been destroyed
+            request.client->destroy = request.completer;
+
+            for (size_t i = 0; i < peers->size(); i++)
+            {
+                SendMessage send{
+                    .completer = Completer::none(),
+                    .msg = {
+                        .type = MessageType::Disconnect,
+                        .address = Bytes::empty(),
+                        .payload = Bytes::empty(),
+                    }};
+
+                write_to_peer(peers->at(i), send);
+            }
+        }
+
+        break;
         case ControlOperation::Connect:
         {
             auto peer = new Peer{
@@ -580,6 +608,7 @@ void control_event(ThreadContext *ctx)
                 .addr = *request.addr,
                 .type = PeerType::Connector,
                 .fd = -1, // a real fd will be assigned later
+                .queue = std::queue<SendMessage>(),
                 .state = PeerState::Disconnected,
                 .read_op = std::nullopt,
                 .write_op = std::nullopt,

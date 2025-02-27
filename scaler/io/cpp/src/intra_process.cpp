@@ -136,6 +136,8 @@ void intraprocess_send(IntraProcessClient *client, uint8_t *data, size_t len)
         if (client->peer)
         {
             Message msg{
+                .type = MessageType::Data,
+
                 // we need to clone the identity because the sending client
                 // has an independent lifetime from the message / receiving client
                 .address = Bytes::clone(client->identity),
