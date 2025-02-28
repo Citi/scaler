@@ -20,9 +20,6 @@ void IntraProcessClient::remove_from_epoll() {
 
 void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len)
 {
-    uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
-    std::memcpy(identity_dup, identity, len);
-
     new (client) IntraProcessClient{
         .session = session,
         .thread = session->next_thread(),
@@ -31,10 +28,7 @@ void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *id
         .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .unmuted_event_fd = eventfd(0, EFD_NONBLOCK),
-        .identity = Bytes{
-            .data = identity_dup,
-            .len = len,
-        },
+        .identity = Bytes::copy(identity, len),
         .bind = std::nullopt,
         .connecting = std::nullopt,
         .peer = std::nullopt,

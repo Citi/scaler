@@ -244,7 +244,11 @@ void client_recv_event(Client *client)
         if (eventfd_read(client->recv_buffer_event_fd, &value) < 0)
         {
             if (errno == EAGAIN)
+            {
+                std::cout << "client_recv_event(): no buffered messages" << std::endl;
+
                 break;
+            }
 
             panic("handle eventfd read error: " + std::to_string(errno));
         }
@@ -332,7 +336,7 @@ bool read_identity(Peer *peer)
             remove_peer(peer);
             return false; // explicit disconnect
         case MessageType::Identity:
-            break; // fall through   
+            break; // fall through
         }
 
         peer->identity = peer->read_op->payload; // set identity
@@ -383,9 +387,7 @@ void client_listener_event(Client *client)
         // and all the other stuff
         auto peer = new Peer{
             .client = client,
-            .identity = {
-                .data = nullptr,
-                .len = 0},
+            .identity = Bytes::empty(),
             .addr = addr,
             .type = PeerType::Connectee,
             .fd = fd,
@@ -421,6 +423,9 @@ void client_peer_event_connecting(epoll_event *event)
         std::cout << "client_peer_event_connecting(): CONNECTED" << std::endl;
 
         complete_peer_connect(peer);
+
+        // we're edge triggered so it's important that we check this
+        client_peer_event_connected(event);
     }
 }
 
@@ -432,7 +437,7 @@ void client_peer_event_connected(epoll_event *event)
     auto peer = edata->peer;
 
     if (event->events & EPOLLOUT)
-        if (!epollout_peer(peer))
+        if (epollout_peer(peer) == ControlFlow::Break)
             return;
 
     if (event->events & EPOLLIN)
@@ -449,7 +454,7 @@ void client_peer_event_connected(epoll_event *event)
             switch (result)
             {
             case ReadResult::Blocked2:
-                std::cout << "client_peer_event_connected(): blocked" << std::endl;
+                std::cout << "client_peer_event_connected(): read blocked" << std::endl;
                 return; // return from fn, note: no way to break loop
             case ReadResult::Disconnect2:
             case ReadResult::BadMagic:
@@ -458,6 +463,7 @@ void client_peer_event_connected(epoll_event *event)
                 return;
             case ReadResult::Read:
                 std::cout << "client_peer_event_connected(): read message" << std::endl;
+                peer->read_op->complete();
 
                 switch (peer->read_op->type)
                 {
@@ -473,11 +479,10 @@ void client_peer_event_connected(epoll_event *event)
 
                     // todo delete peer
                     remove_peer(peer);
-                    break;
+                    return; // exit fn
                 }
 
                 // reset the read operation
-                peer->read_op->complete();
                 peer->read_op = std::nullopt;
             }
         }
@@ -578,7 +583,7 @@ void control_event(ThreadContext *ctx)
 
             // this semaphore will be completed
             // once all the peers have disconnected
-            // or the timeout has been reached
+            // or the timeout has been reached <- TODO
             // and the client has been destroyed
             request.client->destroy = request.completer;
 
@@ -601,10 +606,7 @@ void control_event(ThreadContext *ctx)
         {
             auto peer = new Peer{
                 .client = request.client,
-                .identity = {
-                    .data = nullptr,
-                    .len = 0,
-                },
+                .identity = Bytes::empty(),
                 .addr = *request.addr,
                 .type = PeerType::Connector,
                 .fd = -1, // a real fd will be assigned later

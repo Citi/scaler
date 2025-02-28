@@ -15,7 +15,7 @@ import sys
 from os import path
 
 sys.path.append(path.join(path.dirname(__file__), "cpp"))
-from ffi import FFITypes, ffi, lib as C, c_async, c_async_wrapper, Message
+from ffi import FFITypes, ffi, lib as C, c_async, Message
 
 sys.path.pop()
 
@@ -24,9 +24,6 @@ from enum import IntEnum, unique
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Awaitable, Callable, TypeAlias
-
-
-
 
 
 class Session:
@@ -49,9 +46,9 @@ class Session:
 
         if self._destroyed:
             return
+        self._destroyed = True
 
         C.session_destroy(self._obj)
-        self._destroyed = True
 
     def register_client(self, client) -> None:
         self._clients.append(client)
@@ -60,7 +57,7 @@ class Session:
         return self
 
     def __exit__(self, _exc_type, _exc_value, _traceback) -> None:
-        self.__del__()
+        self.destroy()
 
 
 BinderCallback: TypeAlias = Callable[[bytes, Message], Awaitable[None]]
@@ -208,8 +205,9 @@ class IntraProcessClient:
     def recv_sync(self) -> Message:
         msg = ffi.new("struct Message *")
         C.intraprocess_recv_sync(self._obj, msg)
-
-        return Message(msg)
+        msg_ = Message(msg)
+        C.message_destroy(msg)
+        return msg_
 
     async def recv(self) -> Message:
         return await c_async(C.intraprocess_recv_async, self._obj)
@@ -312,7 +310,9 @@ class Client:
 
         msg = ffi.new("struct Message *")
         C.client_recv_sync(self._obj, msg)
-        return Message(msg)
+        msg_ = Message(msg)
+        C.message_destroy(msg)
+        return msg_
 
     async def recv(self) -> Message:
         self.__check_destroyed()

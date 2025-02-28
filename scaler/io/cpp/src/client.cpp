@@ -155,7 +155,7 @@ void Peer::recv_msg(Bytes payload)
 {
     Message message{
         .type = MessageType::Data,
-        .address = this->identity,
+        .address = this->identity.ref(),
         .payload = payload,
     };
 
@@ -277,11 +277,19 @@ void Peer::recv_msg(Bytes payload)
 }
 
 // process the send queue until the socket blocks or the queue is exhausted
-ControlFlow epollout_peer(Peer *peer) {
-    for (;;) {
-        if (!peer->write_op) {
+ControlFlow epollout_peer(Peer *peer)
+{
+    std::cout << "epollout()" << std::endl;
+
+    for (;;)
+    {
+        if (!peer->write_op)
+        {
             if (peer->queue.empty())
-                return ControlFlow::Continue; // done
+            {
+                std::cout << "epollout(): queue exhausted" << std::endl;
+                return ControlFlow::Continue; // queue exhausted
+            }
 
             auto send = peer->queue.front();
             peer->queue.pop();
@@ -294,11 +302,15 @@ ControlFlow epollout_peer(Peer *peer) {
         switch (result)
         {
         case WriteResult::Blocked1:
+            std::cout << "epollout(): blocked" << std::endl;
             return ControlFlow::Continue;
         case WriteResult::Disconnect1:
+            std::cout << "epollout(): disconnect" << std::endl;
             reconnect_peer(peer);
             return ControlFlow::Break; // we need to go back to epoll_wait() after calling reconnect_peer()
         case WriteResult::Done1:
+            std::cout << "epollout(): wrote message" << std::endl;
+
             peer->write_op->complete();
 
             if (peer->write_op->type == MessageType::Disconnect)
@@ -306,9 +318,12 @@ ControlFlow epollout_peer(Peer *peer) {
                 remove_peer(peer);
                 if (peer->client->peers.empty())
                 {
+                    std::cout << "epollout(): CLIENT DESTROYED" << std::endl;
                     // the client is being destroyed and the last peer has disconnected
 
                     // TODO!!!!
+
+                    peer->client->destroy->complete();
                 }
                 delete peer;
 
@@ -316,7 +331,6 @@ ControlFlow epollout_peer(Peer *peer) {
             }
 
             peer->write_op = std::nullopt;
-
             return ControlFlow::Continue;
         }
     }
@@ -354,7 +368,7 @@ void write_to_peer(Peer *peer, SendMessage send)
                 };
 
             // todo: handle other errors?
-            panic("read error: " + std::to_string(errno));
+            panic("read error: " + std::to_string(errno) + " ; fd: " + std::to_string(fd));
         }
 
         // graceful disconnect
@@ -412,10 +426,7 @@ void write_to_peer(Peer *peer, SendMessage send)
 
         op->progress = IoProgress::Payload;
         op->cursor = 0;
-        op->payload = Bytes{
-            .data = (uint8_t *)malloc(len),
-            .len = len,
-        };
+        op->payload = Bytes::alloc(len);
     }
         [[fallthrough]];
     case IoProgress::Type:
@@ -473,11 +484,9 @@ void reconnect_peer(Peer *peer)
     {
         auto thread = peer->client->thread;
 
-        free(peer->identity.data);
-        peer->identity = {
-            .data = nullptr,
-            .len = 0,
-        };
+        peer->identity.free_();
+        peer->identity = Bytes::empty();
+
         peer->fd = -1;
         peer->state = PeerState::Disconnected;
         thread->connecting.push_back(peer);
@@ -495,18 +504,12 @@ void reconnect_peer(Peer *peer)
 
 void client_init(Session *session, Client *client, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
 {
-    uint8_t *identity_dup = (uint8_t *)malloc(len * sizeof(uint8_t));
-    std::memcpy(identity_dup, identity, len);
-
     new (client) Client{
         .type = type,
         .transport = transport,
         .thread = session->next_thread(),
         .session = session,
-        .identity = Bytes{
-            .data = identity_dup,
-            .len = len,
-        },
+        .identity = Bytes::copy(identity, len),
         .rr = 0,
         .fd = -1,
         .addr = std::nullopt,
@@ -524,7 +527,7 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
     client->thread->add_client(client);
 }
 
-void client_bind(struct Client *client, const char *host, uint16_t port)
+void client_bind(Client *client, const char *host, uint16_t port)
 {
     if (client->fd > 0)
         panic("client already bound");
@@ -605,7 +608,7 @@ void client_bind(struct Client *client, const char *host, uint16_t port)
     std::cout << "client: " << client->identity.as_string() << ": bound to: " << host << ":" << std::to_string(port) << std::endl;
 }
 
-void client_connect(struct Client *client, const char *addr, uint16_t port)
+void client_connect(Client *client, const char *addr, uint16_t port)
 {
     sockaddr_storage address;
 
@@ -650,17 +653,19 @@ void client_connect(struct Client *client, const char *addr, uint16_t port)
     client->thread->control(request);
 }
 
-void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
+void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
     SendMessage send{
         .completer = Completer::future(future),
         .msg = {
             .type = MessageType::Data,
             .address = {
+                .owned = false,
                 .data = to,
                 .len = to_len,
             },
             .payload = {
+                .owned = false,
                 .data = data,
                 .len = data_len,
             },
@@ -673,16 +678,24 @@ void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len
         panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
-void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
+void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
     // wait for the client to be unmuted
-    if (client->muted())
+    for (;;)
     {
+        if (!client->muted())
+            break;
+
         if (fd_wait(client->unmuted_event_fd, -1, POLLIN) < 0)
             panic("failed to wait for unmuted event: " + std::to_string(errno));
 
         if (eventfd_wait(client->unmuted_event_fd) < 0)
+        {
+            if (errno == EAGAIN)
+                continue;
+
             panic("failed to read eventfd: " + std::to_string(errno));
+        }
     }
 
     auto sem = std::binary_semaphore(0);
@@ -692,10 +705,12 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
         .msg = {
             .type = MessageType::Data,
             .address = {
+                .owned = false,
                 .data = to,
                 .len = to_len,
             },
             .payload = {
+                .owned = false,
                 .data = data,
                 .len = data_len,
             },
@@ -706,7 +721,7 @@ void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t
     sem.acquire();
 }
 
-void client_recv(void *future, struct Client *client)
+void client_recv(void *future, Client *client)
 {
     client->recv_queue.enqueue(future);
 
@@ -714,7 +729,7 @@ void client_recv(void *future, struct Client *client)
         panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
-void client_recv_sync(struct Client *client, struct Message *msg)
+void client_recv_sync(Client *client, Message *msg)
 {
     if (fd_wait(client->recv_buffer_event_fd, -1, POLLIN) < 0)
         panic("failed to wait for recv buffer: " + std::to_string(errno));
@@ -728,11 +743,11 @@ void client_recv_sync(struct Client *client, struct Message *msg)
 
 void client_destroy([[maybe_unused]] Client *client)
 {
-    std::counting_semaphore<64> csem(0);
+    auto sem = std::binary_semaphore(0);
 
     ControlRequest request{
         .op = ControlOperation::DestroyClient,
-        .completer = Completer::csemaphore(&csem),
+        .completer = Completer::semaphore(&sem),
         .addr = std::nullopt,
         .client = client,
     };
@@ -740,7 +755,7 @@ void client_destroy([[maybe_unused]] Client *client)
     client->thread->control(request);
 
     // wait for the client to be destroyed
-    csem.acquire();
+    sem.acquire();
 
     // call the destructor in-place
     client->~Client();

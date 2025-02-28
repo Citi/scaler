@@ -88,8 +88,15 @@ uint8_t *datadup(const uint8_t *data, size_t len)
 
 struct Bytes
 {
+    bool owned;
     uint8_t *data;
     size_t len;
+
+    void free_()
+    {
+        if (this->owned)
+            free(this->data);
+    }
 
     bool operator==(const Bytes &other) const
     {
@@ -121,9 +128,26 @@ struct Bytes
         return std::string((char *)data, len);
     }
 
+    Bytes ref() {
+        return {
+            .owned = false,
+            .data = this->data,
+            .len = this->len
+        };
+    }
+
+    static Bytes alloc(size_t len)
+    {
+        return {
+            .owned = true,
+            .data = (uint8_t *)malloc(len),
+            .len = len};
+    }
+
     static Bytes empty()
     {
         return {
+            .owned = false,
             .data = nullptr,
             .len = 0,
         };
@@ -132,6 +156,7 @@ struct Bytes
     static Bytes copy(const uint8_t *data, size_t len)
     {
         return {
+            .owned = true,
             .data = datadup(data, len),
             .len = len,
         };
@@ -140,6 +165,7 @@ struct Bytes
     static Bytes clone(const Bytes &bytes)
     {
         return {
+            .owned = true,
             .data = datadup(bytes.data, bytes.len),
             .len = bytes.len,
         };
@@ -172,8 +198,8 @@ struct Message
 // free a received message
 void message_destroy(Message &msg)
 {
-    // the address is owned by the Peer
-    free(msg.payload.data);
+    msg.payload.free_();
+    msg.address.free_();
 }
 
 void serialize_u32(uint32_t x, uint8_t buffer[4])
