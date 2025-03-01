@@ -1,6 +1,7 @@
 #include "intra_process.hpp"
 
-void IntraProcessClient::ensure_epoll() {
+void IntraProcessClient::ensure_epoll()
+{
     if (this->epoll)
         return;
 
@@ -10,7 +11,8 @@ void IntraProcessClient::ensure_epoll() {
     this->thread->add_epoll(this->recv_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessClientRecv, this);
 }
 
-void IntraProcessClient::remove_from_epoll() {
+void IntraProcessClient::remove_from_epoll()
+{
     if (!this->epoll)
         return;
 
@@ -153,8 +155,8 @@ void intraprocess_send(IntraProcessClient *client, uint8_t *data, size_t len)
         client->session->intraprocess_mutex.unlock_shared();
 
         // wait for a connection
-        if (fd_wait(client->unmuted_event_fd, -1, POLLIN) < 0)
-            panic("intraprocess_send(): failed to wait on unmuted_event_fd");
+        if (auto code = fd_wait(client->unmuted_event_fd, -1, POLLIN))
+            panic("fd_wait(): " + std::to_string(code) + " ; " + std::to_string(errno));
 
         if (eventfd_wait(client->unmuted_event_fd) < 0)
         {
@@ -170,8 +172,8 @@ void intraprocess_send(IntraProcessClient *client, uint8_t *data, size_t len)
 void intraprocess_recv_sync(IntraProcessClient *client, Message *msg)
 {
 wait:
-    if (fd_wait(client->recv_buffer_event_fd, -1, POLLIN) < 0)
-        panic("intraprocess_recv_sync(): failed to wait on recv_buffer_event_fd");
+    if (auto code = fd_wait(client->recv_buffer_event_fd, -1, POLLIN))
+        panic("fd_wait(): " + std::to_string(code) + " ; " + std::to_string(errno));
 
     if (eventfd_wait(client->recv_buffer_event_fd) < 0)
     {

@@ -693,13 +693,13 @@ void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8
 
 void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
-    sem_t sem;
+    sem_t *sem = (sem_t *)malloc(sizeof(sem_t));
 
-    if (sem_init(&sem, 0, 0) < 0)
+    if (sem_init(sem, 0, 0) < 0)
         panic("failed to initialize semaphore: " + std::to_string(errno));
 
     SendMessage send{
-        .completer = Completer::semaphore(&sem),
+        .completer = Completer::semaphore(sem),
         .msg = {
             .type = MessageType::Data,
             .address = {
@@ -720,13 +720,17 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
     if (eventfd_signal(client->send_event_fd) < 0)
         panic("failed to write to eventfd: " + std::to_string(errno));
 
-    if (sem_wait(&sem) < 0)
+    if (sem_wait(sem) < 0)
     {
+        free(sem);
+
         if (errno == EINTR)
             return;
 
         panic("failed to await semaphore: " + std::to_string(errno));
     }
+
+    free(sem);
 }
 
 void client_recv(void *future, Client *client)
@@ -739,11 +743,17 @@ void client_recv(void *future, Client *client)
 
 void client_recv_sync(Client *client, Message *msg)
 {
-    if (fd_wait(client->recv_buffer_event_fd, -1, POLLIN) < 0)
-        panic("failed to wait for recv buffer: " + std::to_string(errno));
+wait:
+    if (auto code = fd_wait(client->recv_buffer_event_fd, -1, POLLIN))
+        panic("fd_wait(): " + std::to_string(code) + " ; " + std::to_string(errno));
 
     if (eventfd_wait(client->recv_buffer_event_fd) < 0)
+    {
+        if (errno == EAGAIN)
+            goto wait; // pre-empted
+
         panic("failed to read eventfd: " + std::to_string(errno));
+    }
 
     while (!client->recv_buffer.try_dequeue(*msg))
         ; // wait
@@ -751,27 +761,29 @@ void client_recv_sync(Client *client, Message *msg)
 
 void client_destroy([[maybe_unused]] Client *client)
 {
-    sem_t sem;
+    sem_t *sem = (sem_t *)malloc(sizeof(sem_t));
 
-    if (sem_init(&sem, 0, 0) < 0)
+    if (sem_init(sem, 0, 0) < 0)
         panic("failed to initialize semaphore: " + std::to_string(errno));
 
     ControlRequest request{
         .op = ControlOperation::DestroyClient,
-        .completer = Completer::semaphore(&sem),
+        .completer = Completer::semaphore(sem),
         .client = client,
     };
 
     client->thread->control(request);
 
 wait:
-    if (sem_wait(&sem) < 0)
+    if (sem_wait(sem) < 0)
     {
         if (errno == EINTR)
             goto wait; // just wait again
 
         panic("failed to await semaphore: " + std::to_string(errno));
     }
+
+    free(sem);
 
     // call the destructor in-place
     client->~Client();

@@ -284,7 +284,7 @@ enum FdWait : int8_t
 // return value:
 //  - Fdwait::Ready (0): the file descriptor is ready
 //  - Fdwait::Timeout (-1): the timeout expired
-//  - Fdwait::Other (-2): poll failed for some other reason
+//  - Fdwait::Other (-2): poll failed for some other reason; check errno
 //  - (>0): a signal was received, the value is the negative of the signal number
 int8_t fd_wait(int fd, int timeout, short int events)
 {
