@@ -313,7 +313,7 @@ ControlFlow epollout_peer(Peer *peer)
 
             peer->write_op->complete();
 
-            if (peer->write_op->type == MessageType::Disconnect)
+            if (peer->write_op->type == MessageType::Disconnect && peer->client->destroy)
             {
                 remove_peer(peer);
                 if (peer->client->peers.empty())
