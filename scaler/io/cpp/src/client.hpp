@@ -103,7 +103,7 @@ struct Client
     int recv_buffer_event_fd;                // event fd for recv buffer, only needed for sync clients
     ConcurrentQueue<Message> recv_buffer;    // these are messages that have been received
 
-    std::optional<Completer> destroy; // this semaphore is used to wait for the destruction of a client
+    std::optional<Completer> destroy; // this is used to wait for the destruction of a client
 
     // must hold mutex
     bool peer_by_id(Bytes id, Peer **peer);

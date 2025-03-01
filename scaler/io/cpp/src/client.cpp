@@ -33,10 +33,11 @@ bool Client::muted()
 
 size_t Client::peer_rr()
 {
+    // why modulo twice? the number of peers might have changed
     auto rr = this->rr;
     this->rr = (this->rr + 1) % this->peers.size();
 
-    return rr;
+    return rr % this->peers.size();
 }
 
 void Client::recv_msg(Message &&msg)
@@ -107,7 +108,6 @@ void Client::send(SendMessage send)
             panic("client: muted");
 
         auto peer = this->peers[0];
-
         write_to_peer(peer, send);
     }
     break;
@@ -760,6 +760,8 @@ wait:
 
     while (!client->recv_buffer.try_dequeue(*msg))
         ; // wait
+
+    std::cout << "client_recv_sync(): done" << std::endl;
 }
 
 void client_destroy([[maybe_unused]] Client *client)

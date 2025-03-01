@@ -442,7 +442,7 @@ void client_peer_event_connected(epoll_event *event)
 
     if (event->events & EPOLLIN)
     {
-        std::cout << "client_peer_event_connected(): resuming read" << std::endl;
+        std::cout << "client_peer_event_connected(): reading" << std::endl;
 
         for (;;)
         {
