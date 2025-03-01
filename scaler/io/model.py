@@ -19,9 +19,7 @@ from ffi import FFITypes, ffi, lib as C, c_async, Message
 
 sys.path.pop()
 
-import asyncio
 from enum import IntEnum, unique
-from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from typing import Awaitable, Callable, TypeAlias
 

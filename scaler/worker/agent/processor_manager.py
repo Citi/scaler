@@ -236,7 +236,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
     def destroy(self, reason: str):
         self.__kill_all_processors(reason)
         self._binder_internal.destroy()
-        os.remove(self._address_path)
+        # os.remove(self._address_path)
 
     def initialized(self) -> bool:
         return self._current_holder is not None and self._current_holder.initialized()

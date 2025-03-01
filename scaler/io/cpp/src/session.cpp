@@ -326,17 +326,20 @@ bool read_identity(Peer *peer)
     switch (result)
     {
     case ReadResult::Read:
-        switch (peer->read_op->type)
+        switch (*peer->read_op->type)
         {
         case MessageType::Data:
-            std::cout << "bad message type while reading identity: data" << std::endl;
-            reconnect_peer(peer);
-            return false;
+            panic("bad message type while reading identity: remove this after debugging");
+            // std::cout << "bad message type while reading identity: data" << std::endl;
+            // reconnect_peer(peer);
+            // return false;
         case MessageType::Disconnect:
             remove_peer(peer);
             return false; // explicit disconnect
         case MessageType::Identity:
             break; // fall through
+        default:
+            panic("unknown message type: " + std::to_string((uint8_t)*peer->read_op->type));
         }
 
         peer->identity = peer->read_op->payload; // set identity
@@ -465,7 +468,7 @@ void client_peer_event_connected(epoll_event *event)
                 std::cout << "client_peer_event_connected(): read message" << std::endl;
                 peer->read_op->complete();
 
-                switch (peer->read_op->type)
+                switch (*peer->read_op->type)
                 {
                 case MessageType::Data:
                     peer->recv_msg(peer->read_op->payload);
@@ -495,13 +498,13 @@ void client_peer_event(epoll_event *event)
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
-    if (event->events & EPOLLHUP)
-    {
-        std::cout << "client_peer_event(): unexpected hangup" << std::endl;
+    // if (event->events & EPOLLHUP)
+    // {
+    //     std::cout << "client_peer_event(): unexpected hangup" << std::endl;
 
-        reconnect_peer(peer);
-        return;
-    }
+    //     reconnect_peer(peer);
+    //     return;
+    // }
 
     if (event->events & EPOLLERR)
     {
@@ -510,7 +513,10 @@ void client_peer_event(epoll_event *event)
         if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
             panic("failed to getsockopt: " + std::to_string(errno));
 
-        std::cout << "client_peer_event(): unexpected error: " << std::to_string(result) << std::endl;
+        if (result == ECONNREFUSED)
+            std::cout << "client_peer_event(): connection refused" << std::endl;
+        else
+            std::cout << "client_peer_event(): unexpected error: " << std::to_string(result) << std::endl;
 
         reconnect_peer(peer);
         return;

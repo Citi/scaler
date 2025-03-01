@@ -128,12 +128,12 @@ struct Bytes
         return std::string((char *)data, len);
     }
 
-    Bytes ref() {
+    Bytes ref()
+    {
         return {
             .owned = false,
             .data = this->data,
-            .len = this->len
-        };
+            .len = this->len};
     }
 
     static Bytes alloc(size_t len)
@@ -413,16 +413,11 @@ struct IoOperation
     Completer completer;
     size_t cursor;
 
+    std::optional<MessageType> type;
     union
     {
         uint8_t buffer[4];
-
-        // i don't want to name this struct but it makes the ide happy
-        struct
-        {
-            MessageType type;
-            Bytes payload;
-        };
+        Bytes payload;
     };
 
     bool completed() const
@@ -441,6 +436,7 @@ struct IoOperation
             .progress = IoProgress::Magic,
             .completer = completer,
             .cursor = 0,
+            .type = std::nullopt,
             .buffer = {0},
         };
     }

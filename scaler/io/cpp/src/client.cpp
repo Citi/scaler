@@ -218,6 +218,22 @@ void Peer::recv_msg(Bytes payload)
         if (result.tag == IoResult::Blocked)
             return WriteResult::Blocked1;
 
+        op->progress = IoProgress::Type;
+        op->cursor = 0;
+    }
+        [[fallthrough]];
+    case IoProgress::Type:
+    {
+        uint8_t type[] = {(uint8_t)*op->type};
+
+        auto result = writeall(fd, type, 1);
+
+        if (result.tag == IoResult::Disconnect)
+            return WriteResult::Disconnect1;
+
+        if (result.tag == IoResult::Blocked)
+            return WriteResult::Blocked1;
+
         op->progress = IoProgress::Header;
         op->cursor = 0;
     }
@@ -231,22 +247,6 @@ void Peer::recv_msg(Bytes payload)
 
         auto result = writeall(fd, header + op->cursor, 4 - op->cursor);
         op->cursor += result.n_bytes;
-
-        if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect1;
-
-        if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked1;
-
-        op->progress = IoProgress::Payload;
-        op->cursor = 0;
-    }
-        [[fallthrough]];
-    case IoProgress::Type:
-    {
-        uint8_t type[] = {(uint8_t)op->type};
-
-        auto result = writeall(fd, type, 1);
 
         if (result.tag == IoResult::Disconnect)
             return WriteResult::Disconnect1;
@@ -407,6 +407,23 @@ void write_to_peer(Peer *peer, SendMessage send)
         if (std::memcmp((char *)op->buffer, MAGIC, 4) != 0)
             return ReadResult::BadMagic;
 
+        op->progress = IoProgress::Type;
+        op->cursor = 0;
+    }
+        [[fallthrough]];
+    case IoProgress::Type:
+    {
+        uint8_t type;
+        auto result = readexact(fd, &type, 1);
+
+        if (result.tag == IoResult::Disconnect)
+            return ReadResult::Disconnect2;
+
+        if (result.tag == IoResult::Blocked)
+            return ReadResult::Blocked2;
+
+        op->type = (MessageType) type;
+
         op->progress = IoProgress::Header;
         op->cursor = 0;
     }
@@ -429,20 +446,6 @@ void write_to_peer(Peer *peer, SendMessage send)
         op->progress = IoProgress::Payload;
         op->cursor = 0;
         op->payload = Bytes::alloc(len);
-    }
-        [[fallthrough]];
-    case IoProgress::Type:
-    {
-        auto result = readexact(fd, (uint8_t *)&op->type, 1);
-
-        if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect2;
-
-        if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked2;
-
-        op->progress = IoProgress::Payload;
-        op->cursor = 0;
     }
         [[fallthrough]];
     case IoProgress::Payload:
