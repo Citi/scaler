@@ -99,18 +99,6 @@ class Message:
     def address(self) -> bytes:
         return self._address
 
-# for some reason, we get invalid state errors sometimes
-# this needs to be investigated
-def safe_set_result(future: asyncio.Future, result) -> None:
-    try:
-        future.set_result(result)
-    except asyncio.InvalidStateError:
-        pass
-
-# TODO: This should not be necessary and probably means
-# that futures are being duplicated in the C code
-__futures_cache = set()
-
 # this is called from C to inform the asyncio runtime that a future was completed
 @ffi.def_extern()
 def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData") -> None:
@@ -128,7 +116,9 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
 
     # using `call_soon_threadsafe()` is very important:
     # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
-    future.get_loop().call_soon_threadsafe(safe_set_result, future, result)
+    # future.get_loop().call_soon_threadsafe(safe_set_result, future, result)
+    future.get_loop().call_soon_threadsafe(future.set_result, result)
+
 
 # these type variables make type hints work
 # in Python 3.12+ we can use the new syntax instead of defining these:
@@ -141,7 +131,6 @@ R = TypeVar("R")
 async def c_async(fn: Callable[Concatenate["FFITypes.CData", P], R], *args: P.args, **kwargs: P.kwargs) -> R:
     future = asyncio.get_running_loop().create_future()
     handle = ffi.new_handle(future)
-    __futures_cache.add(handle)
     fn(handle, *args, **kwargs)
     return await future
 
