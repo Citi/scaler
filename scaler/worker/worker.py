@@ -171,9 +171,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except asyncio.CancelledError:
             pass
         except (ClientShutdownException, TimeoutError) as e:
-            logging.info(f"Worker[{self.pid}]: {e}", file=f)
+            logging.info(f"Worker[{self.pid}]: {e}")
 
-        print("worker: send disconnect request", file=f)
         await self._connector_external.send(DisconnectRequest.new_msg(self._connector_external.identity))
 
         self._processor_manager.destroy("quitted")
