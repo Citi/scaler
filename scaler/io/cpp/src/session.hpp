@@ -97,12 +97,12 @@ struct ControlRequest
 {
     ControlOperation op;
     Completer completer;
-    std::optional<sockaddr_storage> addr;
 
     union
     {
         void *data;
         Client *client;
+        Peer *peer;
     };
 
     void complete(void *result = NULL)

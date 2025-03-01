@@ -645,11 +645,22 @@ void client_connect(Client *client, const char *addr, uint16_t port)
         panic("Client does not support IntraProcess transport");
     }
 
+    auto peer = new Peer{
+        .client = client,
+        .identity = Bytes::empty(),
+        .addr = address,
+        .type = PeerType::Connector,
+        .fd = -1, // a real fd will be assigned later
+        .queue = std::queue<SendMessage>(),
+        .state = PeerState::Disconnected,
+        .read_op = std::nullopt,
+        .write_op = std::nullopt,
+    };
+
     ControlRequest request{
         .op = ControlOperation::Connect,
         .completer = Completer::none(),
-        .addr = address,
-        .client = client,
+        .peer = peer,
     };
 
     client->thread->control(request);
@@ -748,7 +759,6 @@ void client_destroy([[maybe_unused]] Client *client)
     ControlRequest request{
         .op = ControlOperation::DestroyClient,
         .completer = Completer::semaphore(&sem),
-        .addr = std::nullopt,
         .client = client,
     };
 

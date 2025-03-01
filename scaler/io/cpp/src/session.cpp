@@ -604,19 +604,7 @@ void control_event(ThreadContext *ctx)
         break;
         case ControlOperation::Connect:
         {
-            auto peer = new Peer{
-                .client = request.client,
-                .identity = Bytes::empty(),
-                .addr = *request.addr,
-                .type = PeerType::Connector,
-                .fd = -1, // a real fd will be assigned later
-                .queue = std::queue<SendMessage>(),
-                .state = PeerState::Disconnected,
-                .read_op = std::nullopt,
-                .write_op = std::nullopt,
-            };
-
-            client_connect_peer(peer);
+            client_connect_peer(request.peer);
         }
         break;
         }
