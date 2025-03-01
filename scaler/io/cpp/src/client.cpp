@@ -102,7 +102,7 @@ void Client::send(SendMessage send)
         std::cout << "pair: " << this->identity.as_string() << ": sending message" << std::endl;
 
         if (this->peers.empty())
-            panic("pair: muted");
+            panic("client: muted");
 
         auto peer = this->peers[0];
 
@@ -138,7 +138,7 @@ void Client::send(SendMessage send)
         std::cout << "dealer: " << this->identity.as_string() << ": sending message" << std::endl;
 
         if (this->peers.empty())
-            panic("dealer: muted");
+            panic("client: muted");
 
         // dealers round-robin their peers
         auto peer = this->peers[this->peer_rr()];
@@ -680,25 +680,7 @@ void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8
 
 void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
-    // wait for the client to be unmuted
-    for (;;)
-    {
-        if (!client->muted())
-            break;
-
-        if (fd_wait(client->unmuted_event_fd, -1, POLLIN) < 0)
-            panic("failed to wait for unmuted event: " + std::to_string(errno));
-
-        if (eventfd_wait(client->unmuted_event_fd) < 0)
-        {
-            if (errno == EAGAIN)
-                continue;
-
-            panic("failed to read eventfd: " + std::to_string(errno));
-        }
-    }
-
-    auto sem = std::binary_semaphore(0);
+    std::binary_semaphore sem(0);
 
     SendMessage send{
         .completer = Completer::semaphore(&sem),
@@ -717,7 +699,11 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
         },
     };
 
-    client->send(send);
+    client->send_queue.enqueue(std::move(send));
+
+    if (eventfd_signal(client->send_event_fd) < 0)
+        panic("failed to write to eventfd: " + std::to_string(errno));
+
     sem.acquire();
 }
 

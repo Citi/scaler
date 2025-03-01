@@ -116,8 +116,6 @@ struct Client
 
     // send a message to a peer according to the client type's rules
     // - must have exclusive access to the client
-    // - client must not be muted
-    // - if the peer disconnects, a reconnect is attempted, but the message will be lost
     void send(SendMessage send);
 };
 
