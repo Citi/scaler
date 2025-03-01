@@ -722,6 +722,9 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
 
     if (sem_wait(sem) < 0)
     {
+        if (sem_destroy(sem) < 0)
+            panic("failed to destroy semaphore: " + std::to_string(errno));
+
         free(sem);
 
         if (errno == EINTR)
@@ -782,6 +785,9 @@ wait:
 
         panic("failed to await semaphore: " + std::to_string(errno));
     }
+
+    if (sem_destroy(sem) < 0)
+        panic("failed to destroy semaphore: " + std::to_string(errno));
 
     free(sem);
 
