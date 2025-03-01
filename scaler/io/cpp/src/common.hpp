@@ -18,7 +18,6 @@
 #include <string>
 #include <iostream>
 #include <source_location>
-#include <semaphore>
 
 // System
 #include <sys/timerfd.h>
@@ -26,6 +25,7 @@
 #include <sys/signalfd.h>
 #include <poll.h>
 #include <signal.h>
+#include <semaphore.h>
 
 // 5ca1ab1e = scalable
 static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
@@ -346,14 +346,12 @@ struct Completer
     ENUM Type{
         None,
         Future,
-        Semaphore,
-        CountingSemaphore} type;
+        Semaphore} type;
 
     union
     {
         void *future_ptr;
-        std::binary_semaphore *sem;
-        std::counting_semaphore<64> *csem;
+        sem_t *sem;
     };
 
     // complete with a result
@@ -376,19 +374,11 @@ struct Completer
         };
     }
 
-    static Completer semaphore(std::binary_semaphore *sem)
+    static Completer semaphore(sem_t *sem)
     {
         return {
             .type = Type::Semaphore,
             .sem = sem,
-        };
-    }
-
-    static Completer csemaphore(std::counting_semaphore<64> *csem)
-    {
-        return {
-            .type = Type::CountingSemaphore,
-            .csem = csem,
         };
     }
 };
@@ -402,11 +392,9 @@ void Completer::complete(void *result = NULL)
     case Completer::Type::Future:
         future_set_result(this->future_ptr, result);
         break;
-    case Completer::Type::CountingSemaphore:
-        this->csem->release();
-        break;
     case Completer::Type::Semaphore:
-        this->sem->release();
+        if (sem_post(this->sem) < 0)
+            panic("failed to post semaphore: " + std::to_string(errno));
         break;
     }
 }

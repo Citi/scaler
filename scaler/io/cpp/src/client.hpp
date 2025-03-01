@@ -6,13 +6,12 @@
 // C++
 #include <optional>
 #include <vector>
-#include <expected>
-#include <semaphore>
 
 // System
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
+#include <semaphore.h>
 
 // Third-party
 #include "third_party/concurrentqueue.h"

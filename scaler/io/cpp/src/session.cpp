@@ -473,7 +473,7 @@ void client_peer_event_connected(epoll_event *event)
                 case MessageType::Identity:
                     std::cout << "client_peer_event_connected(): unexpected identity message" << std::endl;
                     reconnect_peer(peer);
-                    break;
+                    return;
                 case MessageType::Disconnect:
                     std::cout << "client_peer_event_connected(): disconnect message!!!" << std::endl;
 

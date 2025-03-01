@@ -310,7 +310,11 @@ class Client:
 
         msg = ffi.new("struct Message *")
         C.client_recv_sync(self._obj, msg)
+
+        # copy the message
         msg_ = Message(msg)
+
+        # free data
         C.message_destroy(msg)
         return msg_
 

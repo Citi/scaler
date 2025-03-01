@@ -53,7 +53,7 @@ void Client::recv_msg(Message &&msg)
         future_set_result(future, &msg);
         message_destroy(msg);
     }
-    else
+    else if (errno == EAGAIN) // o.w. res < 0
     {
         std::cout << "Client::recv_msg(): buffering message" << std::endl;
 
@@ -64,6 +64,8 @@ void Client::recv_msg(Message &&msg)
         if (eventfd_signal(this->recv_buffer_event_fd) < 0)
             panic("failed to write to eventfd: " + std::to_string(errno));
     }
+    else
+        panic("failed to read eventfd: " + std::to_string(errno));
 };
 
 void Client::unmute()
@@ -680,7 +682,10 @@ void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8
 
 void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
-    std::binary_semaphore sem(0);
+    sem_t sem;
+
+    if (sem_init(&sem, 0, 0) < 0)
+        panic("failed to initialize semaphore: " + std::to_string(errno));
 
     SendMessage send{
         .completer = Completer::semaphore(&sem),
@@ -699,12 +704,18 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
         },
     };
 
-    client->send_queue.enqueue(std::move(send));
+    client->send_queue.enqueue(send);
 
     if (eventfd_signal(client->send_event_fd) < 0)
         panic("failed to write to eventfd: " + std::to_string(errno));
 
-    sem.acquire();
+    if (sem_wait(&sem) < 0)
+    {
+        if (errno == EINTR)
+            return;
+
+        panic("failed to await semaphore: " + std::to_string(errno));
+    }
 }
 
 void client_recv(void *future, Client *client)
@@ -729,7 +740,10 @@ void client_recv_sync(Client *client, Message *msg)
 
 void client_destroy([[maybe_unused]] Client *client)
 {
-    auto sem = std::binary_semaphore(0);
+    sem_t sem;
+
+    if (sem_init(&sem, 0, 0) < 0)
+        panic("failed to initialize semaphore: " + std::to_string(errno));
 
     ControlRequest request{
         .op = ControlOperation::DestroyClient,
@@ -740,8 +754,14 @@ void client_destroy([[maybe_unused]] Client *client)
 
     client->thread->control(request);
 
-    // wait for the client to be destroyed
-    sem.acquire();
+wait:
+    if (sem_wait(&sem) < 0)
+    {
+        if (errno == EINTR)
+            goto wait; // just wait again
+
+        panic("failed to await semaphore: " + std::to_string(errno));
+    }
 
     // call the destructor in-place
     client->~Client();
