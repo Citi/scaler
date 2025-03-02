@@ -76,7 +76,7 @@ ffi: FFITypes
 lib: LibType
 
 import asyncio
-from typing import Callable, ParamSpec, TypeVar, Concatenate, Coroutine
+from typing import Callable, ParamSpec, TypeVar, Concatenate
 
 
 class Message:
