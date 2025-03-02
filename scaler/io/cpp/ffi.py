@@ -94,7 +94,6 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
         result = None
     else:
         msg = ffi.cast("struct Message *", result)
-
         result = Message(msg)
 
     future: asyncio.Future = ffi.from_handle(future_handle)
