@@ -80,24 +80,14 @@ from typing import Callable, ParamSpec, TypeVar, Concatenate, Coroutine
 __futures_cache = {}
 
 class Message:
-    _payload: bytes
-    _address: bytes
+    payload: bytes
+    address: bytes
 
     def __init__(self, obj: "FFITypes.CData"):  # Message *
         # copy the payload
-        self._payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
+        self.payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
         # copy the address
-        self._address = bytes(ffi.buffer(obj.address.data, obj.address.len))
-
-    @property
-    def payload(self) -> bytes:
-        if self._payload is None:
-            self._payload = bytes(self._payload_buffer)
-        return self._payload
-
-    @property
-    def address(self) -> bytes:
-        return self._address
+        self.address = bytes(ffi.buffer(obj.address.data, obj.address.len))
 
 # this is called from C to inform the asyncio runtime that a future was completed
 @ffi.def_extern()

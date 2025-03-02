@@ -45,7 +45,6 @@ class AsyncBinder(Looper, Reporter):
         message = deserialize(client_msg.payload)
 
         if message is None:
-
             logging.error(f"received unknown message from {client_msg.address!r}: {client_msg.payload!r}")
             return
 
