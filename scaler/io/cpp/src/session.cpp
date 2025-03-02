@@ -299,14 +299,14 @@ bool write_identity(Peer *peer)
 
     switch (result)
     {
-    case WriteResult::Done1:
+    case WriteResult::Done:
         peer->write_op->complete();
         peer->write_op = std::nullopt;
         std::cout << "client: " << peer->client->identity.as_string() << ": wrote identity to peer: " << peer->identity.as_string() << std::endl;
         [[fallthrough]];
-    case WriteResult::Blocked1:
+    case WriteResult::Blocked:
         return true;
-    case WriteResult::Disconnect1:
+    case WriteResult::Disconnect:
         std::cout << "disconnect while writing identity" << std::endl;
         reconnect_peer(peer);
         return false;
@@ -348,12 +348,12 @@ bool read_identity(Peer *peer)
         std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
 
         [[fallthrough]];
-    case ReadResult::Blocked2:
+    case ReadResult::Blocked:
         return true;
     case ReadResult::BadMagic:
         std::cout << "bad magic while reading identity" << std::endl;
         [[fallthrough]];
-    case ReadResult::Disconnect2:
+    case ReadResult::Disconnect:
         std::cout << "disconnect while reading identity" << std::endl;
         reconnect_peer(peer);
         return false;
@@ -455,10 +455,10 @@ void client_peer_event_connected(epoll_event *event)
 
             switch (result)
             {
-            case ReadResult::Blocked2:
+            case ReadResult::Blocked:
                 std::cout << "client_peer_event_connected(): read blocked; n: " << peer->read_op->cursor << std::endl;
                 return; // return from fn, note: no way to break loop
-            case ReadResult::Disconnect2:
+            case ReadResult::Disconnect:
             case ReadResult::BadMagic:
                 std::cout << "client_peer_event_connected(): disconnect" << std::endl;
                 reconnect_peer(peer);

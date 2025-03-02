@@ -212,10 +212,10 @@ void Peer::recv_msg(Bytes payload)
         op->cursor += result.n_bytes;
 
         if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect1;
+            return WriteResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked1;
+            return WriteResult::Blocked;
 
         op->progress = IoProgress::Type;
         op->cursor = 0;
@@ -228,10 +228,10 @@ void Peer::recv_msg(Bytes payload)
         auto result = writeall(fd, type, 1);
 
         if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect1;
+            return WriteResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked1;
+            return WriteResult::Blocked;
 
         op->progress = IoProgress::Header;
         op->cursor = 0;
@@ -248,10 +248,10 @@ void Peer::recv_msg(Bytes payload)
         op->cursor += result.n_bytes;
 
         if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect1;
+            return WriteResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked1;
+            return WriteResult::Blocked;
 
         op->progress = IoProgress::Payload;
         op->cursor = 0;
@@ -263,14 +263,14 @@ void Peer::recv_msg(Bytes payload)
         op->cursor += result.n_bytes;
 
         if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect1;
+            return WriteResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked1;
+            return WriteResult::Blocked;
 
-        std::cout << "write_message(): wrote to: " << std::to_string(fd) << std::endl;
+        std::cout << "write_message(): WROTE MESSAGE: " << std::to_string(fd) << std::endl;
 
-        return WriteResult::Done1;
+        return WriteResult::Done;
     }
     }
 
@@ -302,14 +302,14 @@ ControlFlow epollout_peer(Peer *peer)
 
         switch (result)
         {
-        case WriteResult::Blocked1:
+        case WriteResult::Blocked:
             std::cout << "epollout(): blocked" << std::endl;
             return ControlFlow::Continue;
-        case WriteResult::Disconnect1:
+        case WriteResult::Disconnect:
             std::cout << "epollout(): disconnect" << std::endl;
             reconnect_peer(peer);
             return ControlFlow::Break; // we need to go back to epoll_wait() after calling reconnect_peer()
-        case WriteResult::Done1:
+        case WriteResult::Done:
             std::cout << "epollout(): wrote message" << std::endl;
 
             peer->write_op->complete();
@@ -398,10 +398,10 @@ void write_to_peer(Peer *peer, SendMessage send)
         op->cursor += result.n_bytes;
 
         if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect2;
+            return ReadResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked2;
+            return ReadResult::Blocked;
 
         if (std::memcmp((char *)op->buffer, MAGIC, 4) != 0)
             return ReadResult::BadMagic;
@@ -416,10 +416,10 @@ void write_to_peer(Peer *peer, SendMessage send)
         auto result = readexact(fd, &type, 1);
 
         if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect2;
+            return ReadResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked2;
+            return ReadResult::Blocked;
 
         if (type > (uint8_t)MessageType::Disconnect)
             panic("bad message type!");
@@ -436,10 +436,10 @@ void write_to_peer(Peer *peer, SendMessage send)
         op->cursor += result.n_bytes;
 
         if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect2;
+            return ReadResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked2;
+            return ReadResult::Blocked;
 
         uint32_t len;
         deserialize_u32(op->buffer, &len);
@@ -456,10 +456,12 @@ void write_to_peer(Peer *peer, SendMessage send)
         op->cursor += result.n_bytes;
 
         if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect2;
+            return ReadResult::Disconnect;
 
         if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked2;
+            return ReadResult::Blocked;
+
+        std::cout << "read_message(): READ MESSAGE" << std::endl;
 
         return ReadResult::Read;
     }

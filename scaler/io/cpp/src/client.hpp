@@ -28,12 +28,13 @@ struct Client;
 struct Peer;
 struct IoResult;
 struct SendMessage;
-ENUM ReadResult : uint8_t;
-ENUM WriteResult : uint8_t;
-ENUM PeerType : uint8_t;
+enum class ReadResult;
+enum class WriteResult;
+enum class PeerType;
+enum class PeerState;
+
 ENUM ConnectorType : uint8_t;
 ENUM Transport : uint8_t;
-ENUM PeerState : uint8_t;
 
 [[nodiscard]] IoResult writeall(int fd, uint8_t *data, size_t len);
 [[nodiscard]] WriteResult write_message(int fd, IoOperation *op);
@@ -118,18 +119,21 @@ struct Client
     void send(SendMessage send);
 };
 
-ENUM PeerType : uint8_t{
-                    // we connected to the remote
-                    Connector,
+enum class PeerType
+{
+    // we connected to the remote
+    Connector,
 
-                    // the remote connected to us
-                    Connectee};
+    // the remote connected to us
+    Connectee
+};
 
-ENUM PeerState : uint8_t{
-                     Connecting,
-                     Connected,
-                     Disconnected,
-                 };
+enum class PeerState
+{
+    Connecting,
+    Connected,
+    Disconnected,
+};
 
 struct Peer
 {
@@ -151,7 +155,8 @@ struct Peer
 
 struct IoResult
 {
-    enum Tag{
+    enum Tag
+    {
         Done,       // the read or write is complete
         Blocked,    // the operation blocked, but some progress may have been made
         Disconnect, // the connection was lost
@@ -160,15 +165,17 @@ struct IoResult
     size_t n_bytes;
 };
 
-ENUM WriteResult : uint8_t{
-                       Done1,       // the read or write is complete
-                       Blocked1,    // the operation blocked, but some progress may have been made
-                       Disconnect1, // the connection was lost
-                   };
+enum class WriteResult
+{
+    Done,       // the read or write is complete
+    Blocked,    // the operation blocked, but some progress may have been made
+    Disconnect, // the connection was lost
+};
 
-ENUM ReadResult : uint8_t{
-                      Read,        // data was read
-                      Blocked2,    // we might have read some data, but the fd blocked
-                      Disconnect2, // the connection was lost
-                      BadMagic,    // the magic didn't match
-                  };
+enum class ReadResult
+{
+    Read,        // data was read
+    Blocked,    // we might have read some data, but the fd blocked
+    Disconnect, // the connection was lost
+    BadMagic,    // the magic didn't match
+};
