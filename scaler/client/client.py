@@ -82,13 +82,16 @@ class Client:
         self._profiling = profiling
         self._identity = f"{os.getpid()}|Client|{uuid.uuid4().bytes.hex()}".encode()
 
-        self._client_agent_address = TCPAddress.localhost(random.randint(10000, 20000)) #InprocAddr(f"scaler_client_{uuid.uuid4().hex}")
+        self._client_agent_address = TCPAddress.localhost(random.randint(10000, 20000)) # IntraProcessAddress(f"scaler_client_{uuid.uuid4().hex}")
         self._scheduler_address = TCPAddress.from_str(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._session = Session(2)
+        self._session = Session(io_threads=1)
+        self._connector = SyncConnector(
+            session=self._session, type_=ConnectorType.Pair, address=self._client_agent_address, identity=self._identity
+        )
 
         self._future_manager = ClientFutureManager(self._serializer)
         self._agent = ClientAgent(
@@ -103,10 +106,6 @@ class Client:
             serializer=self._serializer,
         )
         self._agent.start()
-
-        self._connector = SyncConnector(
-            session=self._session, type_=ConnectorType.Pair, address=self._client_agent_address, identity=self._identity
-        )
 
         logging.info(f"ScalerClient: connect to {self._scheduler_address}")
 

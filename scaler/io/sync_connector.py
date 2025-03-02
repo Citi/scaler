@@ -23,13 +23,8 @@ class SyncConnector:
 
         match address:
             case TCPAddress():    
-                self._client = Client(session, self._identity, type_)
                 host = address.host
             case IntraProcessAddress():
-                if type_ != ConnectorType.Pair:
-                    raise ValueError(f"IntraProcessClient only supports pair type, got {type_}")
-
-                self._client = IntraProcessClient(session, self._identity)
                 host = address.name
 
         self._identity: bytes = (
@@ -37,6 +32,15 @@ class SyncConnector:
             if identity is None
             else identity
         )
+
+        match address:
+            case TCPAddress():    
+                self._client = Client(session, self._identity, type_)
+            case IntraProcessAddress():
+                if type_ != ConnectorType.Pair:
+                    raise ValueError(f"IntraProcessClient only supports pair type, got {type_}")
+
+                self._client = IntraProcessClient(session, self._identity)
 
         self._client.connect(addr=self._address)
         self._lock = threading.Lock()
