@@ -77,8 +77,6 @@ lib: LibType
 import asyncio
 from typing import Callable, ParamSpec, TypeVar, Concatenate, Coroutine
 
-__futures_cache = {}
-
 class Message:
     payload: bytes
     address: bytes
@@ -123,19 +121,3 @@ async def c_async(fn: Callable[Concatenate["FFITypes.CData", P], R], *args: P.ar
     handle = ffi.new_handle(future)
     fn(handle, *args, **kwargs)
     return await future
-
-
-# P2 = ParamSpec("P")
-# R2 = TypeVar("R")
-
-# # c_async_wrapper works like c_async but it returns a function
-# # that can be called rather than calling the function directly
-# # example: wrapped = c_async_wrap(lib.async_binder_recv, binder)
-# def c_async_wrapper(fn: Callable[Concatenate["FFITypes.CData", P2], R2]) -> Callable[P2, Coroutine[None, None, R2]]:
-#     async def inner(*args: P2.args, **kwargs: P2.kwargs) -> R2:
-#         future = asyncio.get_running_loop().create_future()
-#         handle = ffi.new_handle(future)
-#         fn(handle, *args, **kwargs)
-#         return await future
-
-#     return inner
