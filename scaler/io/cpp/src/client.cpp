@@ -422,7 +422,10 @@ void write_to_peer(Peer *peer, SendMessage send)
         if (result.tag == IoResult::Blocked)
             return ReadResult::Blocked2;
 
-        op->type = (MessageType) type;
+        if (type > (uint8_t)MessageType::Disconnect)
+            panic("bad message type!");
+
+        op->type = (MessageType)type;
 
         op->progress = IoProgress::Header;
         op->cursor = 0;
@@ -473,6 +476,9 @@ void remove_peer(Peer *peer)
 
     thread->remove_peer(peer);
     client->remove_peer(peer);
+
+    peer->write_op = std::nullopt;
+    peer->read_op = std::nullopt;
 
     std::cout << "closing fd: " << std::to_string(peer->fd) << std::endl;
     close(peer->fd);
@@ -538,11 +544,14 @@ void client_bind(Client *client, const char *host, uint16_t port)
         panic("client already bound");
 
     sockaddr_storage address;
+    std::memset(&address, 0, sizeof(address));
 
     switch (client->transport)
     {
     case Transport::InterProcess:
     {
+        std::cout << "BINDING UNIX" << std::endl;
+
         client->fd = socket(
             AF_UNIX,
             SOCK_STREAM | SOCK_NONBLOCK,
@@ -561,6 +570,8 @@ void client_bind(Client *client, const char *host, uint16_t port)
     break;
     case Transport::TCP:
     {
+        std::cout << "BINDING TCP" << std::endl;
+
         client->fd = socket(
             AF_INET,
             SOCK_STREAM | SOCK_NONBLOCK,
@@ -596,17 +607,13 @@ void client_bind(Client *client, const char *host, uint16_t port)
     if (bind(client->fd, (sockaddr *)&address, sizeof(address)) < 0)
     {
         if (errno == EADDRINUSE)
-        {
             panic("address in use: " + std::string(host) + ":" + std::to_string(port));
-        }
 
         panic("failed to bind socket: " + std::to_string(errno));
     }
 
-    if (listen(client->fd, 128) < 0)
-    {
+    if (listen(client->fd, 16) < 0)
         panic("failed to listen on socket");
-    }
 
     client->thread->add_epoll(client->fd, EPOLLIN | EPOLLET, EpollType::ClientListener, client);
 

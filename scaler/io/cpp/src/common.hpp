@@ -173,9 +173,9 @@ struct Bytes
 };
 
 ENUM MessageType : uint8_t{
-                       Data,
-                       Identity,
-                       Disconnect,
+                       Data = 0,
+                       Identity = 1,
+                       Disconnect = 2,
                    };
 
 struct Message
@@ -414,20 +414,17 @@ struct IoOperation
     size_t cursor;
 
     std::optional<MessageType> type;
-    union
-    {
-        uint8_t buffer[4];
-        Bytes payload;
-    };
+    uint8_t buffer[4];
+    Bytes payload;
 
     bool completed() const
     {
         return progress == IoProgress::Payload && cursor == payload.len;
     }
 
-    void complete()
+    void complete(void *result = NULL)
     {
-        completer.complete();
+        completer.complete(result);
     }
 
     static IoOperation read(Completer completer = Completer::none())
@@ -438,6 +435,7 @@ struct IoOperation
             .cursor = 0,
             .type = std::nullopt,
             .buffer = {0},
+            .payload = Bytes::empty()
         };
     }
 
@@ -448,12 +446,9 @@ struct IoOperation
             .progress = IoProgress::Magic,
             .completer = completer,
             .cursor = 0,
-
-// vscode can't handle this, so exclude it from intellisense
-#ifndef __INTELLISENSE__
             .type = type,
+            .buffer = {0},
             .payload = payload,
-#endif
         };
     }
 };

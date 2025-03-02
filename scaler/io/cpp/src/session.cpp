@@ -457,7 +457,7 @@ void client_peer_event_connected(epoll_event *event)
             switch (result)
             {
             case ReadResult::Blocked2:
-                std::cout << "client_peer_event_connected(): read blocked" << std::endl;
+                std::cout << "client_peer_event_connected(): read blocked; n: " << peer->read_op->cursor << std::endl;
                 return; // return from fn, note: no way to break loop
             case ReadResult::Disconnect2:
             case ReadResult::BadMagic:
@@ -581,6 +581,7 @@ void control_event(ThreadContext *ctx)
         {
         case ControlOperation::AddClient:
             ctx->add_client(request.client);
+            request.complete();
             break;
         case ControlOperation::DestroyClient:
         {
@@ -609,15 +610,10 @@ void control_event(ThreadContext *ctx)
 
         break;
         case ControlOperation::Connect:
-        {
             client_connect_peer(request.peer);
+            request.complete();
+            break;
         }
-        break;
-        }
-
-        request.complete();
-
-        continue;
     }
 }
 
