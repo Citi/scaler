@@ -23,9 +23,7 @@ bool Client::muted()
 {
     // these types mute when they have no peers
     if (this->type == ConnectorType::Pair || this->type == ConnectorType::Dealer)
-    {
         return this->peers.empty();
-    }
 
     // other types drop messages when they have no peers
     return false;

@@ -164,32 +164,24 @@ void client_connect_peer(Peer *peer)
     peer->fd = socket(peer->client->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
     if (peer->fd < 0)
-    {
         panic("failed to create socket: " + std::to_string(errno));
-    }
 
     set_sock_opts(peer->fd);
 
     auto res = connect(peer->fd, (sockaddr *)&peer->addr, sizeof(peer->addr));
 
+    // theory: this doesn't happen on Linux
     if (res == 0)
-    {
-        // theory: this doesn't happen on Linux
         panic("connect() returned immediately");
-    }
 
     if (res < 0 && errno != EINPROGRESS)
-    {
-        // todo: handle other errors?
         panic("failed to connect to peer: " + std::to_string(errno));
-    }
 
-    // set peer states
-    peer->state = PeerState::Connecting;
-    // write our identity
-    peer->write_op = IoOperation::write(peer->client->identity, MessageType::Identity);
-    // read the peer's identity
-    peer->read_op = IoOperation::read();
+    peer->state = PeerState::Connecting; // set peer state
+    peer->write_op = IoOperation::write(
+        peer->client->identity,
+        MessageType::Identity);          // write our identity
+    peer->read_op = IoOperation::read(); // read the peer's identity
 
     peer->client->thread->add_peer(peer);
 }
