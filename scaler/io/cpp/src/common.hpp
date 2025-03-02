@@ -128,7 +128,7 @@ struct Bytes
         return std::string((char *)data, len);
     }
 
-    char *to_hex(size_t len)
+    char *to_hex()
     {
         char *hex = (char *)malloc((len * 3 + 1) * sizeof(char));
         for (size_t i = 0; i < len; i++)
@@ -136,6 +136,28 @@ struct Bytes
 
         hex[len * 3] = '\0';
         return hex;
+    }
+
+    char *hexhash()
+    {
+        uint64_t hash = this->easy_hash();
+        auto bytes = Bytes{
+            .owned = false,
+            .data = (uint8_t *)&hash,
+            .len = 64 / 8};
+
+        return bytes.to_hex();
+    }
+
+    uint64_t easy_hash()
+    {
+        uint64_t hash = 0;
+        for (size_t i = 0; i < len; i++)
+        {
+            hash = (hash << 5) - hash + data[i];
+        }
+
+        return hash;
     }
 
     Bytes ref()
