@@ -544,7 +544,7 @@ class Client:
 
     def __destroy(self):
         self._agent.join()
-        # self._context.destroy(linger=1)
+        self._session.destroy()
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
