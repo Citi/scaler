@@ -95,8 +95,6 @@ struct Client
     std::optional<sockaddr_storage> addr; // addr for when we're bound
     std::vector<Peer *> peers;
 
-    int unmuted_event_fd; // event fd for when the client is no longer muted
-
     int send_event_fd;                       // event fd for send queue
     ConcurrentQueue<SendMessage> send_queue; // the send queue for Python thread -> io thread communication
     int recv_event_fd;                       // event fd for recv queue

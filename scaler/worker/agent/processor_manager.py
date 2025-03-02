@@ -71,7 +71,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._session = session
 
         self._binder_internal = AsyncBinder(
-            session=self._session, name="processor_manager", address=self._address, identity=None
+            session=self._session, name="processor_manager", address=self._address
         )
 
         self._binder_internal.register(self.__on_receive_internal)

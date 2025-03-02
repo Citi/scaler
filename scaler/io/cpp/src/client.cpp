@@ -68,6 +68,8 @@ void Client::recv_msg(Message &&msg)
 
 void Client::unmute()
 {
+    panic("unmuting disabled");
+
     for (;;)
     {
         if (this->muted())
@@ -87,9 +89,6 @@ void Client::unmute()
 
         this->send(send);
     };
-
-    if (eventfd_signal(this->unmuted_event_fd) < 0)
-        panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
 // panics if the client is muted
@@ -524,7 +523,6 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
         .fd = -1,
         .addr = std::nullopt,
         .peers = std::vector<Peer *>(),
-        .unmuted_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .send_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .send_queue = ConcurrentQueue<SendMessage>(),
         .recv_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
@@ -742,6 +740,8 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
         panic("failed to await semaphore: " + std::to_string(errno));
     }
 
+    if (sem_destroy(sem) < 0)
+        panic("failed to destroy semaphore: " + std::to_string(errno));
     free(sem);
 }
 

@@ -195,11 +195,7 @@ void client_send_event(Client *client)
         {
             std::cout << "client: " << client->identity.as_string() << ": muted" << std::endl;
 
-            // zero the semaphore
-            if (eventfd_reset(client->unmuted_event_fd) < 0)
-                panic("failed to reset eventfd: " + std::to_string(errno));
-
-            break;
+            return;
         }
 
         // decrement the semaphore
