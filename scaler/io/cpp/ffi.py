@@ -104,7 +104,6 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
 
     # using `call_soon_threadsafe()` is very important:
     # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
-    # future.get_loop().call_soon_threadsafe(safe_set_result, future, result)
     future.get_loop().call_soon_threadsafe(future.set_result, result)
 
 
