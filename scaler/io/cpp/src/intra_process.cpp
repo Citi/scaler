@@ -199,3 +199,7 @@ void intraprocess_recv_async(void *future, IntraProcessClient *client)
     if (eventfd_signal(client->recv_event_fd) < 0)
         panic("intraprocess_recv_async(): failed to signal recv_event_fd");
 }
+
+void intraprocess_destroy(IntraProcessClient *client) {
+    panic("todo");
+}

@@ -76,3 +76,5 @@ void intraprocess_connect(struct IntraProcessClient *client, const char *addr, s
 void intraprocess_send(struct IntraProcessClient *client, uint8_t *data, size_t len);
 void intraprocess_recv_sync(struct IntraProcessClient *client, struct Message *msg);
 void intraprocess_recv_async(void *future, struct IntraProcessClient *client);
+void intraprocess_destroy(struct IntraProcessClient *client);
+

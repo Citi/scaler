@@ -70,6 +70,9 @@ class LibType:
     def intraprocess_bind(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
         (inproc, addr, len)
 
+    def intraprocess_destroy(client: "FFITypes.CData") -> None:
+        (client,)
+
 
 # type hints for FFI and Lib
 ffi: FFITypes
@@ -80,6 +83,8 @@ from typing import Callable, ParamSpec, TypeVar, Concatenate
 
 
 class Message:
+    __match_args__ = ("payload", "address")
+
     payload: bytes
     address: bytes
 

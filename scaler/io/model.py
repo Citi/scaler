@@ -182,6 +182,7 @@ class InterProcessAddress(Address):
 
 class IntraProcessClient:
     _obj: "FFITypes.CData"
+    _destroyed: bool = False
 
     def __init__(self, session: Session, identity: bytes):
         self._obj = ffi.new("struct IntraProcessClient *")
@@ -189,18 +190,34 @@ class IntraProcessClient:
 
         session.register_client(self)
 
-    def destroy(self) -> None: ...  # TODO
+    def __del__(self):
+        self.destroy()
+
+    def destroy(self) -> None:
+        if self._destroyed:
+            return
+
+        C.intraprocess_destroy(self._obj)
+
+    def __check_destroyed(self) -> None:
+        if self._destroyed:
+            raise RuntimeError("client is destroyed")
 
     def bind(self, addr: str) -> None:
+        self.__check_destroyed()
         C.intraprocess_bind(self._obj, addr.encode(), len(addr))
 
     def connect(self, addr: str) -> None:
+        self.__check_destroyed()
         C.intraprocess_connect(self._obj, addr.encode(), len(addr))
 
     def send(self, data: bytes) -> None:
+        self.__check_destroyed()
         C.intraprocess_send(self._obj, data, len(data))
 
     def recv_sync(self) -> Message:
+        self.__check_destroyed()
+
         msg = ffi.new("struct Message *")
         C.intraprocess_recv_sync(self._obj, msg)
         msg_ = Message(msg)
@@ -233,7 +250,7 @@ class Client:
 
     def __check_destroyed(self) -> None:
         if self._destroyed:
-            raise ValueError("client is destroyed")
+            raise RuntimeError("client is destroyed")
 
     def bind(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
         self.__check_destroyed()
@@ -320,138 +337,3 @@ class Client:
         self.__check_destroyed()
 
         return await c_async(C.client_recv, self._obj)
-
-
-# if __name__ == "__main__":
-#     import asyncio, json
-
-#     port = 5564
-#     session = Session(2)
-#     router = Client(session, b"router", ConnectorType.Router)
-#     router.bind(addr=TcpAddr.bindall(port))
-
-#     c2 = Client(session, b"client-1", ConnectorType.Pair)
-#     c2.connect(addr=TcpAddr.localhost(port))
-
-#     c3 = Client(session, b"client-2", ConnectorType.Pair)
-#     c3.connect(addr=TcpAddr.localhost(port))
-
-#     async def router_routine():
-#         import random
-
-#         reqs = {}
-
-#         while True:
-#             msg = await router.recv()
-#             data = json.loads(msg.payload)
-
-#             match data["method"]:
-#                 case "ready":
-#                     cmd = f"{random.randint(1, 100)} ** 3"
-#                     reqs[msg.addr] = cmd
-#                     await router.send(to=msg.addr, data=cmd.encode())
-#                 case "result":
-#                     print(f"[{msg.addr.decode()}]: {reqs[msg.addr]} = {data['result']}")
-#                 case "done":
-#                     del reqs[msg.addr]
-
-#                     if not reqs:
-#                         return
-#                 case _:
-#                     print("unknown method")
-
-#     async def client_routine(client: Client, mult):
-#         counter = 0
-
-#         while True:
-#             await client.send(data=json.dumps({"method": "ready"}).encode())
-
-#             msg = await client.recv()
-#             cmd = msg.payload.decode()
-#             result = eval(cmd)
-
-#             await client.send(data=json.dumps({"method": "result", "result": result}).encode())
-
-#             counter += 1
-
-#             if counter > 2:
-#                 break
-
-#             await asyncio.sleep(counter * mult)
-
-#         await client.send(data=json.dumps({"method": "done"}).encode())
-
-
-#     async def main():
-#         t1 = asyncio.create_task(router_routine())
-#         t2 = asyncio.create_task(client_routine(c2, 1))
-#         t3 = asyncio.create_task(client_routine(c3, 1.5))
-
-#         await t1
-#         await t2
-#         await t3
-
-#     asyncio.run(main())
-
-if __name__ == "__main__":
-    session = Session(1)
-    router = Client(session, b"router", ConnectorType.Router)
-    router.bind(addr=TCPAddress.bindall(5564))
-
-    c2 = Client(session, b"client-1", ConnectorType.Pair)
-    c2.connect(addr=TCPAddress.localhost(5564))
-
-    print("A")
-
-    c3 = Client(session, b"client-2", ConnectorType.Pair)
-    c3.connect(addr=TCPAddress.localhost(5564))
-
-    print("B")
-
-    router.send_sync(to=b"client-1", data=b"hello")
-    router.send_sync(to=b"client-1", data=b"hello")
-    router.send_sync(to=b"client-1", data=b"hello")
-    # router.send_sync(to=b"client-1", data=("a"*1024*1000).encode())
-    router.send_sync(to=b"client-1", data=b"bye")
-    router.send_sync(to=b"client-2", data=b"world")
-
-    msg = c3.recv_sync()
-    print(msg)
-
-    while True:
-        msg = c2.recv_sync()
-
-        print(msg)
-
-        if msg.payload == b"bye":
-            break
-
-
-# if __name__ == "__main__":
-#     import asyncio
-
-#     session = Session(1)
-#     addr = InprocAddr("test")
-
-#     p1 = InprocClient(session, b"p1")
-#     p1.bind("test")
-#     p2 = InprocClient(session, b"p2")
-#     p2.connect("test")
-
-#     p2.send(b"hello")
-#     p1.send(b"world")
-
-#     async def main():
-#         msg = await p2.recv()
-#         print(msg)
-
-#         msg = await p1.recv()
-#         print(msg)
-
-#     asyncio.run(main())
-
-# msg = p2.recv_sync()
-# print(msg)
-
-# msg = p1.recv_sync()
-# print(msg)
