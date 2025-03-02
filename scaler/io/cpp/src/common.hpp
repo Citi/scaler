@@ -128,6 +128,16 @@ struct Bytes
         return std::string((char *)data, len);
     }
 
+    char *to_hex(size_t len)
+    {
+        char *hex = (char *)malloc((len * 3 + 1) * sizeof(char));
+        for (size_t i = 0; i < len; i++)
+            sprintf(hex + i * 3, "%02x ", this->data[i]);
+
+        hex[len * 3] = '\0';
+        return hex;
+    }
+
     Bytes ref()
     {
         return {
@@ -435,8 +445,7 @@ struct IoOperation
             .cursor = 0,
             .type = std::nullopt,
             .buffer = {0},
-            .payload = Bytes::empty()
-        };
+            .payload = Bytes::empty()};
     }
 
     // the payload must live as long as the operation does

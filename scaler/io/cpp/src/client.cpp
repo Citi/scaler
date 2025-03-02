@@ -266,7 +266,7 @@ void Peer::recv_msg(Bytes payload)
         if (result.tag == IoResult::Blocked)
             return WriteResult::Blocked;
 
-        std::cout << "write_message(): WROTE MESSAGE: " << std::to_string(fd) << std::endl;
+        std::cout << "write_message(): WROTE MESSAGE: " << op->payload.to_hex(5) << std::endl;
 
         return WriteResult::Done;
     }
@@ -459,7 +459,7 @@ void write_to_peer(Peer *peer, SendMessage send)
         if (result.tag == IoResult::Blocked)
             return ReadResult::Blocked;
 
-        std::cout << "read_message(): READ MESSAGE" << std::endl;
+        std::cout << "read_message(): READ MESSAGE: " << op->payload.to_hex(5) << std::endl;
 
         return ReadResult::Read;
     }
