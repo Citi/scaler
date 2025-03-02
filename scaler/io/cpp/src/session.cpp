@@ -240,8 +240,7 @@ void client_recv_event(Client *client)
 
     for (;;)
     {
-        eventfd_t value;
-        if (eventfd_read(client->recv_buffer_event_fd, &value) < 0)
+        if (eventfd_wait(client->recv_buffer_event_fd) < 0)
         {
             if (errno == EAGAIN)
             {
@@ -254,13 +253,13 @@ void client_recv_event(Client *client)
         }
 
         // decrement the semaphore
-        if (eventfd_read(client->recv_event_fd, &value) < 0)
+        if (eventfd_wait(client->recv_event_fd) < 0)
         {
             // this should never happen because the epoll proc'd and there's no one to race with us
             if (errno == EAGAIN)
             {
                 // we need to re-increment the semaphore because we didn't process the message
-                if (eventfd_write(client->recv_buffer_event_fd, 1) < 0)
+                if (eventfd_signal(client->recv_buffer_event_fd) < 0)
                     panic("failed to write to eventfd: " + std::to_string(errno));
 
                 break;

@@ -61,7 +61,6 @@ void Client::recv_msg(Message &&msg)
         // buffer the message
         this->recv_buffer.enqueue(msg);
 
-        // support for sync clients
         if (eventfd_signal(this->recv_buffer_event_fd) < 0)
             panic("failed to write to eventfd: " + std::to_string(errno));
     }
