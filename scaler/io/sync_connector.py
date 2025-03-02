@@ -23,8 +23,13 @@ class SyncConnector:
 
         match address:
             case TCPAddress():    
+                self._client = Client(session, self._identity, type_)
                 host = address.host
             case IntraProcessAddress():
+                if type_ != ConnectorType.Pair:
+                    raise ValueError(f"IntraProcessClient only supports pair type, got {type_}")
+
+                self._client = IntraProcessClient(session, self._identity)
                 host = address.name
 
         self._identity: bytes = (
@@ -33,24 +38,11 @@ class SyncConnector:
             else identity
         )
 
-        match address:
-            case TCPAddress():
-                self._client = Client(session, self._identity, type_)
-                self._client.connect(addr=self._address)
-                host = address.host
-            case IntraProcessAddress():
-                if type_ != ConnectorType.Pair:
-                    raise ValueError(f"Inproc only supports pair type, got {type_}")
-
-                self._client = IntraProcessClient(session, self._identity)
-                self._client.connect(addr=address.name)
-                host = address.name
-
+        self._client.connect(addr=self._address)
         self._lock = threading.Lock()
 
     def close(self):
-        ...
-        # self._socket.close()
+        self._client.destroy()
 
     @property
     def address(self) -> Address:
@@ -62,19 +54,11 @@ class SyncConnector:
 
     def send(self, message: Message):
         with self._lock:
-            match self._client:
-                case Client():
-                    self._client.send_sync(data=serialize(message))
-                case IntraProcessClient():
-                    self._client.send(data=serialize(message))
+            self._client.send_sync(data=serialize(message))
 
     def receive(self) -> Optional[Message]:
         with self._lock:
-            match self._client:
-                case Client():
-                    msg = self._client.recv_sync()
-                case IntraProcessClient():
-                    msg = self._client.recv_sync()
+            msg = self._client.recv_sync()
 
         return self.__compose_message(msg.payload)
 

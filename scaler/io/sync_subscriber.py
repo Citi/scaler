@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import Client, Address
+from scaler.io.model import Client, Address, Session, ConnectorType
 
 class SyncSubscriber(threading.Thread):
     def __init__(
@@ -31,11 +31,11 @@ class SyncSubscriber(threading.Thread):
         self.daemon = bool(daemonic)
         self._timeout_seconds = timeout_seconds
 
-        self._context: Optional[zmq.Context] = None
-        self._socket: Optional[zmq.Socket] = None
+        self._session: Session | None = None
+        self._client: Client | None = None
 
     def __close(self):
-        self._socket.close()
+        self._client.destroy()
 
     def __stop_polling(self):
         self._stop_event.set()
@@ -55,18 +55,20 @@ class SyncSubscriber(threading.Thread):
         self.__close()
 
     def __initialize(self):
-        self._context = zmq.Context.instance()
-        self._socket = self._context.socket(zmq.SUB)
-        self._socket.setsockopt(zmq.RCVHWM, 0)
+        self._session = Session(io_threads=1)
+        self._client = Client(self._session, "sync_subscriber".encode(), ConnectorType.Sub)
+        # self._context = zmq.Context.instance()
+        # self._socket = self._context.socket(zmq.SUB)
+        # self._socket.setsockopt(zmq.RCVHWM, 0)
 
-        if self._timeout_seconds == -1:
-            self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds)
-        else:
-            self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds * 1000)
+        # if self._timeout_seconds == -1:
+        #     self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds)
+        # else:
+        #     self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds * 1000)
 
-        self._socket.subscribe(self._topic)
-        self._socket.connect(self._address)
-        self._socket.connect(self._address)
+        # self._socket.subscribe(self._topic)
+        # self._socket.connect(self._address)
+        # self._socket.connect(self._address)
 
     def __routine_polling(self):
         try:

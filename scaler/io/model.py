@@ -205,13 +205,31 @@ class IntraProcessClient:
 
     def bind(self, addr: str) -> None:
         self.__check_destroyed()
-        C.intraprocess_bind(self._obj, addr.encode(), len(addr))
 
-    def connect(self, addr: str) -> None:
+        match addr:
+            case IntraProcessAddress(name):
+                pass
+            case str(name):
+                pass
+            case _:
+                raise ValueError(f"addr must be str or IntraProcessAddress; got: {type(addr)}")
+
+        C.intraprocess_bind(self._obj, name.encode(), len(name))
+
+    def connect(self, addr: str | IntraProcessAddress) -> None:
         self.__check_destroyed()
-        C.intraprocess_connect(self._obj, addr.encode(), len(addr))
 
-    def send(self, data: bytes) -> None:
+        match addr:
+            case IntraProcessAddress(name):
+                pass
+            case str(name):
+                pass
+            case _:
+                raise ValueError(f"addr must be str or IntraProcessAddress; got: {type(addr)}")
+            
+        C.intraprocess_connect(self._obj, name.encode(), len(name))
+
+    def send_sync(self, data: bytes) -> None:
         self.__check_destroyed()
         C.intraprocess_send(self._obj, data, len(data))
 
