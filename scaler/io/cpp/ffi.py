@@ -10,6 +10,7 @@ sys.path.pop()
 
 from cffi import FFI as FFITypes
 
+
 class LibType:
     Pair: int
     Pub: int
@@ -77,6 +78,7 @@ lib: LibType
 import asyncio
 from typing import Callable, ParamSpec, TypeVar, Concatenate, Coroutine
 
+
 class Message:
     payload: bytes
     address: bytes
@@ -86,6 +88,7 @@ class Message:
         self.payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
         # copy the address
         self.address = bytes(ffi.buffer(obj.address.data, obj.address.len))
+
 
 # this is called from C to inform the asyncio runtime that a future was completed
 @ffi.def_extern()
@@ -111,6 +114,7 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
 # async def c_async[**P, R](...): ...
 P = ParamSpec("P")
 R = TypeVar("R")
+
 
 # c_async is a helper function to call async C functions
 # example: c_async(lib.async_binder_recv, binder)
