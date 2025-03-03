@@ -39,7 +39,6 @@ void future_set_result(void *future, void *data);
     [[maybe_unused]] std::string message,
     const std::source_location &location = std::source_location::current())
 {
-
     auto file_name = std::string(location.file_name());
     file_name = file_name.substr(file_name.find_last_of("/") + 1);
 
@@ -48,7 +47,7 @@ void future_set_result(void *future, void *data);
               << location.function_name() << "] in file ["
               << location.file_name() << "]: " << message << std::endl;
 
-    exit(1);
+    std::terminate();
 }
 
 // how to control flow
@@ -121,24 +120,26 @@ struct Bytes
     std::string as_string() const
     {
         if (is_empty())
-        {
             return "[EMPTY]";
-        }
 
         return std::string((char *)data, len);
     }
 
-    char *to_hex()
+    std::string to_hex()
     {
         char *hex = (char *)malloc((len * 3 + 1) * sizeof(char));
         for (size_t i = 0; i < len; i++)
             sprintf(hex + i * 3, "%02x ", this->data[i]);
 
         hex[len * 3] = '\0';
-        return hex;
+        
+        std::string owned(hex, len * 3);
+        free(hex);
+        return owned;
     }
 
-    char *hexhash()
+    // debugging utility
+    std::string hexhash()
     {
         uint64_t hash = this->easy_hash();
         auto bytes = Bytes{
@@ -153,9 +154,7 @@ struct Bytes
     {
         uint64_t hash = 0;
         for (size_t i = 0; i < len; i++)
-        {
             hash = (hash << 5) - hash + data[i];
-        }
 
         return hash;
     }
