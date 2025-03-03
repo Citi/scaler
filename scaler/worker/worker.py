@@ -187,6 +187,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
 
     def __destroy(self):
-        self._task.cancel()
-        self._connector_external.destroy()
         self._session.destroy()
+        self._task.cancel()
+        # self._connector_external.destroy()

@@ -68,8 +68,6 @@ void Client::recv_msg(Message &&msg)
 
 void Client::unmute()
 {
-    panic("unmuting disabled");
-
     for (;;)
     {
         if (this->muted())
@@ -88,6 +86,8 @@ void Client::unmute()
             ; // wait
 
         this->send(send);
+
+        std::cout << "unmute(): sent message" << std::endl;
     };
 }
 
@@ -311,10 +311,11 @@ ControlFlow epollout_peer(Peer *peer)
 
             peer->write_op->complete();
 
-            if (peer->write_op->type == MessageType::Disconnect && peer->client->destroy)
+            if (peer->write_op->type == MessageType::Disconnect)
             {
                 remove_peer(peer);
-                if (peer->client->peers.empty())
+
+                if (peer->client->destroy && peer->client->peers.empty())
                 {
                     std::cout << "epollout(): CLIENT DESTROYED" << std::endl;
                     // the client is being destroyed and the last peer has disconnected
@@ -322,9 +323,10 @@ ControlFlow epollout_peer(Peer *peer)
                     // TODO!!!!
 
                     peer->client->destroy->complete();
+                    peer->client->destroy = std::nullopt;
                 }
-                delete peer;
 
+                delete peer;
                 return ControlFlow::Break;
             }
 
@@ -340,7 +342,6 @@ void write_to_peer(Peer *peer, SendMessage send)
 {
     peer->queue.push(send);
     epollout_peer(peer);
-    return;
 }
 
 [[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len)
@@ -469,11 +470,8 @@ void write_to_peer(Peer *peer, SendMessage send)
 
 void remove_peer(Peer *peer)
 {
-    auto client = peer->client;
-    auto thread = client->thread;
-
-    thread->remove_peer(peer);
-    client->remove_peer(peer);
+    peer->client->thread->remove_peer(peer);
+    peer->client->remove_peer(peer);
 
     peer->write_op = std::nullopt;
     peer->read_op = std::nullopt;

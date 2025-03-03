@@ -14,8 +14,13 @@ from cffi import FFI as FFITypes
 class LibType:
     Pair: int
     Pub: int
+    Sub: int
     Dealer: int
     Router: int
+
+    TCP: int
+    IntraProcess: int
+    InterProcess: int
 
     def session_init(session: "FFITypes.CData", num_threads: int) -> None:
         (session, num_threads)

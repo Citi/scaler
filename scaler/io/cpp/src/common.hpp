@@ -422,6 +422,7 @@ void Completer::complete(void *result = NULL)
     case Completer::Type::None:
         break;
     case Completer::Type::Future:
+        std::cout << "completer: complete future: " << (result == NULL ? "null" : "non-null") << std::endl;
         future_set_result(this->future_ptr, result);
         break;
     case Completer::Type::Semaphore:
