@@ -26,14 +26,15 @@ from typing import Awaitable, Callable, TypeAlias
 
 class Session:
     _obj: "FFITypes.CData"
-    _clients: list = []
-    _destroyed: bool = False
+    _clients: list
+    _destroyed: bool
 
     def __init__(self, io_threads: int) -> None:
         self._obj = ffi.new("struct Session *")
         C.session_init(self._obj, io_threads)
 
         self._destroyed = False
+        self._clients = []
 
     def __del__(self) -> None:
         self.destroy()
@@ -182,13 +183,14 @@ class InterProcessAddress(Address):
 
 class IntraProcessClient:
     _obj: "FFITypes.CData"
-    _destroyed: bool = False
+    _destroyed: bool
 
     def __init__(self, session: Session, identity: bytes):
         self._obj = ffi.new("struct IntraProcessClient *")
         C.intraprocess_init(session._obj, self._obj, identity, len(identity))
 
         session.register_client(self)
+        self._destroyed = False
 
     def __del__(self):
         self.destroy()
@@ -248,13 +250,14 @@ class IntraProcessClient:
 
 class Client:
     _obj: "FFITypes.CData"
-    _destroyed: bool = False
+    _destroyed: bool
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType):
         self._obj = ffi.new("struct Client *")
         C.client_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
 
         session.register_client(self)
+        self._destroyed = False
 
     def __del__(self):
         self.destroy()
