@@ -730,7 +730,7 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
         if (sem_destroy(sem) < 0)
             panic("failed to destroy semaphore: " + std::to_string(errno));
 
-        free(sem);
+        std::free(sem);
 
         if (errno == EINTR)
             return;
@@ -740,7 +740,7 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
 
     if (sem_destroy(sem) < 0)
         panic("failed to destroy semaphore: " + std::to_string(errno));
-    free(sem);
+    std::free(sem);
 }
 
 void client_recv(void *future, Client *client)
@@ -798,7 +798,7 @@ wait:
     if (sem_destroy(sem) < 0)
         panic("failed to destroy semaphore: " + std::to_string(errno));
 
-    free(sem);
+    std::free(sem);
 
     // call the destructor in-place
     client->~Client();

@@ -28,6 +28,9 @@ class LibType:
     def session_destroy(session: "FFITypes.CData") -> None:
         (session,)
 
+    def message_destroy(recv: "FFITypes.CData") -> None:
+        (recv,)
+
     def client_init(session: "FFITypes.CData", client: "FFITypes.CData", identity: bytes, len: int, type_: int) -> None:
         (session, client, identity, len, type_)
 
@@ -47,9 +50,6 @@ class LibType:
 
     def client_destroy(client: "FFITypes.CData") -> None:
         (client,)
-
-    def message_destroy(recv: "FFITypes.CData") -> None:
-        (recv,)
 
     def client_send_sync(client: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int) -> None:
         (client, to, to_len, data, data_len)
