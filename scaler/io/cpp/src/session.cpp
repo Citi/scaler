@@ -578,22 +578,30 @@ void control_event(ThreadContext *ctx)
                 auto client = request.client;
                 auto &peers = client->peers;
 
-                // this semaphore will be completed
-                // once all the peers have disconnected
-                // or the timeout has been reached <- TODO
-                // and the client has been destroyed
-                request.client->destroy = request.completer;
+                if (peers.empty())
+                    // todo: remove client from thread
+                    // share logic with epollout
+                    request.complete();
+                else
+                {
 
-                SendMessage send{
-                    .completer = Completer::none(),
-                    .msg = {
-                        .type = MessageType::Disconnect,
-                        .address = Bytes::empty(),
-                        .payload = Bytes::empty(),
-                    }};
+                    // this semaphore will be completed
+                    // once all the peers have disconnected
+                    // or the timeout has been reached <- TODO
+                    // and the client has been destroyed
+                    request.client->destroy = request.completer;
 
-                for (auto peer : peers)
-                    write_to_peer(peer, send);
+                    SendMessage send{
+                        .completer = Completer::none(),
+                        .msg = {
+                            .type = MessageType::Disconnect,
+                            .address = Bytes::empty(),
+                            .payload = Bytes::empty(),
+                        }};
+
+                    for (auto peer : peers)
+                        write_to_peer(peer, send);
+                }
             }
 
             break;
