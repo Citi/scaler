@@ -61,10 +61,7 @@ void intraprocess_bind(IntraProcessClient *client, const char *addr, size_t len)
             continue;
 
         if (other->bind == bind)
-        {
-            client->session->intraprocess_mutex.unlock();
             panic("intraprocess_bind(): address already in use");
-        }
     }
 
     // set the bind address
@@ -88,6 +85,7 @@ void intraprocess_bind(IntraProcessClient *client, const char *addr, size_t len)
                 panic("intraprocess_bind(): failed to signal unmuted_event_fd");
         }
     }
+
     client->session->intraprocess_mutex.unlock();
 }
 
@@ -142,13 +140,14 @@ void intraprocess_send(IntraProcessClient *client, uint8_t *data, size_t len)
                 .payload = Bytes::copy(data, len),
             };
 
-            (*client->peer)->queue.enqueue(msg);
+            auto peer = *client->peer;
+            peer->queue.enqueue(msg);
 
             // signal the receiving client (semaphore)
-            if (eventfd_signal((*client->peer)->recv_buffer_event_fd) < 0)
+            if (eventfd_signal(peer->recv_buffer_event_fd) < 0)
                 panic("intraprocess_send(): failed to signal recv_buffer_event_fd");
 
-            client->session->intraprocess_mutex.unlock();
+            client->session->intraprocess_mutex.unlock_shared();
             return;
         }
 
