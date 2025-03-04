@@ -78,3 +78,4 @@ void intraprocess_recv_sync(struct IntraProcessClient *client, struct Message *m
 void intraprocess_recv_async(void *future, struct IntraProcessClient *client);
 void intraprocess_destroy(struct IntraProcessClient *client);
 
+void message_destroy(struct Message *message);

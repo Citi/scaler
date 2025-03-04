@@ -226,11 +226,11 @@ struct Message
     Bytes payload;
 };
 
-// free a received message
-void message_destroy(Message &msg)
+// free a message's resources
+void message_destroy(Message *msg)
 {
-    msg.payload.free();
-    msg.address.free();
+    msg->payload.free();
+    msg->address.free();
 }
 
 void serialize_u32(uint32_t x, uint8_t buffer[4])

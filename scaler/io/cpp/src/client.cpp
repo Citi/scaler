@@ -50,7 +50,7 @@ void Client::recv_msg(Message &&msg)
             ; // wait
 
         future_set_result(future, &msg);
-        message_destroy(msg);
+        message_destroy(&msg);
     }
     else if (errno == EAGAIN) // o.w. res < 0
     {

@@ -273,7 +273,7 @@ void client_recv_event(Client *client)
         future_set_result(future, &msg);
 
         // we're done with the message
-        message_destroy(msg);
+        message_destroy(&msg);
     }
 }
 
