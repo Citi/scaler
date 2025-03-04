@@ -542,20 +542,17 @@ void client_bind(Client *client, const char *host, uint16_t port)
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));
 
+    client->fd = socket(client->transport == Transport::InterProcess ? AF_UNIX : AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+
+    if (client->fd < 0)
+        panic("failed to create socket: " + std::to_string(errno));
+
+    set_sock_opts(client->fd);
+
     switch (client->transport)
     {
     case Transport::InterProcess:
     {
-        std::cout << "BINDING UNIX" << std::endl;
-
-        client->fd = socket(
-            AF_UNIX,
-            SOCK_STREAM | SOCK_NONBLOCK,
-            0);
-
-        if (client->fd < 0)
-            panic("failed to create socket: " + std::to_string(errno));
-
         sockaddr_un server_addr{
             .sun_family = AF_UNIX,
             .sun_path = {0}};
@@ -566,18 +563,6 @@ void client_bind(Client *client, const char *host, uint16_t port)
     break;
     case Transport::TCP:
     {
-        std::cout << "BINDING TCP" << std::endl;
-
-        client->fd = socket(
-            AF_INET,
-            SOCK_STREAM | SOCK_NONBLOCK,
-            0);
-
-        if (client->fd < 0)
-            panic("failed to create socket: " + std::to_string(errno));
-
-        set_sock_opts(client->fd);
-
         in_addr_t in_addr = strcmp(host, "*") ? inet_addr(host) : INADDR_ANY;
 
         if (in_addr == INADDR_NONE)
