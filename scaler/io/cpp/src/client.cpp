@@ -153,7 +153,7 @@ void Peer::recv_msg(Bytes payload)
 {
     Message message{
         .type = MessageType::Data,
-        .address = this->identity.ref(),
+        .address = Bytes::clone(this->identity),
         .payload = payload,
     };
 
@@ -491,7 +491,7 @@ void reconnect_peer(Peer *peer)
     {
         auto thread = peer->client->thread;
 
-        peer->identity.free_();
+        peer->identity.free();
         peer->identity = Bytes::empty();
 
         peer->fd = -1;
@@ -698,7 +698,7 @@ void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8
 
 void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
-    sem_t *sem = (sem_t *)malloc(sizeof(sem_t));
+    sem_t *sem = (sem_t *)std::malloc(sizeof(sem_t));
 
     if (sem_init(sem, 0, 0) < 0)
         panic("failed to initialize semaphore: " + std::to_string(errno));
@@ -773,7 +773,7 @@ wait:
 
 void client_destroy([[maybe_unused]] Client *client)
 {
-    sem_t *sem = (sem_t *)malloc(sizeof(sem_t));
+    sem_t *sem = (sem_t *)std::malloc(sizeof(sem_t));
 
     if (sem_init(sem, 0, 0) < 0)
         panic("failed to initialize semaphore: " + std::to_string(errno));

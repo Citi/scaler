@@ -80,8 +80,8 @@ struct ControlFlow
 
 uint8_t *datadup(const uint8_t *data, size_t len)
 {
-    uint8_t *dup = (uint8_t *)malloc(len * sizeof(uint8_t));
-    memcpy(dup, data, len);
+    uint8_t *dup = (uint8_t *)std::malloc(len * sizeof(uint8_t));
+    std::memcpy(dup, data, len);
     return dup;
 }
 
@@ -91,10 +91,10 @@ struct Bytes
     uint8_t *data;
     size_t len;
 
-    void free_()
+    void free()
     {
         if (this->owned)
-            free(this->data);
+            std::free(this->data);
     }
 
     bool operator==(const Bytes &other) const
@@ -127,14 +127,14 @@ struct Bytes
 
     std::string to_hex()
     {
-        char *hex = (char *)malloc((len * 3 + 1) * sizeof(char));
+        char *hex = (char *)std::malloc((len * 3 + 1) * sizeof(char));
         for (size_t i = 0; i < len; i++)
             sprintf(hex + i * 3, "%02x ", this->data[i]);
 
         hex[len * 3] = '\0';
-        
+
         std::string owned(hex, len * 3);
-        free(hex);
+        std::free(hex);
         return owned;
     }
 
@@ -171,7 +171,7 @@ struct Bytes
     {
         return {
             .owned = true,
-            .data = (uint8_t *)malloc(len),
+            .data = (uint8_t *)std::malloc(len),
             .len = len};
     }
 
@@ -229,8 +229,8 @@ struct Message
 // free a received message
 void message_destroy(Message &msg)
 {
-    msg.payload.free_();
-    msg.address.free_();
+    msg.payload.free();
+    msg.address.free();
 }
 
 void serialize_u32(uint32_t x, uint8_t buffer[4])
