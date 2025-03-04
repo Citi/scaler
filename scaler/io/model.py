@@ -39,12 +39,12 @@ class Session:
         self.destroy()
 
     def destroy(self) -> None:
-        for client in self._clients:
-            client.destroy()
-
         if self._destroyed:
             return
         self._destroyed = True
+
+        for client in self._clients:
+            client.destroy()
 
         C.session_destroy(self._obj)
 

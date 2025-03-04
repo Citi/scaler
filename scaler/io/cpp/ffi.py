@@ -88,16 +88,16 @@ from typing import Callable, ParamSpec, TypeVar, Concatenate
 
 
 class Message:
-    __match_args__ = ("payload", "address")
+    __match_args__ = ("address", "payload")
 
-    payload: bytes
     address: bytes
+    payload: bytes
 
     def __init__(self, obj: "FFITypes.CData"):  # Message *
-        # copy the payload
-        self.payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
         # copy the address
         self.address = bytes(ffi.buffer(obj.address.data, obj.address.len))
+        # copy the payload
+        self.payload = bytes(ffi.buffer(obj.payload.data, obj.payload.len))
 
 
 # this is called from C to inform the asyncio runtime that a future was completed
