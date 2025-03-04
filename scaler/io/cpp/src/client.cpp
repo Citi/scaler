@@ -113,10 +113,7 @@ void Client::send(SendMessage send)
 
         Peer *peer;
         if (!this->peer_by_id(send.msg.address, &peer))
-        {
-            // routers drop messages
-            break;
-        }
+            break; // routers drop messages
 
         write_to_peer(peer, send);
     }
@@ -160,10 +157,8 @@ void Peer::recv_msg(Bytes payload)
     this->client->recv_msg(std::move(message));
 }
 
-// attempt to write all data to an fd
-// - returns the number of bytes written or empty if the connection was lost
-// - if nonblocking is true, the function will return immediately if the fd blocks (EAGAIN or EWOULDBLOCK)
-//   otherwise, the function will block until all data is written
+// try to write `len` bytes of `data` to `fd`
+// this is a nonblocking operation and may only write some of the bytes
 [[nodiscard]] IoResult writeall(int fd, uint8_t *data, size_t len)
 {
     size_t total = 0;
@@ -199,6 +194,8 @@ void Peer::recv_msg(Bytes payload)
     };
 }
 
+// write a message
+// nonblocking, resumable
 [[nodiscard]] WriteResult write_message(int fd, IoOperation *op)
 {
     switch (op->progress)
@@ -344,6 +341,8 @@ void write_to_peer(Peer *peer, SendMessage send)
     epollout_peer(peer);
 }
 
+// try to read `len` bytes out of `fd` into `buf`
+// this is a nonblocking operation and may only read some of the bytes
 [[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len)
 {
     size_t total = 0;
@@ -386,6 +385,8 @@ void write_to_peer(Peer *peer, SendMessage send)
     };
 }
 
+// read a message
+// nonblocking, resumable
 [[nodiscard]] ReadResult read_message(int fd, IoOperation *op)
 {
     switch (op->progress)
@@ -480,7 +481,7 @@ void remove_peer(Peer *peer)
     close(peer->fd);
 }
 
-// must return to epoll_wait() after ccalling this
+// must return to epoll_wait() after calling this
 // this frees the peer's EpollData and deletes the *peer
 void reconnect_peer(Peer *peer)
 {
