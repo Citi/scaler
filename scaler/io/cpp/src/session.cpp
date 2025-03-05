@@ -198,7 +198,6 @@ void client_send_event(Client *client)
             return;
         }
 
-        // decrement the semaphore
         if (eventfd_wait(client->send_event_fd) < 0)
         {
             // semaphore is zero, we can epoll_wait() again
@@ -673,14 +672,14 @@ void io_thread_main(ThreadContext *ctx)
         // clang-format off
         switch (data->type)
         {
-            case EpollType::ClientSend:             client_send_event(data->client);       break;  // client send()
-            case EpollType::ClientRecv:             client_recv_event(data->client);       break;  // client recv()
-            case EpollType::ClientListener:         client_listener_event(data->client);   break;  // new connection
-            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc); break;  // intraprocess recv()
-            case EpollType::ClientPeer:             client_peer_event(&event);             break;  // peer has data
-            case EpollType::ConnectTimer:           connect_timer_event(ctx);              break;  // connect timer
-            case EpollType::Control:                control_event(ctx);                    break;  // control event
-            case EpollType::Closed:                                                        return; // exit
+            case EpollType::ClientSend:             client_send_event(data->client);       break;  // client send()       ET    
+            case EpollType::ClientRecv:             client_recv_event(data->client);       break;  // client recv()       ET
+            case EpollType::ClientListener:         client_listener_event(data->client);   break;  // new connection      ET
+            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc); break;  // intraprocess recv() ET
+            case EpollType::ClientPeer:             client_peer_event(&event);             break;  // peer has data       ET
+            case EpollType::ConnectTimer:           connect_timer_event(ctx);              break;  // connect timer       LT
+            case EpollType::Control:                control_event(ctx);                    break;  // control event       LT
+            case EpollType::Closed:                                                        return; // exit                LT
 
             default:
                 panic("epoll: unknown event type");

@@ -68,27 +68,11 @@ void Client::recv_msg(Message &&msg)
 
 void Client::unmute()
 {
-    for (;;)
-    {
-        if (this->muted())
-            return;
+    // these types do not mute
+    if (this->type == ConnectorType::Dealer || this->type == ConnectorType::Pub)
+        return;
 
-        if (eventfd_wait(this->send_event_fd) < 0)
-        {
-            if (errno == EAGAIN)
-                break;
-
-            panic("failed to read eventfd: " + std::to_string(errno));
-        }
-
-        SendMessage send;
-        while (!this->send_queue.try_dequeue(send))
-            ; // wait
-
-        this->send(send);
-
-        std::cout << "unmute(): sent message" << std::endl;
-    };
+    client_send_event(this);
 }
 
 // panics if the client is muted

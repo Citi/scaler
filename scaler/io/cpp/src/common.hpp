@@ -385,10 +385,6 @@ struct Completer
         sem_t *sem;
     };
 
-    // complete with a result
-    // may be NULL
-    void complete(void *result);
-
     static constexpr Completer none()
     {
         return {
@@ -412,31 +408,31 @@ struct Completer
             .sem = sem,
         };
     }
+
+    // complete with a result
+    // may be NULL
+    void complete(void *result = NULL)
+    {
+        switch (this->type)
+        {
+        case Completer::Type::None:
+            break;
+        case Completer::Type::Future:
+            future_set_result(this->future_ptr, result);
+            break;
+        case Completer::Type::Semaphore:
+            if (sem_post(this->sem) < 0)
+                panic("failed to post semaphore: " + std::to_string(errno));
+            break;
+        }
+    }
 };
 
-void Completer::complete(void *result = NULL)
-{
-    switch (this->type)
-    {
-    case Completer::Type::None:
-        break;
-    case Completer::Type::Future:
-        std::cout << "completer: complete future: " << (result == NULL ? "null" : "non-null") << std::endl;
-        future_set_result(this->future_ptr, result);
-        break;
-    case Completer::Type::Semaphore:
-        if (sem_post(this->sem) < 0)
-            panic("failed to post semaphore: " + std::to_string(errno));
-        break;
-    }
-}
-
 ENUM IoProgress : uint8_t{
-                      Magic,   // the magic is being read
-                      Header,  // the header is being read
-                      Type,    // the message type is being read
-                      Payload, // the payload is being read
-                  };
+                      Magic,
+                      Header,
+                      Type,
+                      Payload};
 
 // an in-progress io operation
 struct IoOperation
@@ -470,7 +466,7 @@ struct IoOperation
             .payload = Bytes::empty()};
     }
 
-    // the payload must live as long as the operation does
+    // the payload must live at least as long as the operation does
     static IoOperation write(Bytes payload, MessageType type = MessageType::Data, Completer completer = Completer::none())
     {
         return {
