@@ -466,8 +466,8 @@ void client_peer_event_connected(epoll_event *event)
                 case MessageType::Disconnect:
                     std::cout << "client_peer_event_connected(): disconnect message!!!" << std::endl;
 
-                    // todo delete peer
                     remove_peer(peer);
+                    delete peer;
                     return; // exit fn
                 }
 
