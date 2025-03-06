@@ -312,7 +312,6 @@ ControlFlow epollout_peer(Peer *peer)
             }
 
             peer->write_op = std::nullopt;
-            return ControlFlow::Continue;
         }
     }
 }
