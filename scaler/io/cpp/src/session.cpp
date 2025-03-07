@@ -263,18 +263,18 @@ void client_recv_event(Client *client)
         while (!client->recv_queue.try_dequeue(future))
             ; // wait
 
-        Message msg;
-        while (!client->recv_buffer.try_dequeue(msg))
+        Message message;
+        while (!client->recv_buffer.try_dequeue(message))
             ; // wait
 
         std::cout << "client_recv_event(): completing future" << std::endl;
 
         // this is the address of a stack variable
         // ok because the called code copies the message immediately
-        future_set_result(future, &msg);
+        future_set_result(future, &message);
 
         // we're done with the message
-        message_destroy(&msg);
+        message_destroy(&message);
     }
 }
 

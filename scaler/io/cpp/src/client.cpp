@@ -368,7 +368,11 @@ ControlFlow epollout_peer(Peer *peer)
 void write_to_peer(Peer *peer, SendMessage send)
 {
     peer->queue.push(send);
-    epollout_peer(peer);
+
+    // if there's a write op, our send will be picked up when the fd becomes writable
+    // otherwise we can write immdiately
+    if (!peer->write_op)
+        epollout_peer(peer);
 }
 
 // try to read `len` bytes out of `fd` into `buf`
