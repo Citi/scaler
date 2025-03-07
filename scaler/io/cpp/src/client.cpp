@@ -38,7 +38,7 @@ size_t Client::peer_rr()
     return rr % this->peers.size();
 }
 
-void Client::recv_msg(Message &&msg)
+void Client::recv_msg(Message &msg)
 {
     // if there's a waiting recv, complete it immediately
     if (eventfd_wait(this->recv_event_fd) == 0)
@@ -130,7 +130,7 @@ void Client::send(SendMessage send)
     }
 }
 
-void Peer::recv_msg(Bytes payload)
+void Peer::recv_msg(Bytes &payload)
 {
     Message message{
         .type = MessageType::Data,
@@ -138,7 +138,7 @@ void Peer::recv_msg(Bytes payload)
         .payload = payload,
     };
 
-    this->client->recv_msg(std::move(message));
+    this->client->recv_msg(message);
 }
 
 // try to write `len` bytes of `data` to `fd`

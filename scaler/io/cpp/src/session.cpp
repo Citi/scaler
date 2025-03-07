@@ -484,6 +484,8 @@ void client_destroy_timeout(Client *client) {
     //  - control_event(), when there's no peers
     //  - epollout_peer(), when the last peer has disconnected
 
+    std::cout << "client_destroy_timeout(): client destroy timed out" << std::endl;
+
     client->destroy->complete();
 }
 
