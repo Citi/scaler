@@ -338,7 +338,12 @@ bool read_identity(Peer *peer)
         return true;
     case ReadResult::BadMagic:
         std::cout << "bad magic while reading identity" << std::endl;
-        [[fallthrough]];
+        reconnect_peer(peer);
+        return false;
+    case ReadResult::BadType:
+        std::cout << "bad type while reading identity" << std::endl;
+        reconnect_peer(peer);
+        return false;
     case ReadResult::Disconnect:
         std::cout << "disconnect while reading identity" << std::endl;
         reconnect_peer(peer);
@@ -446,6 +451,7 @@ void client_peer_event_connected(epoll_event *event)
                 return; // return from fn, note: no way to break loop
             case ReadResult::Disconnect:
             case ReadResult::BadMagic:
+            case ReadResult::BadType:
                 std::cout << "client_peer_event_connected(): disconnect" << std::endl;
                 reconnect_peer(peer);
                 return;

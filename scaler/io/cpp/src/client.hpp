@@ -172,8 +172,9 @@ enum class WriteResult
 
 enum class ReadResult
 {
-    Read,        // data was read
+    Read,       // data was read
     Blocked,    // we might have read some data, but the fd blocked
     Disconnect, // the connection was lost
-    BadMagic,    // the magic didn't match
+    BadMagic,   // the magic didn't match
+    BadType,    // invalid message type
 };

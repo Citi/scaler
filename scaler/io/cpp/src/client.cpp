@@ -385,7 +385,7 @@ void write_to_peer(Peer *peer, SendMessage send)
         if (result.tag == IoResult::Blocked)
             return ReadResult::Blocked;
 
-        if (std::memcmp((char *)op->buffer, MAGIC, 4) != 0)
+        if (std::memcmp(op->buffer, MAGIC, 4) != 0)
             return ReadResult::BadMagic;
 
         op->progress = IoProgress::Type;
@@ -404,7 +404,7 @@ void write_to_peer(Peer *peer, SendMessage send)
             return ReadResult::Blocked;
 
         if (type > (uint8_t)MessageType::Disconnect)
-            panic("bad message type!");
+            return ReadResult::BadType;
 
         op->type = (MessageType)type;
 
