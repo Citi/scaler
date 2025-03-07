@@ -255,6 +255,53 @@ void Peer::recv_msg(Bytes payload)
     panic("unreachable");
 }
 
+ControlFlow epollin_peer(Peer *peer)
+{
+    for (;;)
+    {
+        if (!peer->read_op)
+            peer->read_op = IoOperation::read();
+
+        auto result = read_message(peer->fd, &*peer->read_op);
+
+        switch (result)
+        {
+        case ReadResult::Blocked:
+            std::cout << "client_peer_event_connected(): read blocked; n: " << peer->read_op->cursor << std::endl;
+            return ControlFlow::Continue; // return from fn, note: no way to break loop
+        case ReadResult::Disconnect:
+        case ReadResult::BadMagic:
+        case ReadResult::BadType:
+            std::cout << "client_peer_event_connected(): disconnect" << std::endl;
+            reconnect_peer(peer);
+            return ControlFlow::Break;
+        case ReadResult::Read:
+            std::cout << "client_peer_event_connected(): read message" << std::endl;
+            peer->read_op->complete();
+
+            switch (*peer->read_op->type)
+            {
+            case MessageType::Data:
+                peer->recv_msg(peer->read_op->payload);
+                break;
+            case MessageType::Identity:
+                std::cout << "client_peer_event_connected(): unexpected identity message" << std::endl;
+                reconnect_peer(peer);
+                return ControlFlow::Break;
+            case MessageType::Disconnect:
+                std::cout << "client_peer_event_connected(): disconnect message!!!" << std::endl;
+
+                remove_peer(peer);
+                delete peer;
+                return ControlFlow::Break; // exit fn
+            }
+
+            // reset the read operation
+            peer->read_op = std::nullopt;
+        }
+    }
+}
+
 // process the send queue until the socket blocks or the queue is exhausted
 ControlFlow epollout_peer(Peer *peer)
 {
@@ -511,6 +558,7 @@ void client_init(Session *session, Client *client, Transport transport, uint8_t 
         .recv_queue = ConcurrentQueue<void *>(),
         .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv_buffer = ConcurrentQueue<Message>(),
+        .destroy_tfd = -1,
         .destroy = std::nullopt,
     };
 

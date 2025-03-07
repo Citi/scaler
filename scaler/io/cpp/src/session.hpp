@@ -38,6 +38,7 @@ bool write_identity(Peer *peer);
 void client_send_event(Client *client);
 void client_recv_event(Client *client);
 void client_listener_event(Client *client);
+void client_destroy_timeout(Client *client);
 void client_peer_event_connecting(epoll_event *event);
 void client_peer_event_connected(epoll_event *event);
 void intraprocess_recv_event(IntraProcessClient *client);
@@ -61,7 +62,8 @@ struct EpollType
 
         ConnectTimer,
         Control,
-        Closed
+        Closed,
+        ClientDestroyTimeout,
     };
 
     constexpr EpollType(Value value) : value(value) {}

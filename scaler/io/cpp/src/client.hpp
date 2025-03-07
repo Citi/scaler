@@ -44,6 +44,7 @@ ENUM Transport : uint8_t;
 void write_to_peer(Peer *peer, SendMessage send);
 void reconnect_peer(Peer *peer);
 void remove_peer(Peer *peer);
+ControlFlow epollin_peer(Peer *peer);
 ControlFlow epollout_peer(Peer *peer);
 
 void client_init(struct Session *session, struct Client *client, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
@@ -102,6 +103,7 @@ struct Client
     int recv_buffer_event_fd;                // event fd for recv buffer, only needed for sync clients
     ConcurrentQueue<Message> recv_buffer;    // these are messages that have been received
 
+    int destroy_tfd;
     std::optional<Completer> destroy; // this is used to wait for the destruction of a client
 
     // must hold mutex

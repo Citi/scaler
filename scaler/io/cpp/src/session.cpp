@@ -12,6 +12,8 @@ std::string EpollType::as_string() const
         return "ClientListener";
     case EpollType::ClientPeer:
         return "ClientPeer";
+    case EpollType::ClientDestroyTimeout:
+        return "ClientDestroyTimeout";
     case EpollType::IntraProcessClientRecv:
         return "IntraProcessClientRecv";
     case EpollType::ConnectTimer:
@@ -385,11 +387,10 @@ void client_listener_event(Client *client)
             .type = PeerType::Connectee,
             .fd = fd,
             .queue = std::queue<SendMessage>(),
-            // connecting state
             .state = PeerState::Connecting,
-            // we need to read the peer's identity
+            // read the peer's identity
             .read_op = IoOperation::read(),
-            // we need to write our identity
+            // write our identity
             .write_op = IoOperation::write(client->identity, MessageType::Identity),
         };
 
@@ -434,53 +435,8 @@ void client_peer_event_connected(epoll_event *event)
             return;
 
     if (event->events & EPOLLIN)
-    {
-        std::cout << "client_peer_event_connected(): reading" << std::endl;
-
-        for (;;)
-        {
-            if (!peer->read_op)
-                peer->read_op = IoOperation::read();
-
-            auto result = read_message(peer->fd, &*peer->read_op);
-
-            switch (result)
-            {
-            case ReadResult::Blocked:
-                std::cout << "client_peer_event_connected(): read blocked; n: " << peer->read_op->cursor << std::endl;
-                return; // return from fn, note: no way to break loop
-            case ReadResult::Disconnect:
-            case ReadResult::BadMagic:
-            case ReadResult::BadType:
-                std::cout << "client_peer_event_connected(): disconnect" << std::endl;
-                reconnect_peer(peer);
-                return;
-            case ReadResult::Read:
-                std::cout << "client_peer_event_connected(): read message" << std::endl;
-                peer->read_op->complete();
-
-                switch (*peer->read_op->type)
-                {
-                case MessageType::Data:
-                    peer->recv_msg(peer->read_op->payload);
-                    break;
-                case MessageType::Identity:
-                    std::cout << "client_peer_event_connected(): unexpected identity message" << std::endl;
-                    reconnect_peer(peer);
-                    return;
-                case MessageType::Disconnect:
-                    std::cout << "client_peer_event_connected(): disconnect message!!!" << std::endl;
-
-                    remove_peer(peer);
-                    delete peer;
-                    return; // exit fn
-                }
-
-                // reset the read operation
-                peer->read_op = std::nullopt;
-            }
-        }
-    }
+        if (epollin_peer(peer) == ControlFlow::Break)
+            return;
 }
 
 // may call reconnect_peer()
@@ -520,6 +476,15 @@ void client_peer_event(epoll_event *event)
         client_peer_event_connecting(event);
     else if (peer->state == PeerState::Connected)
         client_peer_event_connected(event);
+}
+
+void client_destroy_timeout(Client *client) {
+    // todo: destroy the client
+    // share code with other places client needs to be destroyed:
+    //  - control_event(), when there's no peers
+    //  - epollout_peer(), when the last peer has disconnected
+
+    client->destroy->complete();
 }
 
 void connect_timer_event(ThreadContext *ctx)
@@ -589,12 +554,11 @@ void control_event(ThreadContext *ctx)
                     request.complete();
                 else
                 {
-
                     // this semaphore will be completed
                     // once all the peers have disconnected
                     // or the timeout has been reached <- TODO
                     // and the client has been destroyed
-                    request.client->destroy = request.completer;
+                    client->destroy = request.completer;
 
                     SendMessage send{
                         .completer = Completer::none(),
@@ -606,6 +570,27 @@ void control_event(ThreadContext *ctx)
 
                     for (auto peer : peers)
                         write_to_peer(peer, send);
+
+                    auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
+                    if (tfd < 0)
+                        panic("failed to create timerfd: " + std::to_string(errno));
+
+                    itimerspec spec{
+                        .it_interval = {
+                            .tv_sec = 0,
+                            .tv_nsec = 0,
+                        },
+                        .it_value = {
+                            .tv_sec = 5,
+                            .tv_nsec = 0,
+                        }
+                    };
+
+                    if (timerfd_settime(tfd, 0, &spec, NULL) < 0)
+                        panic("failed to arm timer: " + std::to_string(errno));
+
+                    client->destroy_tfd = tfd;
+                    ctx->add_epoll(client->destroy_tfd, EPOLLIN, EpollType::ClientDestroyTimeout, client);
                 }
             }
 
@@ -678,14 +663,15 @@ void io_thread_main(ThreadContext *ctx)
         // clang-format off
         switch (data->type)
         {
-            case EpollType::ClientSend:             client_send_event(data->client);       break;  // client send()       ET    
-            case EpollType::ClientRecv:             client_recv_event(data->client);       break;  // client recv()       ET
-            case EpollType::ClientListener:         client_listener_event(data->client);   break;  // new connection      ET
-            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc); break;  // intraprocess recv() ET
-            case EpollType::ClientPeer:             client_peer_event(&event);             break;  // peer has data       ET
-            case EpollType::ConnectTimer:           connect_timer_event(ctx);              break;  // connect timer       LT
-            case EpollType::Control:                control_event(ctx);                    break;  // control event       LT
-            case EpollType::Closed:                                                        return; // exit                LT
+            case EpollType::ClientSend:             client_send_event(data->client);       break;  // client send()            ET  
+            case EpollType::ClientRecv:             client_recv_event(data->client);       break;  // client recv()            ET
+            case EpollType::ClientListener:         client_listener_event(data->client);   break;  // new connection           ET
+            case EpollType::ClientDestroyTimeout:   client_destroy_timeout(data->client);  break;  // client destroy timed out LT
+            case EpollType::ClientPeer:             client_peer_event(&event);             break;  // peer has data            ET
+            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc); break;  // intraprocess recv()      ET
+            case EpollType::ConnectTimer:           connect_timer_event(ctx);              break;  // connect timer            LT
+            case EpollType::Control:                control_event(ctx);                    break;  // control event            LT
+            case EpollType::Closed:                                                        return; // exit                     LT
 
             default:
                 panic("epoll: unknown event type");
