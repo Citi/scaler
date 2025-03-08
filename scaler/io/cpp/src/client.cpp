@@ -38,7 +38,9 @@ size_t Client::peer_rr()
     return rr % this->peers.size();
 }
 
-void Client::recv_msg(Message &msg)
+// receive a message
+// this will either complete a waiting recv request or buffer the message
+void Client::recv_msg(Message &message)
 {
     // if there's a waiting recv, complete it immediately
     if (eventfd_wait(this->recv_event_fd) == 0)
@@ -49,15 +51,15 @@ void Client::recv_msg(Message &msg)
         while (!this->recv_queue.try_dequeue(future))
             ; // wait
 
-        future_set_result(future, &msg);
-        message_destroy(&msg);
+        future_set_result(future, &message);
+        message_destroy(&message);
     }
     else if (errno == EAGAIN) // o.w. res < 0
     {
         std::cout << "Client::recv_msg(): buffering message" << std::endl;
 
         // buffer the message
-        this->recv_buffer.enqueue(msg);
+        this->recv_buffer.enqueue(message);
 
         if (eventfd_signal(this->recv_buffer_event_fd) < 0)
             panic("failed to write to eventfd: " + std::to_string(errno));
@@ -130,10 +132,14 @@ void Client::send(SendMessage send)
     }
 }
 
+// takes ownership of the `payload`
 void Peer::recv_msg(Bytes &payload)
 {
     Message message{
         .type = MessageType::Data,
+
+        // the lifetime of the identity and this message are decoupled
+        // so it's important that we clone the data
         .address = Bytes::clone(this->identity),
         .payload = payload,
     };
@@ -283,6 +289,11 @@ ControlFlow epollin_peer(Peer *peer)
             {
             case MessageType::Data:
                 peer->recv_msg(peer->read_op->payload);
+
+                // reset the read operation
+                // but don't free the payload;
+                // that's handled when the message is cleaned up
+                peer->read_op = std::nullopt;
                 break;
             case MessageType::Identity:
                 std::cout << "client_peer_event_connected(): unexpected identity message" << std::endl;
@@ -295,9 +306,6 @@ ControlFlow epollin_peer(Peer *peer)
                 delete peer;
                 return ControlFlow::Break; // exit fn
             }
-
-            // reset the read operation
-            peer->read_op = std::nullopt;
         }
     }
 }
@@ -508,8 +516,17 @@ void remove_peer(Peer *peer)
     peer->client->thread->remove_peer(peer);
     peer->client->remove_peer(peer);
 
-    peer->write_op = std::nullopt;
-    peer->read_op = std::nullopt;
+    if (peer->write_op)
+    {
+        peer->write_op->payload.free();
+        peer->write_op = std::nullopt;
+    }
+
+    if (peer->read_op)
+    {
+        peer->read_op->payload.free();
+        peer->read_op = std::nullopt;
+    }
 
     std::cout << "closing fd: " << std::to_string(peer->fd) << std::endl;
     close(peer->fd);
