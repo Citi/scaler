@@ -656,32 +656,32 @@ void client_bind(Client *client, const char *host, uint16_t port)
 void client_connect(Client *client, const char *addr, uint16_t port)
 {
     sockaddr_storage address;
+    std::memset(&address, 0, sizeof(address));
 
     switch (client->transport)
     {
     case Transport::InterProcess:
     {
-        sockaddr_un server_addr{
+        auto addr_un = (sockaddr_un *)&address;
+
+        *addr_un = {
             .sun_family = AF_UNIX,
             .sun_path = {0}};
 
-        std::strncpy(server_addr.sun_path, addr, sizeof(server_addr.sun_path) - 1);
-        std::memcpy(&address, &server_addr, sizeof(server_addr));
+        std::strncpy(addr_un->sun_path, addr, sizeof(addr_un->sun_path) - 1);
     }
     break;
     case Transport::TCP:
     {
         std::cout << "connecting to: " << addr << ":" << std::to_string(port) << std::endl;
 
-        sockaddr_in server_addr{
+        *(sockaddr_in *)&address = {
             .sin_family = AF_INET,
             .sin_port = htons(port),
             .sin_addr = {
                 .s_addr = inet_addr(addr)},
             .sin_zero = {0},
         };
-
-        std::memcpy(&address, &server_addr, sizeof(server_addr));
     }
     break;
     case Transport::IntraProcess:
