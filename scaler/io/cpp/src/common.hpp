@@ -36,7 +36,7 @@ void future_set_result(void *future, void *data);
 // this is an unrecoverable error that exits the program
 // prints a message plus the source location
 [[noreturn]] void panic(
-    [[maybe_unused]] std::string message,
+    std::string message,
     const std::source_location &location = std::source_location::current())
 {
     auto file_name = std::string(location.file_name());

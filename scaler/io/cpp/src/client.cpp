@@ -694,6 +694,11 @@ void client_connect(Client *client, const char *addr, uint16_t port)
 
 void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
+    if (client->type == ConnectorType::Sub)
+        panic("clients of type 'sub' do not support sending messages");
+
+    // this data is owned by the caller,
+    // but it's kept alive until the future is resolved
     SendMessage send{
         .completer = Completer::future(future),
         .msg = {
@@ -719,6 +724,9 @@ void client_send(void *future, Client *client, uint8_t *to, size_t to_len, uint8
 
 void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
+    if (client->type == ConnectorType::Sub)
+        panic("clients of type 'sub' do not support sending messages");
+
     sem_t *sem = (sem_t *)std::malloc(sizeof(sem_t));
 
     if (sem_init(sem, 0, 0) < 0)
