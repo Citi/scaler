@@ -254,7 +254,7 @@ void client_recv_event(Client *client)
                 if (eventfd_signal(client->recv_buffer_event_fd) < 0)
                     panic("failed to signal eventfd: " + std::to_string(errno));
 
-                return; // back to epoll_wait()
+                break; // back to epoll_wait()
             }
 
             panic("handle eventfd read error:" + std::to_string(errno));

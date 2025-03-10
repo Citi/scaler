@@ -111,7 +111,7 @@ struct Client
     void remove_peer(Peer *peer);
     bool muted();
     size_t peer_rr();
-    void recv_msg(Message &msg);
+    void recv_msg(Message message);
     void unmute();
 
     // send a message to a peer according to the client type's rules
@@ -150,7 +150,7 @@ struct Peer
     std::optional<IoOperation> read_op;  // the current read operation
     std::optional<IoOperation> write_op; // the current write operation
 
-    void recv_msg(Bytes &payload);
+    void recv_msg(Bytes payload);
 };
 
 struct IoResult

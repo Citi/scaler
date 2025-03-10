@@ -40,7 +40,7 @@ size_t Client::peer_rr()
 
 // receive a message
 // this will either complete a waiting recv request or buffer the message
-void Client::recv_msg(Message &message)
+void Client::recv_msg(Message message)
 {
     // if there's a waiting recv, complete it immediately
     if (eventfd_wait(this->recv_event_fd) == 0)
@@ -133,7 +133,7 @@ void Client::send(SendMessage send)
 }
 
 // takes ownership of the `payload`
-void Peer::recv_msg(Bytes &payload)
+void Peer::recv_msg(Bytes payload)
 {
     Message message{
         .type = MessageType::Data,
@@ -326,9 +326,8 @@ ControlFlow epollout_peer(Peer *peer)
             }
 
             auto send = peer->queue.front();
-            peer->queue.pop();
-
             peer->write_op = IoOperation::write(send.msg.payload, send.msg.type, send.completer);
+            peer->queue.pop();
         }
 
         auto result = write_message(peer->fd, &*peer->write_op);
@@ -750,14 +749,8 @@ void client_send_sync(Client *client, uint8_t *to, size_t to_len, uint8_t *data,
         .completer = Completer::semaphore(sem),
         .msg = {
             .type = MessageType::Data,
-            .address = {
-                .data = to,
-                .len = to_len,
-            },
-            .payload = {
-                .data = data,
-                .len = data_len,
-            },
+            .address = Bytes::copy(to, to_len),
+            .payload = Bytes::copy(data, data_len),
         },
     };
 
