@@ -127,7 +127,7 @@ struct ThreadContext
     int connect_timer_tfd;
     bool timer_armed;
 
-    void arm_timer();
+    void ensure_timer_armed();
     void add_client(Client *client);
     void add_peer(Peer *peer);
     void remove_client(Client *client);

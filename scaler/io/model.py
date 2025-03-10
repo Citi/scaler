@@ -247,6 +247,9 @@ class IntraProcessClient:
     async def recv(self) -> Message:
         return await c_async(C.intraprocess_recv_async, self._obj)
 
+def easy_hash(b: bytes) -> str:
+    import hashlib
+    return hashlib.md5(b, usedforsecurity=False).hexdigest()[:5]
 
 class Client:
     _obj: "FFITypes.CData"
@@ -258,6 +261,9 @@ class Client:
 
         session.register_client(self)
         self._destroyed = False
+
+        # todo: remove after testing
+        self.identity = identity
 
     def __del__(self):
         self.destroy()
@@ -312,6 +318,8 @@ class Client:
             case _:
                 raise ValueError(f"either msg or to and data must be provided, got: to={to}, data={data}, msg={msg}")
 
+        print(f"SEND: {easy_hash(data)}; {self.identity.decode()} -> {to.decode() if to is not None else 'NULL'}")
+
         if to is None:
             to = ffi.NULL
             to_len = 0
@@ -357,4 +365,8 @@ class Client:
     async def recv(self) -> Message:
         self.__check_destroyed()
 
-        return await c_async(C.client_recv, self._obj)
+        msg: Message =  await c_async(C.client_recv, self._obj)
+
+        print(f"RECV: {easy_hash(msg.payload)}; {msg.address.decode()} <- {self.identity.decode()}")
+
+        return msg

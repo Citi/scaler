@@ -87,14 +87,12 @@ uint8_t *datadup(const uint8_t *data, size_t len)
 
 struct Bytes
 {
-    bool owned;
     uint8_t *data;
     size_t len;
 
     void free()
     {
-        if (this->owned)
-            std::free(this->data);
+        std::free(data);
     }
 
     bool operator==(const Bytes &other) const
@@ -105,15 +103,14 @@ struct Bytes
         return std::memcmp(data, other.data, len) == 0;
     }
 
-    // same as empty()
     bool operator!() const
     {
-        return len == 0 || data == nullptr;
+        return is_empty();
     }
 
     bool is_empty() const
     {
-        return len == 0 || data == nullptr;
+        return this->data == NULL;
     }
 
     // debugging utility
@@ -143,7 +140,6 @@ struct Bytes
     {
         uint64_t hash = this->easy_hash();
         auto bytes = Bytes{
-            .owned = false,
             .data = (uint8_t *)&hash,
             .len = 64 / 8};
 
@@ -162,7 +158,6 @@ struct Bytes
     Bytes ref()
     {
         return {
-            .owned = false,
             .data = this->data,
             .len = this->len};
     }
@@ -170,7 +165,6 @@ struct Bytes
     static Bytes alloc(size_t len)
     {
         return {
-            .owned = true,
             .data = (uint8_t *)std::malloc(len),
             .len = len};
     }
@@ -178,8 +172,7 @@ struct Bytes
     static Bytes empty()
     {
         return {
-            .owned = false,
-            .data = nullptr,
+            .data = NULL,
             .len = 0,
         };
     }
@@ -187,7 +180,6 @@ struct Bytes
     static Bytes copy(const uint8_t *data, size_t len)
     {
         return {
-            .owned = true,
             .data = datadup(data, len),
             .len = len,
         };
@@ -196,7 +188,6 @@ struct Bytes
     static Bytes clone(const Bytes &bytes)
     {
         return {
-            .owned = true,
             .data = datadup(bytes.data, bytes.len),
             .len = bytes.len,
         };
