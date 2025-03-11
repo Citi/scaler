@@ -249,7 +249,7 @@ class IntraProcessClient:
 
 def easy_hash(b: bytes) -> str:
     import hashlib
-    return hashlib.md5(b, usedforsecurity=False).hexdigest()[:5]
+    return hashlib.md5(b, usedforsecurity=False).hexdigest()[:8]
 
 class Client:
     _obj: "FFITypes.CData"
@@ -318,15 +318,15 @@ class Client:
             case _:
                 raise ValueError(f"either msg or to and data must be provided, got: to={to}, data={data}, msg={msg}")
 
-        print(f"SEND: {easy_hash(data)}; {self.identity.decode()} -> {to.decode() if to is not None else 'NULL'}")
-
         if to is None:
             to = ffi.NULL
             to_len = 0
         else:
             to_len = len(to)
 
-        return await c_async(C.client_send, self._obj, to, to_len, data, len(data))
+        # print(f"SEND: {easy_hash(data)}")
+
+        await c_async(C.client_send, self._obj, to, to_len, data, len(data))
 
     def send_sync(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
@@ -364,9 +364,6 @@ class Client:
 
     async def recv(self) -> Message:
         self.__check_destroyed()
-
-        msg: Message =  await c_async(C.client_recv, self._obj)
-
-        print(f"RECV: {easy_hash(msg.payload)}; {msg.address.decode()} <- {self.identity.decode()}")
-
-        return msg
+        msg_: Message = await c_async(C.client_recv, self._obj)
+        # print(f"RECV: {easy_hash(msg_.payload)}")
+        return msg_

@@ -71,7 +71,7 @@ void Client::recv_msg(Message message)
 void Client::unmute()
 {
     // these types do not mute
-    if (this->type == ConnectorType::Dealer || this->type == ConnectorType::Pub)
+    if (this->type == ConnectorType::Pub || this->type == ConnectorType::Router)
         return;
 
     client_send_event(this);
@@ -106,12 +106,19 @@ void Client::send(SendMessage send)
     break;
     case ConnectorType::Pub:
     {
-        // std::cout << "pub: " << this->identity.as_string() << ": sending message to " << std::to_string(this->peers.size()) << " peers" << std::endl;
+        // NOTE: IMPLEMENT THIS
+        // the completer needs to be completed once the message is written to every peer
+        // do we need to use a counting semaphore? maybe we can use an atomic or something?
+
+        // for now just complete the request, it's not essential to the function of the scaler
+        send.completer.complete();
+
+        // ---
 
         // if the socket has no peers, the message is dropped
         // we need to copy the peers because the vector may be modified
-        for (auto peer : std::vector(this->peers))
-            write_to_peer(peer, send);
+        // for (auto peer : std::vector(this->peers))
+        //     write_to_peer(peer, send);
     }
     break;
     case ConnectorType::Dealer:

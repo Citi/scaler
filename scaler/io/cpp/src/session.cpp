@@ -417,8 +417,6 @@ void client_peer_event_connecting(epoll_event *event)
     // check if we're done
     if (!peer->read_op && !peer->write_op)
     {
-        std::cout << "CONNECTED: " << peer->client->identity.as_string() << " <- " << peer->identity.as_string() << std::endl;
-
         complete_peer_connect(peer);
 
         // we're edge triggered so it's important that we check this
@@ -663,7 +661,7 @@ void io_thread_main(ThreadContext *ctx)
 
         EpollData *data = (EpollData *)event.data.ptr;
 
-        // std::cout << "thread[" << ctx->id << "]: event: " << data->type.as_string() << std::endl;
+        std::cout << "thread[" << ctx->id << "]: event: " << data->type.as_string() << std::endl;
 
         // clang-format off
         switch (data->type)
