@@ -661,7 +661,7 @@ void io_thread_main(ThreadContext *ctx)
 
         EpollData *data = (EpollData *)event.data.ptr;
 
-        std::cout << "thread[" << ctx->id << "]: event: " << data->type.as_string() << std::endl;
+        // std::cout << "thread[" << ctx->id << "]: event: " << data->type.as_string() << std::endl;
 
         // clang-format off
         switch (data->type)
