@@ -8,11 +8,11 @@ from typing import Optional
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorType, Session, Address, TCPAddress, IntraProcessAddress, NetworkConnector, IntraProcessClient, TCPAddress, IntraProcessAddress
+from scaler.io.model import ConnectorType, Session, Address, TCPAddress, IntraProcessAddress, NetworkConnector, IntraProcessConnector, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
-    _client: NetworkConnector | IntraProcessClient
+    _client: NetworkConnector | IntraProcessConnector
 
     def __init__(self,
                  session: Session,
@@ -38,9 +38,9 @@ class SyncConnector:
                 self._connector = NetworkConnector(session, self._identity, type_)
             case IntraProcessAddress():
                 if type_ != ConnectorType.Pair:
-                    raise ValueError(f"IntraProcessClient only supports pair type, got {type_}")
+                    raise ValueError(f"IntraProcessConnector only supports pair type, got {type_}")
 
-                self._connector = IntraProcessClient(session, self._identity)
+                self._connector = IntraProcessConnector(session, self._identity)
 
         self._connector.connect(addr=self._address)
         self._lock = threading.Lock()

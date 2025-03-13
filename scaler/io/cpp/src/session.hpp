@@ -41,7 +41,7 @@ void connector_listener_event(NetworkConnector *connector);
 void connector_destroy_timeout(NetworkConnector *connector);
 void connector_peer_event_connecting(epoll_event *event);
 void connector_peer_event_connected(epoll_event *event);
-void intraprocess_recv_event(IntraProcessClient *client);
+void intraprocess_recv_event(IntraProcessConnector *connector);
 
 void io_thread_main(ThreadContext *ctx);
 
@@ -54,16 +54,16 @@ struct EpollType
 {
     enum Value
     {
-        ClientSend,
-        ClientRecv,
-        ClientListener,
-        ClientPeer,
-        IntraProcessClientRecv,
+        ConnectorSend,
+        ConnectorRecv,
+        ConnectorListener,
+        ConnectorPeer,
+        IntraProcessConnectorRecv,
 
         ConnectTimer,
         Control,
         Closed,
-        ClientDestroyTimeout,
+        ConnectorDestroyTimeout,
     };
 
     constexpr EpollType(Value value) : value(value) {}
@@ -84,14 +84,14 @@ struct EpollData
     {
         void *ptr;
         NetworkConnector *connector;
-        IntraProcessClient *inproc;
+        IntraProcessConnector *inproc;
         RawPeer *peer;
     };
 };
 
 ENUM ControlOperation : uint8_t{
-                            AddClient,
-                            DestroyClient,
+                            AddConnector,
+                            DestroyConnector,
                             Connect,
                         };
 
@@ -128,7 +128,7 @@ struct ThreadContext
     bool timer_armed;
 
     void ensure_timer_armed();
-    void add_client(NetworkConnector *connector);
+    void add_connector(NetworkConnector *connector);
     void add_peer(RawPeer *peer);
     void remove_client(NetworkConnector *connector);
     void remove_peer(RawPeer *peer);
@@ -150,7 +150,7 @@ struct Session
 {
     // the io threads
     std::vector<ThreadContext> threads;
-    std::vector<IntraProcessClient *> inprocs;
+    std::vector<IntraProcessConnector *> inprocs;
 
     std::shared_mutex intraprocess_mutex;
 

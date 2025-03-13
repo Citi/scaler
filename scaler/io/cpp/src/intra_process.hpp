@@ -19,24 +19,24 @@
 using moodycamel::ConcurrentQueue;
 
 // --- declarations ---
-struct IntraProcessClient;
+struct IntraProcessConnector;
 
 // First-party
 #include "common.hpp"
 #include "session.hpp"
 
-void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len);
-void intraprocess_bind(struct IntraProcessClient *client, const char *addr, size_t len);
-void intraprocess_connect(struct IntraProcessClient *client, const char *addr, size_t len);
-void intraprocess_send(struct IntraProcessClient *client, uint8_t *data, size_t len);
-void intraprocess_recv_sync(struct IntraProcessClient *client, struct Message *msg);
-void intraprocess_recv_async(void *future, struct IntraProcessClient *client);
-void intraprocess_destroy(struct IntraProcessClient *client);
+void intraprocess_init(Session *session, IntraProcessConnector *connector, uint8_t *identity, size_t len);
+void intraprocess_bind(struct IntraProcessConnector *connector, const char *addr, size_t len);
+void intraprocess_connect(struct IntraProcessConnector *connector, const char *addr, size_t len);
+void intraprocess_send(struct IntraProcessConnector *connector, uint8_t *data, size_t len);
+void intraprocess_recv_sync(struct IntraProcessConnector *connector, struct Message *msg);
+void intraprocess_recv_async(void *future, struct IntraProcessConnector *connector);
+void intraprocess_destroy(struct IntraProcessConnector *connector);
 
 // -- structs --
 
 // inproc sockets are always pair sockets
-struct IntraProcessClient
+struct IntraProcessConnector
 {
     Session *session;
     ThreadContext *thread;
@@ -51,7 +51,7 @@ struct IntraProcessClient
     Bytes identity;
     std::optional<std::string> bind;
     std::optional<std::string> connecting;
-    std::optional<IntraProcessClient *> peer;
+    std::optional<IntraProcessConnector *> peer;
 
     bool epoll;
 

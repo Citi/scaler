@@ -1,17 +1,17 @@
 #include "intra_process.hpp"
 
-void IntraProcessClient::ensure_epoll()
+void IntraProcessConnector::ensure_epoll()
 {
     if (this->epoll)
         return;
 
     this->epoll = true;
 
-    this->thread->add_epoll(this->recv_buffer_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessClientRecv, this);
-    this->thread->add_epoll(this->recv_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessClientRecv, this);
+    this->thread->add_epoll(this->recv_buffer_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessConnectorRecv, this);
+    this->thread->add_epoll(this->recv_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessConnectorRecv, this);
 }
 
-void IntraProcessClient::remove_from_epoll()
+void IntraProcessConnector::remove_from_epoll()
 {
     if (!this->epoll)
         return;
@@ -20,9 +20,9 @@ void IntraProcessClient::remove_from_epoll()
     this->thread->remove_epoll(this->recv_event_fd);
 }
 
-void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *identity, size_t len)
+void intraprocess_init(Session *session, IntraProcessConnector *connector, uint8_t *identity, size_t len)
 {
-    new (client) IntraProcessClient{
+    new (connector) IntraProcessConnector{
         .session = session,
         .thread = session->next_thread(),
         .queue = ConcurrentQueue<Message>(),
@@ -39,25 +39,25 @@ void intraprocess_init(Session *session, IntraProcessClient *client, uint8_t *id
 
     // take exclusive lock on the session to add the client
     session->intraprocess_mutex.lock();
-    session->inprocs.push_back(client);
+    session->inprocs.push_back(connector);
     session->intraprocess_mutex.unlock();
 }
 
-void intraprocess_bind(IntraProcessClient *client, const char *addr, size_t len)
+void intraprocess_bind(IntraProcessConnector *connector, const char *addr, size_t len)
 {
-    if (client->bind)
+    if (connector->bind)
         panic("intraprocess_bind(): client already bound");
 
     std::string bind(addr, len);
 
-    client->session->intraprocess_mutex.lock();
+    connector->session->intraprocess_mutex.lock();
 
     // check for conflicts
-    for (size_t i = 0; i < client->session->inprocs.size(); i++)
+    for (size_t i = 0; i < connector->session->inprocs.size(); i++)
     {
-        auto other = client->session->inprocs[i];
+        auto other = connector->session->inprocs[i];
 
-        if (other == client)
+        if (other == connector)
             continue;
 
         if (other->bind == bind)
@@ -65,99 +65,99 @@ void intraprocess_bind(IntraProcessClient *client, const char *addr, size_t len)
     }
 
     // set the bind address
-    client->bind = bind;
+    connector->bind = bind;
 
     // check for any pending connections
-    for (size_t i = 0; i < client->session->inprocs.size(); i++)
+    for (size_t i = 0; i < connector->session->inprocs.size(); i++)
     {
-        auto other = client->session->inprocs[i];
+        auto other = connector->session->inprocs[i];
 
-        if (other == client)
+        if (other == connector)
             continue;
 
         if (other->connecting == bind)
         {
             other->connecting = std::nullopt;
-            other->peer = client;
-            client->peer = other;
+            other->peer = connector;
+            connector->peer = other;
 
             if (eventfd_signal(other->unmuted_event_fd) < 0)
                 panic("intraprocess_bind(): failed to signal unmuted_event_fd");
         }
     }
 
-    client->session->intraprocess_mutex.unlock();
+    connector->session->intraprocess_mutex.unlock();
 }
 
-void intraprocess_connect(IntraProcessClient *client, const char *addr, size_t len)
+void intraprocess_connect(IntraProcessConnector *connector, const char *addr, size_t len)
 {
     std::string connecting(addr, len);
 
-    client->session->intraprocess_mutex.lock();
+    connector->session->intraprocess_mutex.lock();
 
-    for (size_t i = 0; i < client->session->inprocs.size(); i++)
+    for (size_t i = 0; i < connector->session->inprocs.size(); i++)
     {
-        auto other = client->session->inprocs[i];
+        auto other = connector->session->inprocs[i];
 
-        if (other == client)
+        if (other == connector)
             continue;
 
         // we found a matching bind
-        if (client->bind == connecting)
+        if (connector->bind == connecting)
         {
-            other->peer = client;
-            client->peer = other;
+            other->peer = connector;
+            connector->peer = other;
 
             if (eventfd_signal(other->unmuted_event_fd) < 0)
                 panic("intraprocess_connect(): failed to signal unmuted_event_fd");
 
-            client->session->intraprocess_mutex.unlock();
+            connector->session->intraprocess_mutex.unlock();
             return;
         }
     }
 
     // the connection is pending
-    client->connecting = connecting;
-    client->session->intraprocess_mutex.unlock();
+    connector->connecting = connecting;
+    connector->session->intraprocess_mutex.unlock();
 }
 
-void intraprocess_send(IntraProcessClient *client, uint8_t *data, size_t len)
+void intraprocess_send(IntraProcessConnector *connector, uint8_t *data, size_t len)
 {
     for (;;)
     {
-        client->session->intraprocess_mutex.lock_shared();
+        connector->session->intraprocess_mutex.lock_shared();
 
-        if (client->peer)
+        if (connector->peer)
         {
             Message msg{
                 .type = MessageType::Data,
 
                 // we need to clone the identity because the sending client
                 // has an independent lifetime from the message / receiving client
-                .address = Bytes::clone(client->identity),
+                .address = Bytes::clone(connector->identity),
 
                 // the caller (Python) owns the data, so we need to copy it
                 .payload = Bytes::copy(data, len),
             };
 
-            auto peer = *client->peer;
+            auto peer = *connector->peer;
             peer->queue.enqueue(msg);
 
             // signal the receiving client (semaphore)
             if (eventfd_signal(peer->recv_buffer_event_fd) < 0)
                 panic("intraprocess_send(): failed to signal recv_buffer_event_fd");
 
-            client->session->intraprocess_mutex.unlock_shared();
+            connector->session->intraprocess_mutex.unlock_shared();
             return;
         }
 
-        client->session->intraprocess_mutex.unlock_shared();
+        connector->session->intraprocess_mutex.unlock_shared();
 
         // wait for a connection
-        if (auto code = fd_wait(client->unmuted_event_fd, -1, POLLIN))
+        if (auto code = fd_wait(connector->unmuted_event_fd, -1, POLLIN))
             panic("fd_wait(): " + std::to_string(code) + " ; " + std::to_string(errno));
 
-        if (eventfd_wait(client->unmuted_event_fd) < 0)
+        if (eventfd_wait(connector->unmuted_event_fd) < 0)
         {
             // pre-empted?
             if (errno == EAGAIN)
@@ -168,13 +168,13 @@ void intraprocess_send(IntraProcessClient *client, uint8_t *data, size_t len)
     }
 }
 
-void intraprocess_recv_sync(IntraProcessClient *client, Message *msg)
+void intraprocess_recv_sync(IntraProcessConnector *connector, Message *msg)
 {
 wait:
-    if (auto code = fd_wait(client->recv_buffer_event_fd, -1, POLLIN))
+    if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN))
         panic("fd_wait(): " + std::to_string(code) + " ; " + std::to_string(errno));
 
-    if (eventfd_wait(client->recv_buffer_event_fd) < 0)
+    if (eventfd_wait(connector->recv_buffer_event_fd) < 0)
     {
         if (errno == EAGAIN)
             goto wait; // pre-empted, try again
@@ -184,24 +184,24 @@ wait:
 
     // after decrementing the semaphore, we have claimed the message from the queue
     // this also guarantees that the message is in the queue
-    while (!client->queue.try_dequeue(*msg))
+    while (!connector->queue.try_dequeue(*msg))
         ; // wait
 }
 
-void intraprocess_recv_async(void *future, IntraProcessClient *client)
+void intraprocess_recv_async(void *future, IntraProcessConnector *connector)
 {
     // ensure that the client is in the epoll
     // this allows sync-only clients to avoid epoll overhead
-    client->ensure_epoll();
-    client->recv.enqueue(future);
+    connector->ensure_epoll();
+    connector->recv.enqueue(future);
 
-    if (eventfd_signal(client->recv_event_fd) < 0)
+    if (eventfd_signal(connector->recv_event_fd) < 0)
         panic("intraprocess_recv_async(): failed to signal recv_event_fd");
 }
 
-void intraprocess_destroy(IntraProcessClient *client)
+void intraprocess_destroy(IntraProcessConnector *connector)
 {
-    (void)client;
+    (void)connector;
 
     panic("todo");
 }

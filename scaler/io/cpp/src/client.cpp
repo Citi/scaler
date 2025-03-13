@@ -589,7 +589,7 @@ void connector_init(Session *session, NetworkConnector *connector, Transport tra
         .destroy = std::nullopt,
     };
 
-    connector->thread->add_client(connector);
+    connector->thread->add_connector(connector);
 }
 
 void connector_bind(NetworkConnector *connector, const char *host, uint16_t port)
@@ -653,7 +653,7 @@ void connector_bind(NetworkConnector *connector, const char *host, uint16_t port
     if (listen(connector->fd, 16) < 0)
         panic("failed to listen on socket");
 
-    connector->thread->add_epoll(connector->fd, EPOLLIN | EPOLLET, EpollType::ClientListener, connector);
+    connector->thread->add_epoll(connector->fd, EPOLLIN | EPOLLET, EpollType::ConnectorListener, connector);
 
     // std::cout << "client: " << connector->identity.as_string() << ": bound to: " << host << ":" << std::to_string(port) << std::endl;
 }
@@ -819,7 +819,7 @@ void connector_destroy([[maybe_unused]] NetworkConnector *connector)
         panic("failed to initialize semaphore: " + std::to_string(errno));
 
     ControlRequest request{
-        .op = ControlOperation::DestroyClient,
+        .op = ControlOperation::DestroyConnector,
         .completer = Completer::semaphore(sem),
         .connector = connector,
     };

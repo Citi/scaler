@@ -4,18 +4,18 @@ std::string EpollType::as_string() const
 {
     switch (value)
     {
-    case EpollType::ClientSend:
-        return "ClientSend";
-    case EpollType::ClientRecv:
-        return "ClientRecv";
-    case EpollType::ClientListener:
-        return "ClientListener";
-    case EpollType::ClientPeer:
-        return "ClientPeer";
-    case EpollType::ClientDestroyTimeout:
-        return "ClientDestroyTimeout";
-    case EpollType::IntraProcessClientRecv:
-        return "IntraProcessClientRecv";
+    case EpollType::ConnectorSend:
+        return "ConnectorSend";
+    case EpollType::ConnectorRecv:
+        return "ConnectorRecv";
+    case EpollType::ConnectorListener:
+        return "ConnectorListener";
+    case EpollType::ConnectorPeer:
+        return "ConnectorPeer";
+    case EpollType::ConnectorDestroyTimeout:
+        return "ConnectorDestroyTimeout";
+    case EpollType::IntraProcessConnectorRecv:
+        return "IntraProcessConnectorRecv";
     case EpollType::ConnectTimer:
         return "ConnectTimer";
     case EpollType::Control:
@@ -52,15 +52,15 @@ void ThreadContext::ensure_timer_armed()
     this->timer_armed = true;
 }
 
-void ThreadContext::add_client(NetworkConnector *connector)
+void ThreadContext::add_connector(NetworkConnector *connector)
 {
-    this->add_epoll(connector->send_event_fd, EPOLLIN | EPOLLET, EpollType::ClientSend, connector);
-    this->add_epoll(connector->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ClientRecv, connector);
+    this->add_epoll(connector->send_event_fd, EPOLLIN | EPOLLET, EpollType::ConnectorSend, connector);
+    this->add_epoll(connector->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ConnectorRecv, connector);
 }
 
 void ThreadContext::add_peer(RawPeer *peer)
 {
-    this->add_epoll(peer->fd, EPOLLIN | EPOLLOUT | EPOLLET, EpollType::ClientPeer, peer);
+    this->add_epoll(peer->fd, EPOLLIN | EPOLLOUT | EPOLLET, EpollType::ConnectorPeer, peer);
 }
 
 void ThreadContext::remove_client(NetworkConnector *connector)
@@ -539,14 +539,14 @@ void control_event(ThreadContext *ctx)
 
         switch (request.op)
         {
-        case ControlOperation::AddClient:
+        case ControlOperation::AddConnector:
             // std::cout << "control_event(): add client" << std::endl;
 
-            ctx->add_client(request.connector);
+            ctx->add_connector(request.connector);
             request.complete();
             break;
-        case ControlOperation::DestroyClient:
-            // std::cout << "control_event(): destroy" << std::endl;
+        case ControlOperation::DestroyConnector:
+        // std::cout << "control_event(): destroy" << std::endl;
 
             {
                 auto connector = request.connector;
@@ -593,7 +593,7 @@ void control_event(ThreadContext *ctx)
                         panic("failed to arm timer: " + std::to_string(errno));
 
                     connector->destroy_tfd = tfd;
-                    ctx->add_epoll(connector->destroy_tfd, EPOLLIN, EpollType::ClientDestroyTimeout, connector);
+                    ctx->add_epoll(connector->destroy_tfd, EPOLLIN, EpollType::ConnectorDestroyTimeout, connector);
                 }
             }
 
@@ -609,9 +609,9 @@ void control_event(ThreadContext *ctx)
 }
 
 // either recv() was called or a message was buffered -- same handler
-void intraprocess_recv_event(IntraProcessClient *client)
+void intraprocess_recv_event(IntraProcessConnector *connector)
 {
-    if (eventfd_wait(client->recv_buffer_event_fd) < 0)
+    if (eventfd_wait(connector->recv_buffer_event_fd) < 0)
     {
         if (errno == EAGAIN)
             return;
@@ -619,12 +619,12 @@ void intraprocess_recv_event(IntraProcessClient *client)
         panic("failed to read from eventfd: " + std::to_string(errno));
     }
 
-    if (eventfd_wait(client->recv_event_fd) < 0)
+    if (eventfd_wait(connector->recv_event_fd) < 0)
     {
         if (errno == EAGAIN)
         {
             // we need to re-increment the semaphore because we didn't process the message
-            if (eventfd_signal(client->recv_buffer_event_fd) < 0)
+            if (eventfd_signal(connector->recv_buffer_event_fd) < 0)
                 panic("failed to write to eventfd: " + std::to_string(errno));
 
             return;
@@ -634,11 +634,11 @@ void intraprocess_recv_event(IntraProcessClient *client)
     }
 
     Message message;
-    while (client->queue.try_dequeue(message))
+    while (connector->queue.try_dequeue(message))
         ; // wait
 
     void *future;
-    while (client->recv.try_dequeue(future))
+    while (connector->recv.try_dequeue(future))
         ; // wait
 
     // this is the address of a stack variable
@@ -666,12 +666,12 @@ void io_thread_main(ThreadContext *ctx)
         // clang-format off
         switch (data->type)
         {
-            case EpollType::ClientSend:             connector_send_event(data->connector);      break;  // client send()            ET  
-            case EpollType::ClientRecv:             connector_recv_event(data->connector);      break;  // client recv()            ET
-            case EpollType::ClientListener:         connector_listener_event(data->connector);  break;  // new connection           ET
-            case EpollType::ClientDestroyTimeout:   connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
-            case EpollType::ClientPeer:             connector_peer_event(&event);               break;  // peer has data            ET
-            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc);   break;  // intraprocess recv()      ET
+            case EpollType::ConnectorSend:             connector_send_event(data->connector);      break;  // client send()            ET  
+            case EpollType::ConnectorRecv:             connector_recv_event(data->connector);      break;  // client recv()            ET
+            case EpollType::ConnectorListener:         connector_listener_event(data->connector);  break;  // new connection           ET
+            case EpollType::ConnectorDestroyTimeout:   connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
+            case EpollType::ConnectorPeer:             connector_peer_event(&event);               break;  // peer has data            ET
+            case EpollType::IntraProcessConnectorRecv: intraprocess_recv_event(data->inproc);   break;  // intraprocess recv()      ET
             case EpollType::ConnectTimer:           connect_timer_event(ctx);                break;  // connect timer            LT
             case EpollType::Control:                control_event(ctx);                      break;  // control event            LT
             case EpollType::Closed:                                                          return; // exit                     LT
@@ -689,7 +689,7 @@ void session_init(Session *session, size_t num_threads)
 {
     new (session) Session{
         .threads = std::vector<ThreadContext>(),
-        .inprocs = std::vector<IntraProcessClient *>(),
+        .inprocs = std::vector<IntraProcessConnector *>(),
         .intraprocess_mutex = std::shared_mutex(),
         .thread_rr = 0};
 

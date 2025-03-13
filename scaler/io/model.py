@@ -181,12 +181,12 @@ class InterProcessAddress(Address):
         return Protocol.InterProcess
 
 
-class IntraProcessClient:
+class IntraProcessConnector:
     _obj: "FFITypes.CData"
     _destroyed: bool
 
     def __init__(self, session: Session, identity: bytes):
-        self._obj = ffi.new("struct IntraProcessClient *")
+        self._obj = ffi.new("struct IntraProcessConnector *")
         C.intraprocess_init(session._obj, self._obj, identity, len(identity))
 
         session.register_client(self)
