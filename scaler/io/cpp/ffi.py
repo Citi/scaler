@@ -31,31 +31,31 @@ class LibType:
     def message_destroy(recv: "FFITypes.CData") -> None:
         (recv,)
 
-    def client_init(session: "FFITypes.CData", client: "FFITypes.CData", identity: bytes, len: int, type_: int) -> None:
-        (session, client, identity, len, type_)
+    def connector_init(session: "FFITypes.CData", connector: "FFITypes.CData", identity: bytes, len: int, type_: int) -> None:
+        (session, connector, identity, len, type_)
 
-    def client_bind(client: "FFITypes.CData", host: bytes, port: int) -> None:
-        (client, host, port)
+    def connector_bind(connector: "FFITypes.CData", host: bytes, port: int) -> None:
+        (connector, host, port)
 
-    def client_connect(client: "FFITypes.CData", addr: bytes, port: int) -> None:
-        (client, addr, port)
+    def connector_connect(connector: "FFITypes.CData", addr: bytes, port: int) -> None:
+        (connector, addr, port)
 
-    def client_send(
-        future: "FFITypes.CData", client: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int
+    def connector_send(
+        future: "FFITypes.CData", connector: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int
     ) -> None:
-        (future, client, to, to_len, data, data_len)
+        (future, connector, to, to_len, data, data_len)
 
-    def client_recv(future: "FFITypes.CData", client: "FFITypes.CData") -> None:
-        (future, client)
+    def connector_recv(future: "FFITypes.CData", connector: "FFITypes.CData") -> None:
+        (future, connector)
 
-    def client_destroy(client: "FFITypes.CData") -> None:
-        (client,)
+    def connector_destroy(connector: "FFITypes.CData") -> None:
+        (connector,)
 
-    def client_send_sync(client: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int) -> None:
-        (client, to, to_len, data, data_len)
+    def connector_send_sync(connector: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int) -> None:
+        (connector, to, to_len, data, data_len)
 
-    def client_recv_sync(client: "FFITypes.CData", msg: "FFITypes.CData") -> None:
-        (client, msg)
+    def connector_recv_sync(connector: "FFITypes.CData", msg: "FFITypes.CData") -> None:
+        (connector, msg)
 
     def intraprocess_init(session: "FFITypes.CData", inproc: "FFITypes.CData", identity: bytes, len: int) -> None:
         (session, inproc)
@@ -75,8 +75,8 @@ class LibType:
     def intraprocess_bind(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
         (inproc, addr, len)
 
-    def intraprocess_destroy(client: "FFITypes.CData") -> None:
-        (client,)
+    def intraprocess_destroy(connector: "FFITypes.CData") -> None:
+        (connector,)
 
 
 # type hints for FFI and Lib

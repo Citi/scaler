@@ -8,11 +8,11 @@ from typing import Optional
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorType, Session, Address, TCPAddress, IntraProcessAddress, Client, IntraProcessClient, TCPAddress, IntraProcessAddress
+from scaler.io.model import ConnectorType, Session, Address, TCPAddress, IntraProcessAddress, NetworkConnector, IntraProcessClient, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
-    _client: Client | IntraProcessClient
+    _client: NetworkConnector | IntraProcessClient
 
     def __init__(self,
                  session: Session,
@@ -35,18 +35,18 @@ class SyncConnector:
 
         match address:
             case TCPAddress():    
-                self._client = Client(session, self._identity, type_)
+                self._connector = NetworkConnector(session, self._identity, type_)
             case IntraProcessAddress():
                 if type_ != ConnectorType.Pair:
                     raise ValueError(f"IntraProcessClient only supports pair type, got {type_}")
 
-                self._client = IntraProcessClient(session, self._identity)
+                self._connector = IntraProcessClient(session, self._identity)
 
-        self._client.connect(addr=self._address)
+        self._connector.connect(addr=self._address)
         self._lock = threading.Lock()
 
     def close(self):
-        self._client.destroy()
+        self._connector.destroy()
 
     @property
     def address(self) -> Address:
@@ -58,11 +58,11 @@ class SyncConnector:
 
     def send(self, message: Message):
         with self._lock:
-            self._client.send_sync(data=serialize(message))
+            self._connector.send_sync(data=serialize(message))
 
     def receive(self) -> Optional[Message]:
         with self._lock:
-            msg = self._client.recv_sync()
+            msg = self._connector.recv_sync()
 
         return self.__compose_message(msg.payload)
 

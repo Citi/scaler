@@ -7,11 +7,11 @@ from typing import Literal
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorCallback, Client, ConnectorType, Session, TCPAddress
+from scaler.io.model import ConnectorCallback, NetworkConnector, ConnectorType, Session, TCPAddress
 
 
 class AsyncConnector:
-    _client: Client
+    _client: NetworkConnector
     _address: TCPAddress
     _identity: bytes
     _callback: ConnectorCallback | None
@@ -32,18 +32,18 @@ class AsyncConnector:
 
         self._address = address
         self._callback = callback
-        self._client = Client(session, self._identity, type_)
+        self._connector = NetworkConnector(session, self._identity, type_)
 
         match bind_or_connect:
             case "bind":
-                self._client.bind(addr=self._address)
+                self._connector.bind(addr=self._address)
             case "connect":
-                self._client.connect(addr=self._address)
+                self._connector.connect(addr=self._address)
             case _:
                 raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
             
     def destroy(self):
-        self._client.destroy()
+        self._connector.destroy()
 
     @property
     def address(self) -> str:
@@ -57,7 +57,7 @@ class AsyncConnector:
         if self._callback is None:
             return
 
-        client_msg = await self._client.recv()
+        client_msg = await self._connector.recv()
         message = deserialize(client_msg.payload)
 
         if message is None:
@@ -68,7 +68,7 @@ class AsyncConnector:
 
 
     async def send(self, message: Message) -> None:
-        await self._client.send(data=serialize(message))
+        await self._connector.send(data=serialize(message))
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}[{self._identity.decode()}]:"

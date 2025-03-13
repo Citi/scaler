@@ -8,11 +8,11 @@ from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import BinderStatus
 from scaler.utility.mixins import Looper, Reporter
 
-from scaler.io.model import BinderCallback, Client, ConnectorType, Session, TCPAddress
+from scaler.io.model import BinderCallback, NetworkConnector, ConnectorType, Session, TCPAddress
 
 
 class AsyncBinder(Looper, Reporter):
-    _client: Client
+    _client: NetworkConnector
     _identity: bytes
     _callback: BinderCallback | None
     _received: dict[str, int]
@@ -27,21 +27,21 @@ class AsyncBinder(Looper, Reporter):
         self._received = defaultdict(lambda: 0)
         self._sent = defaultdict(lambda: 0)
 
-        self._client = Client(session, self._identity, ConnectorType.Router)
-        self._client.bind(addr=address)
+        self._connector = NetworkConnector(session, self._identity, ConnectorType.Router)
+        self._connector.bind(addr=address)
 
     def destroy(self):
-        self._client.destroy()
+        self._connector.destroy()
 
     def register(self, callback: BinderCallback) -> None:
         self._callback = callback
 
     async def send(self, to: bytes, message: Message) -> None:
         self.__count_sent(message.__class__.__name__)
-        await self._client.send(to=to, data=serialize(message))
+        await self._connector.send(to=to, data=serialize(message))
 
     async def routine(self) -> None:
-        client_msg = await self._client.recv()
+        client_msg = await self._connector.recv()
         message = deserialize(client_msg.payload)
 
         if message is None:

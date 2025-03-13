@@ -28,19 +28,19 @@ struct Session;
 #include "intra_process.hpp"
 
 void set_sock_opts(int fd);
-void complete_peer_connect(Peer *peer);
-void client_connect_peer(Peer *peer);
+void complete_peer_connect(RawPeer *peer);
+void connector_connect_peer(RawPeer *peer);
 
-bool read_identity(Peer *peer);
-bool write_identity(Peer *peer);
+bool read_identity(RawPeer *peer);
+bool write_identity(RawPeer *peer);
 
 // epoll handlers
-void client_send_event(Client *client);
-void client_recv_event(Client *client);
-void client_listener_event(Client *client);
-void client_destroy_timeout(Client *client);
-void client_peer_event_connecting(epoll_event *event);
-void client_peer_event_connected(epoll_event *event);
+void connector_send_event(NetworkConnector *connector);
+void connector_recv_event(NetworkConnector *connector);
+void connector_listener_event(NetworkConnector *connector);
+void connector_destroy_timeout(NetworkConnector *connector);
+void connector_peer_event_connecting(epoll_event *event);
+void connector_peer_event_connected(epoll_event *event);
 void intraprocess_recv_event(IntraProcessClient *client);
 
 void io_thread_main(ThreadContext *ctx);
@@ -83,9 +83,9 @@ struct EpollData
     union
     {
         void *ptr;
-        Client *client;
+        NetworkConnector *connector;
         IntraProcessClient *inproc;
-        Peer *peer;
+        RawPeer *peer;
     };
 };
 
@@ -103,8 +103,8 @@ struct ControlRequest
     union
     {
         void *data;
-        Client *client;
-        Peer *peer;
+        NetworkConnector *connector;
+        RawPeer *peer;
     };
 
     void complete(void *result = NULL)
@@ -119,7 +119,7 @@ struct ThreadContext
     Session *session;
     std::thread thread;
     std::vector<EpollData *> io_cache;
-    std::vector<Peer *> connecting;
+    std::vector<RawPeer *> connecting;
     ConcurrentQueue<ControlRequest> control_queue;
     int control_efd;
     int epoll_fd;
@@ -128,10 +128,10 @@ struct ThreadContext
     bool timer_armed;
 
     void ensure_timer_armed();
-    void add_client(Client *client);
-    void add_peer(Peer *peer);
-    void remove_client(Client *client);
-    void remove_peer(Peer *peer);
+    void add_client(NetworkConnector *connector);
+    void add_peer(RawPeer *peer);
+    void remove_client(NetworkConnector *connector);
+    void remove_peer(RawPeer *peer);
 
     // must be called on io-thread
     void add_epoll(int fd, uint32_t flags, EpollType type, void *data);

@@ -24,8 +24,8 @@ using moodycamel::ConcurrentQueue;
 
 // --- declarations ---
 
-struct Client;
-struct Peer;
+struct NetworkConnector;
+struct RawPeer;
 struct IoResult;
 struct SendMessage;
 enum class ReadResult;
@@ -41,20 +41,20 @@ ENUM Transport : uint8_t;
 [[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len);
 [[nodiscard]] ReadResult read_message(int fd, IoOperation *op);
 
-void write_to_peer(Peer *peer, SendMessage send);
-void reconnect_peer(Peer *peer);
-void remove_peer(Peer *peer);
-ControlFlow epollin_peer(Peer *peer);
-ControlFlow epollout_peer(Peer *peer);
+void write_to_peer(RawPeer *peer, SendMessage send);
+void reconnect_peer(RawPeer *peer);
+void remove_peer(RawPeer *peer);
+ControlFlow epollin_peer(RawPeer *peer);
+ControlFlow epollout_peer(RawPeer *peer);
 
-void client_init(struct Session *session, struct Client *client, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
-void client_bind(struct Client *client, const char *host, uint16_t port);
-void client_connect(struct Client *client, const char *addr, uint16_t port);
-void client_send(void *future, struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
-void client_send_sync(struct Client *client, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
-void client_recv(void *future, struct Client *client);
-void client_recv_sync(struct Client *client, struct Message *msg);
-void client_destroy(struct Client *client);
+void connector_init(struct Session *session, struct NetworkConnector *connector, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
+void connector_bind(struct NetworkConnector *connector, const char *host, uint16_t port);
+void connector_connect(struct NetworkConnector *connector, const char *addr, uint16_t port);
+void connector_send(void *future, struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void connector_send_sync(struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void connector_recv(void *future, struct NetworkConnector *connector);
+void connector_recv_sync(struct NetworkConnector *connector, struct Message *msg);
+void connector_destroy(struct NetworkConnector *connector);
 
 // --- structs ---
 
@@ -81,7 +81,7 @@ ENUM Transport : uint8_t{
                      IntraProcess,
                      InterProcess};
 
-struct Client
+struct NetworkConnector
 {
     ConnectorType type;
     Transport transport;
@@ -94,7 +94,7 @@ struct Client
 
     int fd;                               // the bound socket, <0 when not bound
     std::optional<sockaddr_storage> addr; // addr for when we're bound
-    std::vector<Peer *> peers;
+    std::vector<RawPeer *> peers;
 
     int send_event_fd;                       // event fd for send queue
     ConcurrentQueue<SendMessage> send_queue; // the send queue for Python thread -> io thread communication
@@ -107,8 +107,8 @@ struct Client
     std::optional<Completer> destroy; // this is used to wait for the destruction of a client
 
     // must hold mutex
-    bool peer_by_id(Bytes id, Peer **peer);
-    void remove_peer(Peer *peer);
+    bool peer_by_id(Bytes id, RawPeer **peer);
+    void remove_peer(RawPeer *peer);
     bool muted();
     size_t peer_rr();
     void recv_msg(Message message);
@@ -135,9 +135,9 @@ enum class PeerState
     Disconnected,
 };
 
-struct Peer
+struct RawPeer
 {
-    Client *client;        // the binder that this peer belongs to
+    NetworkConnector *connector;        // the binder that this peer belongs to
     Bytes identity;        // the peer's address, i.e. identity
     sockaddr_storage addr; // the peer's address
     PeerType type;         // the type of peer

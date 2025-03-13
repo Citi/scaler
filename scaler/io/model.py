@@ -251,13 +251,13 @@ def easy_hash(b: bytes) -> str:
     import hashlib
     return hashlib.md5(b, usedforsecurity=False).hexdigest()[:8]
 
-class Client:
+class NetworkConnector:
     _obj: "FFITypes.CData"
     _destroyed: bool
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType):
-        self._obj = ffi.new("struct Client *")
-        C.client_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
+        self._obj = ffi.new("struct NetworkConnector *")
+        C.connector_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
 
         session.register_client(self)
         self._destroyed = False
@@ -272,7 +272,7 @@ class Client:
         if self._destroyed:
             return
 
-        C.client_destroy(self._obj)
+        C.connector_destroy(self._obj)
         self._destroyed = True
 
     def __check_destroyed(self) -> None:
@@ -290,7 +290,7 @@ class Client:
             case _:
                 raise ValueError("either addr or host and port must be provided")
 
-        C.client_bind(self._obj, host.encode(), port)
+        C.connector_bind(self._obj, host.encode(), port)
 
     def connect(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
         self.__check_destroyed()
@@ -303,7 +303,7 @@ class Client:
             case _:
                 raise ValueError("either addr or host and port must be provided")
 
-        C.client_connect(self._obj, host.encode(), port)
+        C.connector_connect(self._obj, host.encode(), port)
 
     async def send(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
@@ -326,7 +326,7 @@ class Client:
 
         # print(f"SEND: {easy_hash(data)}")
 
-        await c_async(C.client_send, self._obj, to, to_len, data, len(data))
+        await c_async(C.connector_send, self._obj, to, to_len, data, len(data))
 
     def send_sync(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
@@ -347,13 +347,13 @@ class Client:
         else:
             to_len = len(to)
 
-        C.client_send_sync(self._obj, to, to_len, data, len(data))
+        C.connector_send_sync(self._obj, to, to_len, data, len(data))
 
     def recv_sync(self) -> Message:
         self.__check_destroyed()
 
         msg = ffi.new("struct Message *")
-        C.client_recv_sync(self._obj, msg)
+        C.connector_recv_sync(self._obj, msg)
 
         # copy the message
         msg_ = Message(msg)
@@ -364,6 +364,6 @@ class Client:
 
     async def recv(self) -> Message:
         self.__check_destroyed()
-        msg_: Message = await c_async(C.client_recv, self._obj)
+        msg_: Message = await c_async(C.connector_recv, self._obj)
         # print(f"RECV: {easy_hash(msg_.payload)}")
         return msg_

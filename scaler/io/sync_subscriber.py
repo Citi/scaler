@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import Client, Address, Session, ConnectorType
+from scaler.io.model import NetworkConnector, Address, Session, ConnectorType
 
 class SyncSubscriber(threading.Thread):
     def __init__(
@@ -32,10 +32,10 @@ class SyncSubscriber(threading.Thread):
         self._timeout_seconds = timeout_seconds
 
         self._session: Session | None = None
-        self._client: Client | None = None
+        self._client: NetworkConnector | None = None
 
     def __close(self):
-        self._client.destroy()
+        self._connector.destroy()
 
     def __stop_polling(self):
         self._stop_event.set()
@@ -56,7 +56,7 @@ class SyncSubscriber(threading.Thread):
 
     def __initialize(self):
         self._session = Session(io_threads=1)
-        self._client = Client(self._session, "sync_subscriber".encode(), ConnectorType.Sub)
+        self._connector = NetworkConnector(self._session, "sync_subscriber".encode(), ConnectorType.Sub)
         # self._context = zmq.Context.instance()
         # self._socket = self._context.socket(zmq.SUB)
         # self._socket.setsockopt(zmq.RCVHWM, 0)

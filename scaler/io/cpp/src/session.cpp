@@ -52,29 +52,29 @@ void ThreadContext::ensure_timer_armed()
     this->timer_armed = true;
 }
 
-void ThreadContext::add_client(Client *client)
+void ThreadContext::add_client(NetworkConnector *connector)
 {
-    this->add_epoll(client->send_event_fd, EPOLLIN | EPOLLET, EpollType::ClientSend, client);
-    this->add_epoll(client->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ClientRecv, client);
+    this->add_epoll(connector->send_event_fd, EPOLLIN | EPOLLET, EpollType::ClientSend, connector);
+    this->add_epoll(connector->recv_event_fd, EPOLLIN | EPOLLET, EpollType::ClientRecv, connector);
 }
 
-void ThreadContext::add_peer(Peer *peer)
+void ThreadContext::add_peer(RawPeer *peer)
 {
     this->add_epoll(peer->fd, EPOLLIN | EPOLLOUT | EPOLLET, EpollType::ClientPeer, peer);
 }
 
-void ThreadContext::remove_client(Client *client)
+void ThreadContext::remove_client(NetworkConnector *connector)
 {
-    this->remove_epoll(client->send_event_fd);
-    this->remove_epoll(client->recv_event_fd);
+    this->remove_epoll(connector->send_event_fd);
+    this->remove_epoll(connector->recv_event_fd);
 }
 
 // this free's the peer's EpollData
-void ThreadContext::remove_peer(Peer *peer)
+void ThreadContext::remove_peer(RawPeer *peer)
 {
     this->remove_epoll(peer->fd);
 
-    std::erase_if(this->connecting, [peer](Peer *p)
+    std::erase_if(this->connecting, [peer](RawPeer *p)
                   { return p == peer; });
 }
 
@@ -148,24 +148,24 @@ void set_sock_opts(int fd)
 }
 
 // complete acceptance of peer
-void complete_peer_connect(Peer *peer)
+void complete_peer_connect(RawPeer *peer)
 {
     peer->state = PeerState::Connected;
 
-    auto was_muted = peer->client->muted();
-    peer->client->peers.push_back(peer);
+    auto was_muted = peer->connector->muted();
+    peer->connector->peers.push_back(peer);
 
-    // std::cout << "client: " << peer->client->identity.as_string() << ": connected peer: " << peer->identity.as_string() << std::endl;
+    // std::cout << "client: " << peer->connector->identity.as_string() << ": connected peer: " << peer->identity.as_string() << std::endl;
 
     if (was_muted)
-        peer->client->unmute();
+        peer->connector->unmute();
 }
 
 // begin the connection process for a peer
 // the peer's fd will be overwritten with the new socket
-void client_connect_peer(Peer *peer)
+void connector_connect_peer(RawPeer *peer)
 {
-    peer->fd = socket(peer->client->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    peer->fd = socket(peer->connector->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
     if (peer->fd < 0)
         panic("failed to create socket: " + std::to_string(errno));
@@ -183,26 +183,26 @@ void client_connect_peer(Peer *peer)
 
     peer->state = PeerState::Connecting; // set peer state
     peer->write_op = IoOperation::write(
-        peer->client->identity,
+        peer->connector->identity,
         MessageType::Identity);          // write our identity
     peer->read_op = IoOperation::read(); // read the peer's identity
 
-    peer->client->thread->add_peer(peer);
+    peer->connector->thread->add_peer(peer);
 }
 
 // epoll handlers
-void client_send_event(Client *client)
+void connector_send_event(NetworkConnector *connector)
 {
     for (;;)
     {
-        if (client->muted())
+        if (connector->muted())
         {
-            // std::cout << "client: " << client->identity.as_string() << ": muted" << std::endl;
+            // std::cout << "client: " << connector->identity.as_string() << ": muted" << std::endl;
 
             return;
         }
 
-        if (eventfd_wait(client->send_event_fd) < 0)
+        if (eventfd_wait(connector->send_event_fd) < 0)
         {
             // semaphore is zero, we can epoll_wait() again
             if (errno == EAGAIN)
@@ -214,16 +214,16 @@ void client_send_event(Client *client)
         // invariant: if we decremented the semaphore the queue must have a message
         // we loop because thread synchronization may be delayed
         SendMessage send;
-        while (!client->send_queue.try_dequeue(send))
+        while (!connector->send_queue.try_dequeue(send))
             ; // wait
 
-        // std::cout << "client: " << client->identity.as_string() << ": sending message to: " << send.msg.address.as_string() << std::endl;
+        // std::cout << "client: " << connector->identity.as_string() << ": sending message to: " << send.msg.address.as_string() << std::endl;
 
-        client->send(send);
+        connector->send(send);
     }
 }
 
-void client_recv_event(Client *client)
+void connector_recv_event(NetworkConnector *connector)
 {
     // in this event, the recv_event_fd has proc'd
     // but, read the recv_buffer_event_fd first
@@ -231,11 +231,11 @@ void client_recv_event(Client *client)
 
     for (;;)
     {
-        if (eventfd_wait(client->recv_buffer_event_fd) < 0)
+        if (eventfd_wait(connector->recv_buffer_event_fd) < 0)
         {
             if (errno == EAGAIN)
             {
-                // std::cout << "client_recv_event(): no buffered messages" << std::endl;
+                // std::cout << "connector_recv_event(): no buffered messages" << std::endl;
 
                 break;
             }
@@ -244,14 +244,14 @@ void client_recv_event(Client *client)
         }
 
         // decrement the semaphore
-        if (eventfd_wait(client->recv_event_fd) < 0)
+        if (eventfd_wait(connector->recv_event_fd) < 0)
         {
             // there are no more recvs
             if (errno == EAGAIN)
             {
                 // we decremented the buffer efd but aren't processing a message
                 // so we need to re-increment the semaphore
-                if (eventfd_signal(client->recv_buffer_event_fd) < 0)
+                if (eventfd_signal(connector->recv_buffer_event_fd) < 0)
                     panic("failed to signal eventfd: " + std::to_string(errno));
 
                 break; // back to epoll_wait()
@@ -262,14 +262,14 @@ void client_recv_event(Client *client)
 
         // invariant: if we decrement the semaphore the queue must have a future
         void *future;
-        while (!client->recv_queue.try_dequeue(future))
+        while (!connector->recv_queue.try_dequeue(future))
             ; // wait
 
         Message message;
-        while (!client->recv_buffer.try_dequeue(message))
+        while (!connector->recv_buffer.try_dequeue(message))
             ; // wait
 
-        // std::cout << "client_recv_event(): completing future" << std::endl;
+        // std::cout << "connector_recv_event(): completing future" << std::endl;
 
         // this is the address of a stack variable
         // ok because the called code copies the message immediately
@@ -283,7 +283,7 @@ void client_recv_event(Client *client)
 // may call reconnect_peer()
 // true -> ok
 // false -> disconnected
-bool write_identity(Peer *peer)
+bool write_identity(RawPeer *peer)
 {
     auto result = write_message(peer->fd, &*peer->write_op);
 
@@ -292,7 +292,7 @@ bool write_identity(Peer *peer)
     case WriteResult::Done:
         peer->write_op->complete();
         peer->write_op = std::nullopt;
-        // std::cout << "client: " << peer->client->identity.as_string() << ": wrote identity to peer: " << peer->identity.as_string() << std::endl;
+        // std::cout << "client: " << peer->connector->identity.as_string() << ": wrote identity to peer: " << peer->identity.as_string() << std::endl;
         [[fallthrough]];
     case WriteResult::Blocked:
         return true;
@@ -308,7 +308,7 @@ bool write_identity(Peer *peer)
 // may call reconnect_peer()
 // true -> ok
 // false -> disconnected
-bool read_identity(Peer *peer)
+bool read_identity(RawPeer *peer)
 {
     auto result = read_message(peer->fd, &*peer->read_op);
 
@@ -336,7 +336,7 @@ bool read_identity(Peer *peer)
         peer->read_op->complete();               // complete the op
         peer->read_op = std::nullopt;            // reset
 
-        // std::cout << "client: " << peer->client->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
+        // std::cout << "client: " << peer->connector->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
 
         [[fallthrough]];
     case ReadResult::Blocked:
@@ -358,13 +358,13 @@ bool read_identity(Peer *peer)
     panic("unreachable");
 }
 
-void client_listener_event(Client *client)
+void connector_listener_event(NetworkConnector *connector)
 {
     for (;;)
     {
         sockaddr_storage addr;
         socklen_t addr_len = sizeof(addr);
-        auto fd = accept4(client->fd, (sockaddr *)&addr, &addr_len, SOCK_NONBLOCK);
+        auto fd = accept4(connector->fd, (sockaddr *)&addr, &addr_len, SOCK_NONBLOCK);
 
         if (fd < 0)
         {
@@ -377,14 +377,14 @@ void client_listener_event(Client *client)
 
         set_sock_opts(fd);
 
-        // std::cout << "client: " << client->identity.as_string() << ": accepting connection: " << std::to_string(fd) << std::endl;
+        // std::cout << "client: " << connector->identity.as_string() << ": accepting connection: " << std::to_string(fd) << std::endl;
 
         // create the peer and add it to the epoll
         // when it becomes writable the common logic
         // will take care of exchanging the identity
         // and all the other stuff
-        auto peer = new Peer{
-            .client = client,
+        auto peer = new RawPeer{
+            .connector = connector,
             .identity = Bytes::empty(),
             .addr = addr,
             .type = PeerType::Connectee,
@@ -394,14 +394,14 @@ void client_listener_event(Client *client)
             // read the peer's identity
             .read_op = IoOperation::read(),
             // write our identity
-            .write_op = IoOperation::write(client->identity, MessageType::Identity),
+            .write_op = IoOperation::write(connector->identity, MessageType::Identity),
         };
 
-        client->thread->add_peer(peer);
+        connector->thread->add_peer(peer);
     }
 }
 
-void client_peer_event_connecting(epoll_event *event)
+void connector_peer_event_connecting(epoll_event *event)
 {
     auto data = (EpollData *)event->data.ptr;
     auto peer = data->peer;
@@ -420,13 +420,13 @@ void client_peer_event_connecting(epoll_event *event)
         complete_peer_connect(peer);
 
         // we're edge triggered so it's important that we check this
-        client_peer_event_connected(event);
+        connector_peer_event_connected(event);
     }
 }
 
-void client_peer_event_connected(epoll_event *event)
+void connector_peer_event_connected(epoll_event *event)
 {
-    // std::cout << "client_peer_event_connected()" << std::endl;
+    // std::cout << "connector_peer_event_connected()" << std::endl;
 
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
@@ -441,14 +441,14 @@ void client_peer_event_connected(epoll_event *event)
 }
 
 // may call reconnect_peer()
-void client_peer_event(epoll_event *event)
+void connector_peer_event(epoll_event *event)
 {
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
     // if (event->events & EPOLLHUP)
     // {
-    //     // std::cout << "client_peer_event(): unexpected hangup" << std::endl;
+    //     // std::cout << "connector_peer_event(): unexpected hangup" << std::endl;
 
     //     reconnect_peer(peer);
     //     return;
@@ -462,33 +462,33 @@ void client_peer_event(epoll_event *event)
             panic("failed to getsockopt: " + std::to_string(errno));
 
         // if (result == ECONNREFUSED)
-        // std::cout << "client_peer_event(): connection refused" << std::endl;
+        // std::cout << "connector_peer_event(): connection refused" << std::endl;
         // else
-        // std::cout << "client_peer_event(): unexpected error: " << std::to_string(result) << std::endl;
+        // std::cout << "connector_peer_event(): unexpected error: " << std::to_string(result) << std::endl;
 
         reconnect_peer(peer);
         return;
     }
 
     if (peer->state == PeerState::Disconnected)
-        panic("client_peer_event(): peer is disconnected");
+        panic("connector_peer_event(): peer is disconnected");
 
     if (peer->state == PeerState::Connecting)
-        client_peer_event_connecting(event);
+        connector_peer_event_connecting(event);
     else if (peer->state == PeerState::Connected)
-        client_peer_event_connected(event);
+        connector_peer_event_connected(event);
 }
 
-void client_destroy_timeout(Client *client)
+void connector_destroy_timeout(NetworkConnector *connector)
 {
     // todo: destroy the client
     // share code with other places client needs to be destroyed:
     //  - control_event(), when there's no peers
     //  - epollout_peer(), when the last peer has disconnected
 
-    // std::cout << "client_destroy_timeout(): client destroy timed out" << std::endl;
+    // std::cout << "connector_destroy_timeout(): client destroy timed out" << std::endl;
 
-    client->destroy->complete();
+    connector->destroy->complete();
 }
 
 void connect_timer_event(ThreadContext *ctx)
@@ -510,7 +510,7 @@ void connect_timer_event(ThreadContext *ctx)
             auto peer = ctx->connecting.back();
             ctx->connecting.pop_back();
 
-            client_connect_peer(peer);
+            connector_connect_peer(peer);
         }
     }
 
@@ -542,15 +542,15 @@ void control_event(ThreadContext *ctx)
         case ControlOperation::AddClient:
             // std::cout << "control_event(): add client" << std::endl;
 
-            ctx->add_client(request.client);
+            ctx->add_client(request.connector);
             request.complete();
             break;
         case ControlOperation::DestroyClient:
             // std::cout << "control_event(): destroy" << std::endl;
 
             {
-                auto client = request.client;
-                auto &peers = client->peers;
+                auto connector = request.connector;
+                auto &peers = connector->peers;
 
                 if (peers.empty())
                     // todo: remove client from thread
@@ -562,7 +562,7 @@ void control_event(ThreadContext *ctx)
                     // once all the peers have disconnected
                     // or the timeout has been reached <- TODO
                     // and the client has been destroyed
-                    client->destroy = request.completer;
+                    connector->destroy = request.completer;
 
                     SendMessage send{
                         .completer = Completer::none(),
@@ -592,8 +592,8 @@ void control_event(ThreadContext *ctx)
                     if (timerfd_settime(tfd, 0, &spec, NULL) < 0)
                         panic("failed to arm timer: " + std::to_string(errno));
 
-                    client->destroy_tfd = tfd;
-                    ctx->add_epoll(client->destroy_tfd, EPOLLIN, EpollType::ClientDestroyTimeout, client);
+                    connector->destroy_tfd = tfd;
+                    ctx->add_epoll(connector->destroy_tfd, EPOLLIN, EpollType::ClientDestroyTimeout, connector);
                 }
             }
 
@@ -601,7 +601,7 @@ void control_event(ThreadContext *ctx)
         case ControlOperation::Connect:
             // std::cout << "control_event(): connect" << std::endl;
 
-            client_connect_peer(request.peer);
+            connector_connect_peer(request.peer);
             request.complete();
             break;
         }
@@ -666,15 +666,15 @@ void io_thread_main(ThreadContext *ctx)
         // clang-format off
         switch (data->type)
         {
-            case EpollType::ClientSend:             client_send_event(data->client);       break;  // client send()            ET  
-            case EpollType::ClientRecv:             client_recv_event(data->client);       break;  // client recv()            ET
-            case EpollType::ClientListener:         client_listener_event(data->client);   break;  // new connection           ET
-            case EpollType::ClientDestroyTimeout:   client_destroy_timeout(data->client);  break;  // client destroy timed out LT
-            case EpollType::ClientPeer:             client_peer_event(&event);             break;  // peer has data            ET
-            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc); break;  // intraprocess recv()      ET
-            case EpollType::ConnectTimer:           connect_timer_event(ctx);              break;  // connect timer            LT
-            case EpollType::Control:                control_event(ctx);                    break;  // control event            LT
-            case EpollType::Closed:                                                        return; // exit                     LT
+            case EpollType::ClientSend:             connector_send_event(data->connector);      break;  // client send()            ET  
+            case EpollType::ClientRecv:             connector_recv_event(data->connector);      break;  // client recv()            ET
+            case EpollType::ClientListener:         connector_listener_event(data->connector);  break;  // new connection           ET
+            case EpollType::ClientDestroyTimeout:   connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
+            case EpollType::ClientPeer:             connector_peer_event(&event);               break;  // peer has data            ET
+            case EpollType::IntraProcessClientRecv: intraprocess_recv_event(data->inproc);   break;  // intraprocess recv()      ET
+            case EpollType::ConnectTimer:           connect_timer_event(ctx);                break;  // connect timer            LT
+            case EpollType::Control:                control_event(ctx);                      break;  // control event            LT
+            case EpollType::Closed:                                                          return; // exit                     LT
 
             default:
                 panic("epoll: unknown event type");
@@ -704,7 +704,7 @@ void session_init(Session *session, size_t num_threads)
             .session = session,
             .thread = std::thread(),
             .io_cache = std::vector<EpollData *>(),
-            .connecting = std::vector<Peer *>(),
+            .connecting = std::vector<RawPeer *>(),
             .control_queue = ConcurrentQueue<ControlRequest>(),
             .control_efd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
             .epoll_fd = epoll_create1(0),
