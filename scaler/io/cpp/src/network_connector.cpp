@@ -1,4 +1,4 @@
-#include "client.hpp"
+#include "network_connector.hpp"
 
 bool NetworkConnector::peer_by_id(Bytes id, RawPeer **peer)
 {

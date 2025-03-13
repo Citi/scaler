@@ -24,7 +24,7 @@ struct ThreadContext;
 struct Session;
 
 // First-party
-#include "client.hpp"
+#include "network_connector.hpp"
 #include "intra_process.hpp"
 
 void set_sock_opts(int fd);
