@@ -8,17 +8,20 @@ from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import BinderStatus
 from scaler.utility.mixins import Looper, Reporter
 
-from scaler.io.model import BinderCallback, NetworkConnector, ConnectorType, Session, TCPAddress
+from scaler.io.model import ConnectorType, Session, Address, Connector
 
+from typing import TypeAlias, Callable, Awaitable
+
+BinderCallback: TypeAlias = Callable[[bytes, Message], Awaitable[None]]
 
 class AsyncBinder(Looper, Reporter):
-    _client: NetworkConnector
+    _connector: Connector
     _identity: bytes
     _callback: BinderCallback | None
     _received: dict[str, int]
     _sent: dict[str, int]
 
-    def __init__(self, session: Session, name: str, address: TCPAddress, identity: bytes | None = None) -> None:
+    def __init__(self, session: Session, name: str, address: Address, identity: bytes | None = None) -> None:
         if identity is None:
             identity = f"{os.getpid()}|{name}|{uuid.uuid4()}".encode()
         self._identity = identity
@@ -27,8 +30,8 @@ class AsyncBinder(Looper, Reporter):
         self._received = defaultdict(lambda: 0)
         self._sent = defaultdict(lambda: 0)
 
-        self._connector = NetworkConnector(session, self._identity, ConnectorType.Router)
-        self._connector.bind(addr=address)
+        self._connector = Connector(session, self._identity, ConnectorType.Router, address.protocol)
+        self._connector.bind(address)
 
     def destroy(self):
         self._connector.destroy()

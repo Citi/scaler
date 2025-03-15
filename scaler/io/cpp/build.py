@@ -13,7 +13,7 @@ builder.set_source(
     "cpp",
     '#include "../src/main.hpp"',
     source_extension=".cpp",
-    # runs gcc like it's g++ and link the C++ standard library
+    # runs gcc like it's g++ and links the C++ standard library
     extra_compile_args=(
         ["-std=c++23", "-Wall", "-Wextra", "-pedantic"]
         if os.getenv("CC") == "clang"

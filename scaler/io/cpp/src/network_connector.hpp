@@ -47,14 +47,14 @@ void remove_peer(RawPeer *peer);
 ControlFlow epollin_peer(RawPeer *peer);
 ControlFlow epollout_peer(RawPeer *peer);
 
-void network_connector_init(struct Session *session, struct NetworkConnector *connector, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
-void network_connector_bind(struct NetworkConnector *connector, const char *host, uint16_t port);
-void network_connector_connect(struct NetworkConnector *connector, const char *addr, uint16_t port);
-void network_connector_send(void *future, struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
-void network_connector_send_sync(struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
-void network_connector_recv(void *future, struct NetworkConnector *connector);
-void network_connector_recv_sync(struct NetworkConnector *connector, struct Message *msg);
-void network_connector_destroy(struct NetworkConnector *connector);
+void network_connector_init(Session *session, NetworkConnector *connector, Transport transport, ConnectorType type, uint8_t *identity, size_t len);
+void network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port);
+void network_connector_connect(NetworkConnector *connector, const char *addr, uint16_t port);
+void network_connector_send(void *future, NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void network_connector_send_sync(NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void network_connector_recv(void *future, NetworkConnector *connector);
+void network_connector_recv_sync(NetworkConnector *connector, Message *msg);
+void network_connector_destroy(NetworkConnector *connector);
 
 // --- structs ---
 
@@ -137,11 +137,11 @@ enum class PeerState
 
 struct RawPeer
 {
-    NetworkConnector *connector;        // the binder that this peer belongs to
-    Bytes identity;        // the peer's address, i.e. identity
-    sockaddr_storage addr; // the peer's address
-    PeerType type;         // the type of peer
-    int fd;                // the socket fd of this peer
+    NetworkConnector *connector; // the binder that this peer belongs to
+    Bytes identity;              // the peer's address, i.e. identity
+    sockaddr_storage addr;       // the peer's address
+    PeerType type;               // the type of peer
+    int fd;                      // the socket fd of this peer
 
     std::queue<SendMessage> queue; // messages to be sent by this peer
 

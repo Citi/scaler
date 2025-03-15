@@ -31,51 +31,30 @@ class LibType:
     def message_destroy(recv: "FFITypes.CData") -> None:
         (recv,)
 
-    def network_connector_init(session: "FFITypes.CData", connector: "FFITypes.CData", identity: bytes, len: int, type_: int) -> None:
-        (session, connector, identity, len, type_)
+    def connector_init(session: "FFITypes.CData", connector: "FFITypes.CData", transport: int, type_: int, identity: bytes, len: int) -> None:
+        (session, connector, transport, type_, identity, len)
 
-    def network_connector_bind(connector: "FFITypes.CData", host: bytes, port: int) -> None:
+    def connector_bind(connector: "FFITypes.CData", host: bytes, port: int) -> None:
         (connector, host, port)
 
-    def network_connector_connect(connector: "FFITypes.CData", addr: bytes, port: int) -> None:
-        (connector, addr, port)
+    def connector_connect(connector: "FFITypes.CData", host: bytes, port: int) -> None:
+        (connector, host, port)
 
-    def network_connector_send(
+    def connector_send_async(
         future: "FFITypes.CData", connector: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int
     ) -> None:
         (future, connector, to, to_len, data, data_len)
 
-    def network_connector_recv(future: "FFITypes.CData", connector: "FFITypes.CData") -> None:
-        (future, connector)
-
-    def network_connector_destroy(connector: "FFITypes.CData") -> None:
-        (connector,)
-
-    def network_connector_send_sync(connector: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int) -> None:
+    def connector_send_sync(connector: "FFITypes.CData", to: bytes, to_len: int, data: bytes, data_len: int) -> None:
         (connector, to, to_len, data, data_len)
 
-    def network_connector_recv_sync(connector: "FFITypes.CData", msg: "FFITypes.CData") -> None:
+    def connector_recv_async(future: "FFITypes.CData", connector: "FFITypes.CData") -> None:
+        (future, connector)
+
+    def connector_recv_sync(connector: "FFITypes.CData", msg: "FFITypes.CData") -> None:
         (connector, msg)
 
-    def intra_process_init(session: "FFITypes.CData", inproc: "FFITypes.CData", identity: bytes, len: int) -> None:
-        (session, inproc)
-
-    def intra_process_recv_async(future: "FFITypes.CData", inproc: "FFITypes.CData") -> None:
-        (future, inproc)
-
-    def intra_process_recv_sync(inproc: "FFITypes.CData", msg: "FFITypes.CData") -> None:
-        (inproc, msg)
-
-    def intra_process_send(inproc: "FFITypes.CData", data: bytes, len: int) -> None:
-        (inproc, data, len)
-
-    def intra_process_connect(inproc: "FFITypes.CData", addr: bytes) -> None:
-        (inproc, addr)
-
-    def intra_process_bind(inproc: "FFITypes.CData", addr: bytes) -> None:
-        (inproc, addr)
-
-    def intra_process_destroy(connector: "FFITypes.CData") -> None:
+    def connector_destroy(connector: "FFITypes.CData") -> None:
         (connector,)
 
 

@@ -7,12 +7,18 @@ from typing import Literal
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorCallback, NetworkConnector, ConnectorType, Session, TCPAddress
+from scaler.io.model import Connector, ConnectorType, Session, Address
+
+
+
+from typing import TypeAlias, Callable, Awaitable
+
+ConnectorCallback: TypeAlias = Callable[[Message], Awaitable[None]]
 
 
 class AsyncConnector:
-    _client: NetworkConnector
-    _address: TCPAddress
+    _connector: Connector
+    _address: Address
     _identity: bytes
     _callback: ConnectorCallback | None
 
@@ -21,7 +27,7 @@ class AsyncConnector:
         session: Session,
         name: str,
         type_: ConnectorType,
-        address: TCPAddress,
+        address: Address,
         bind_or_connect: Literal["bind", "connect"],
         callback: ConnectorCallback | None,
         identity: bytes | None,
@@ -32,16 +38,16 @@ class AsyncConnector:
 
         self._address = address
         self._callback = callback
-        self._connector = NetworkConnector(session, self._identity, type_)
+        self._connector = Connector(session, self._identity, type_, self._address.protocol)
 
         match bind_or_connect:
             case "bind":
-                self._connector.bind(addr=self._address)
+                self._connector.bind(self._address)
             case "connect":
-                self._connector.connect(addr=self._address)
+                self._connector.connect(self._address)
             case _:
                 raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
-            
+
     def destroy(self):
         self._connector.destroy()
 

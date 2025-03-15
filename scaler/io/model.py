@@ -1,14 +1,12 @@
 __ALL__ = [
     "Session",
-    "Client",
     "Message",
-    "Callback",
+    "Connector",
     "ConnectorType",
     "TcpAddr",
     "InprocAddr",
     "Addr",
     "Protocol",
-    "InprocClient",
 ]
 
 import sys
@@ -21,7 +19,6 @@ sys.path.pop()
 
 from enum import IntEnum, unique
 from abc import ABC, abstractmethod
-from typing import Awaitable, Callable, TypeAlias
 
 
 class Session:
@@ -57,11 +54,6 @@ class Session:
 
     def __exit__(self, _exc_type, _exc_value, _traceback) -> None:
         return
-
-
-BinderCallback: TypeAlias = Callable[[bytes, Message], Awaitable[None]]
-ConnectorCallback: TypeAlias = Callable[[Message], Awaitable[None]]
-
 
 @unique
 class ConnectorType(IntEnum):
@@ -180,17 +172,15 @@ class InterProcessAddress(Address):
     def protocol(self) -> Protocol:
         return Protocol.InterProcess
 
-
-class IntraProcessConnector:
+class Connector:
     _obj: "FFITypes.CData"
-    _destroyed: bool
+    _destroyed: bool = False
 
-    def __init__(self, session: Session, identity: bytes):
-        self._obj = ffi.new("struct IntraProcessConnector *")
-        C.intra_process_init(session._obj, self._obj, identity, len(identity))
+    def __init__(self, session: Session, identity: bytes, type_: ConnectorType, protocol: Protocol):
+        self._obj = ffi.new("struct Connector *")
+        C.connector_init(session._obj, self._obj, protocol.value, type_.value, identity, len(identity))
 
         session.register_client(self)
-        self._destroyed = False
 
     def __del__(self):
         self.destroy()
@@ -198,172 +188,74 @@ class IntraProcessConnector:
     def destroy(self) -> None:
         if self._destroyed:
             return
-
-        C.intra_process_destroy(self._obj)
-
-    def __check_destroyed(self) -> None:
-        if self._destroyed:
-            raise RuntimeError("client is destroyed")
-
-    def bind(self, addr: str) -> None:
-        self.__check_destroyed()
-
-        match addr:
-            case IntraProcessAddress(name):
-                pass
-            case str(name):
-                pass
-            case _:
-                raise ValueError(f"addr must be str or IntraProcessAddress; got: {type(addr)}")
-
-        C.intra_process_bind(self._obj, name)
-
-    def connect(self, addr: str | IntraProcessAddress) -> None:
-        self.__check_destroyed()
-
-        match addr:
-            case IntraProcessAddress(name):
-                pass
-            case str(name):
-                pass
-            case _:
-                raise ValueError(f"addr must be str or IntraProcessAddress; got: {type(addr)}")
-            
-        C.intra_process_connect(self._obj, name)
-
-    def send_sync(self, data: bytes) -> None:
-        self.__check_destroyed()
-        C.intra_process_send(self._obj, data, len(data))
-
-    def recv_sync(self) -> Message:
-        self.__check_destroyed()
-
-        msg = ffi.new("struct Message *")
-        C.intra_process_recv_sync(self._obj, msg)
-        msg_ = Message(msg)
-        C.message_destroy(msg)
-        return msg_
-
-    async def recv(self) -> Message:
-        return await c_async(C.intra_process_recv_async, self._obj)
-
-def easy_hash(b: bytes) -> str:
-    import hashlib
-    return hashlib.md5(b, usedforsecurity=False).hexdigest()[:8]
-
-class NetworkConnector:
-    _obj: "FFITypes.CData"
-    _destroyed: bool
-
-    def __init__(self, session: Session, identity: bytes, type_: ConnectorType):
-        self._obj = ffi.new("struct NetworkConnector *")
-        C.network_connector_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
-
-        session.register_client(self)
-        self._destroyed = False
-
-        # todo: remove after testing
-        self.identity = identity
-
-    def __del__(self):
-        self.destroy()
-
-    def destroy(self) -> None:
-        if self._destroyed:
-            return
-
-        C.network_connector_destroy(self._obj)
         self._destroyed = True
 
+        C.connector_destroy(self._obj)
+
     def __check_destroyed(self) -> None:
         if self._destroyed:
             raise RuntimeError("client is destroyed")
-
-    def bind(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
+        
+    def bind(self, addr: Address) -> None:
         self.__check_destroyed()
 
-        match (host, port, addr):
-            case (None, None, TCPAddress(host, port)):
-                ...
-            case (str(host), int(port), None):
-                ...
-            case _:
-                raise ValueError("either addr or host and port must be provided")
+        match addr:
+            case TCPAddress():
+                host, port = addr.host, addr.port
+            case InterProcessAddress():
+                host, port = addr.path, -1
+            case IntraProcessAddress():
+                host, port = addr.name, -1
 
-        C.network_connector_bind(self._obj, host.encode(), port)
+        C.connector_bind(self._obj, host.encode(), port)
 
-    def connect(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
+    def connect(self, addr: Address) -> None:
         self.__check_destroyed()
 
-        match (host, port, addr):
-            case (None, None, TCPAddress(host, port)):
-                ...
-            case (str(host), int(port), None):
-                ...
-            case _:
-                raise ValueError("either addr or host and port must be provided")
+        match addr:
+            case TCPAddress():
+                host, port = addr.host, addr.port
+            case InterProcessAddress():
+                host, port = addr.path, -1
+            case IntraProcessAddress():
+                host, port = addr.name, -1
 
-        C.network_connector_connect(self._obj, host.encode(), port)
+        C.connector_connect(self._obj, host.encode(), port)
 
-    async def send(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
+    async def send(self, to: bytes | None = None, data: bytes | None = None) -> None:
         self.__check_destroyed()
-
-        match (to, data, msg):
-            case (None, None, Message(to, data)):
-                ...
-            case (bytes(), bytes(), None):
-                ...
-            case (None, bytes(), None):
-                ...
-            case _:
-                raise ValueError(f"either msg or to and data must be provided, got: to={to}, data={data}, msg={msg}")
 
         if to is None:
-            to = ffi.NULL
-            to_len = 0
+            to, to_len = ffi.NULL, 0
         else:
             to_len = len(to)
 
-        # print(f"SEND: {easy_hash(data)}")
+        await c_async(C.connector_send_async, self._obj, to, to_len, data, len(data))
 
-        await c_async(C.network_connector_send, self._obj, to, to_len, data, len(data))
-
-    def send_sync(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
+    def send_sync(self, to: bytes | None = None, data: bytes | None = None) -> None:
         self.__check_destroyed()
 
-        match (to, data, msg):
-            case (None, None, Message(to, data)):
-                ...
-            case (bytes(), bytes(), None):
-                ...
-            case (None, bytes(), None):
-                ...
-            case _:
-                raise ValueError("either msg or to and data must be provided")
-
         if to is None:
-            to = ffi.NULL
-            to_len = 0
+            to, to_len = ffi.NULL, 0
         else:
             to_len = len(to)
 
-        C.network_connector_send_sync(self._obj, to, to_len, data, len(data))
+        C.connector_send_sync(self._obj, to, to_len, data, len(data))
 
+    async def recv(self) -> Message:
+        self.__check_destroyed()
+
+        return await c_async(C.connector_recv_async, self._obj)
+    
     def recv_sync(self) -> Message:
         self.__check_destroyed()
 
         msg = ffi.new("struct Message *")
-        C.network_connector_recv_sync(self._obj, msg)
+        C.connector_recv_sync(self._obj, msg)
 
         # copy the message
         msg_ = Message(msg)
 
         # free data
         C.message_destroy(msg)
-        return msg_
-
-    async def recv(self) -> Message:
-        self.__check_destroyed()
-        msg_: Message = await c_async(C.network_connector_recv, self._obj)
-        # print(f"RECV: {easy_hash(msg_.payload)}")
         return msg_

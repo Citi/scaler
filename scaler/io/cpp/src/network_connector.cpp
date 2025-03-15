@@ -567,7 +567,7 @@ void reconnect_peer(RawPeer *peer)
 
 // --- public api ---
 
-void network_connector_init(Session *session, NetworkConnector *connector, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
+void network_connector_init(Session *session, NetworkConnector *connector, Transport transport, ConnectorType type, uint8_t *identity, size_t len)
 {
     new (connector) NetworkConnector{
         .type = type,
