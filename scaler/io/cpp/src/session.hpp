@@ -25,7 +25,7 @@ struct Session;
 
 // First-party
 #include "network_connector.hpp"
-#include "intra_process.hpp"
+#include "intra_process_connector.hpp"
 
 void set_sock_opts(int fd);
 void complete_peer_connect(RawPeer *peer);
