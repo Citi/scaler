@@ -60,14 +60,14 @@ extern "Python+C" void future_set_result(void *future, void *data);
 void session_init(struct Session *session, size_t num_threads);
 void session_destroy(struct Session *session);
 
-void connector_init(struct Session *session, struct NetworkConnector *connector, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
-void connector_bind(struct NetworkConnector *connector, const char *host, uint16_t port);
-void connector_connect(struct NetworkConnector *connector, const char *addr, uint16_t port);
-void connector_send(void *future, struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
-void connector_send_sync(struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
-void connector_recv(void *future, struct NetworkConnector *connector);
-void connector_recv_sync(struct NetworkConnector *connector, struct Message *msg);
-void connector_destroy(struct NetworkConnector *connector);
+void network_connector_init(struct Session *session, struct NetworkConnector *connector, enum Transport transport, uint8_t *identity, size_t len, enum ConnectorType type);
+void network_connector_bind(struct NetworkConnector *connector, const char *host, uint16_t port);
+void network_connector_connect(struct NetworkConnector *connector, const char *addr, uint16_t port);
+void network_connector_send(void *future, struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void network_connector_send_sync(struct NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+void network_connector_recv(void *future, struct NetworkConnector *connector);
+void network_connector_recv_sync(struct NetworkConnector *connector, struct Message *msg);
+void network_connector_destroy(struct NetworkConnector *connector);
 
 void intraprocess_init(struct Session *session, struct IntraProcessConnector *connector, uint8_t *identity, size_t len);
 void intraprocess_bind(struct IntraProcessConnector *connector, const char *addr, size_t len);

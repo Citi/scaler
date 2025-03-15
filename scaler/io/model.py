@@ -257,7 +257,7 @@ class NetworkConnector:
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType):
         self._obj = ffi.new("struct NetworkConnector *")
-        C.connector_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
+        C.network_connector_init(session._obj, self._obj, Protocol.TCP, identity, len(identity), type_.value)
 
         session.register_client(self)
         self._destroyed = False
@@ -272,7 +272,7 @@ class NetworkConnector:
         if self._destroyed:
             return
 
-        C.connector_destroy(self._obj)
+        C.network_connector_destroy(self._obj)
         self._destroyed = True
 
     def __check_destroyed(self) -> None:
@@ -290,7 +290,7 @@ class NetworkConnector:
             case _:
                 raise ValueError("either addr or host and port must be provided")
 
-        C.connector_bind(self._obj, host.encode(), port)
+        C.network_connector_bind(self._obj, host.encode(), port)
 
     def connect(self, host: str | None = None, port: int | None = None, addr: TCPAddress | None = None) -> None:
         self.__check_destroyed()
@@ -303,7 +303,7 @@ class NetworkConnector:
             case _:
                 raise ValueError("either addr or host and port must be provided")
 
-        C.connector_connect(self._obj, host.encode(), port)
+        C.network_connector_connect(self._obj, host.encode(), port)
 
     async def send(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
@@ -326,7 +326,7 @@ class NetworkConnector:
 
         # print(f"SEND: {easy_hash(data)}")
 
-        await c_async(C.connector_send, self._obj, to, to_len, data, len(data))
+        await c_async(C.network_connector_send, self._obj, to, to_len, data, len(data))
 
     def send_sync(self, to: bytes | None = None, data: bytes | None = None, msg: Message | None = None) -> None:
         self.__check_destroyed()
@@ -347,13 +347,13 @@ class NetworkConnector:
         else:
             to_len = len(to)
 
-        C.connector_send_sync(self._obj, to, to_len, data, len(data))
+        C.network_connector_send_sync(self._obj, to, to_len, data, len(data))
 
     def recv_sync(self) -> Message:
         self.__check_destroyed()
 
         msg = ffi.new("struct Message *")
-        C.connector_recv_sync(self._obj, msg)
+        C.network_connector_recv_sync(self._obj, msg)
 
         # copy the message
         msg_ = Message(msg)
@@ -364,6 +364,6 @@ class NetworkConnector:
 
     async def recv(self) -> Message:
         self.__check_destroyed()
-        msg_: Message = await c_async(C.connector_recv, self._obj)
+        msg_: Message = await c_async(C.network_connector_recv, self._obj)
         # print(f"RECV: {easy_hash(msg_.payload)}")
         return msg_

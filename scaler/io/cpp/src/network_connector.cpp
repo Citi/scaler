@@ -74,7 +74,7 @@ void NetworkConnector::unmute()
     if (this->type == ConnectorType::Pub || this->type == ConnectorType::Router)
         return;
 
-    connector_send_event(this);
+    network_connector_send_event(this);
 }
 
 // panics if the client is muted
@@ -280,16 +280,16 @@ ControlFlow epollin_peer(RawPeer *peer)
         switch (result)
         {
         case ReadResult::Blocked:
-            // std::cout << "connector_peer_event_connected(): read blocked; n: " << peer->read_op->cursor << std::endl;
+            // std::cout << "network_connector_peer_event_connected(): read blocked; n: " << peer->read_op->cursor << std::endl;
             return ControlFlow::Continue; // return from fn, note: no way to break loop
         case ReadResult::Disconnect:
         case ReadResult::BadMagic:
         case ReadResult::BadType:
-            // std::cout << "connector_peer_event_connected(): disconnect" << std::endl;
+            // std::cout << "network_connector_peer_event_connected(): disconnect" << std::endl;
             reconnect_peer(peer);
             return ControlFlow::Break;
         case ReadResult::Read:
-            // std::cout << "connector_peer_event_connected(): read message" << std::endl;
+            // std::cout << "network_connector_peer_event_connected(): read message" << std::endl;
             peer->read_op->complete();
 
             switch (*peer->read_op->type)
@@ -303,11 +303,11 @@ ControlFlow epollin_peer(RawPeer *peer)
                 peer->read_op = std::nullopt;
                 break;
             case MessageType::Identity:
-                // std::cout << "connector_peer_event_connected(): unexpected identity message" << std::endl;
+                // std::cout << "network_connector_peer_event_connected(): unexpected identity message" << std::endl;
                 reconnect_peer(peer);
                 return ControlFlow::Break;
             case MessageType::Disconnect:
-                // std::cout << "connector_peer_event_connected(): disconnect message!!!" << std::endl;
+                // std::cout << "network_connector_peer_event_connected(): disconnect message!!!" << std::endl;
 
                 remove_peer(peer);
                 delete peer;
@@ -567,7 +567,7 @@ void reconnect_peer(RawPeer *peer)
 
 // --- public api ---
 
-void connector_init(Session *session, NetworkConnector *connector, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
+void network_connector_init(Session *session, NetworkConnector *connector, Transport transport, uint8_t *identity, size_t len, ConnectorType type)
 {
     new (connector) NetworkConnector{
         .type = type,
@@ -592,7 +592,7 @@ void connector_init(Session *session, NetworkConnector *connector, Transport tra
     connector->thread->add_connector(connector);
 }
 
-void connector_bind(NetworkConnector *connector, const char *host, uint16_t port)
+void network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port)
 {
     if (connector->fd > 0)
         panic("client already bound");
@@ -658,7 +658,7 @@ void connector_bind(NetworkConnector *connector, const char *host, uint16_t port
     // std::cout << "client: " << connector->identity.as_string() << ": bound to: " << host << ":" << std::to_string(port) << std::endl;
 }
 
-void connector_connect(NetworkConnector *connector, const char *addr, uint16_t port)
+void network_connector_connect(NetworkConnector *connector, const char *addr, uint16_t port)
 {
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));
@@ -714,7 +714,7 @@ void connector_connect(NetworkConnector *connector, const char *addr, uint16_t p
     connector->thread->control(request);
 }
 
-void connector_send(void *future, NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
+void network_connector_send(void *future, NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
     if (connector->type == ConnectorType::Sub)
         panic("clients of type 'sub' do not support sending messages");
@@ -742,7 +742,7 @@ void connector_send(void *future, NetworkConnector *connector, uint8_t *to, size
         panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
-void connector_send_sync(NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
+void network_connector_send_sync(NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len)
 {
     if (connector->type == ConnectorType::Sub)
         panic("clients of type 'sub' do not support sending messages");
@@ -783,7 +783,7 @@ void connector_send_sync(NetworkConnector *connector, uint8_t *to, size_t to_len
     std::free(sem);
 }
 
-void connector_recv(void *future, NetworkConnector *connector)
+void network_connector_recv(void *future, NetworkConnector *connector)
 {
     connector->recv_queue.enqueue(future);
 
@@ -791,7 +791,7 @@ void connector_recv(void *future, NetworkConnector *connector)
         panic("failed to write to eventfd: " + std::to_string(errno));
 }
 
-void connector_recv_sync(NetworkConnector *connector, Message *msg)
+void network_connector_recv_sync(NetworkConnector *connector, Message *msg)
 {
 wait:
     if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN))
@@ -808,10 +808,10 @@ wait:
     while (!connector->recv_buffer.try_dequeue(*msg))
         ; // wait
 
-    // std::cout << "connector_recv_sync(): done" << std::endl;
+    // std::cout << "network_connector_recv_sync(): done" << std::endl;
 }
 
-void connector_destroy([[maybe_unused]] NetworkConnector *connector)
+void network_connector_destroy([[maybe_unused]] NetworkConnector *connector)
 {
     sem_t *sem = (sem_t *)std::malloc(sizeof(sem_t));
 

@@ -163,7 +163,7 @@ void complete_peer_connect(RawPeer *peer)
 
 // begin the connection process for a peer
 // the peer's fd will be overwritten with the new socket
-void connector_connect_peer(RawPeer *peer)
+void network_connector_connect_peer(RawPeer *peer)
 {
     peer->fd = socket(peer->connector->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
@@ -191,7 +191,7 @@ void connector_connect_peer(RawPeer *peer)
 }
 
 // epoll handlers
-void connector_send_event(NetworkConnector *connector)
+void network_connector_send_event(NetworkConnector *connector)
 {
     for (;;)
     {
@@ -223,7 +223,7 @@ void connector_send_event(NetworkConnector *connector)
     }
 }
 
-void connector_recv_event(NetworkConnector *connector)
+void network_connector_recv_event(NetworkConnector *connector)
 {
     // in this event, the recv_event_fd has proc'd
     // but, read the recv_buffer_event_fd first
@@ -235,7 +235,7 @@ void connector_recv_event(NetworkConnector *connector)
         {
             if (errno == EAGAIN)
             {
-                // std::cout << "connector_recv_event(): no buffered messages" << std::endl;
+                // std::cout << "network_connector_recv_event(): no buffered messages" << std::endl;
 
                 break;
             }
@@ -269,7 +269,7 @@ void connector_recv_event(NetworkConnector *connector)
         while (!connector->recv_buffer.try_dequeue(message))
             ; // wait
 
-        // std::cout << "connector_recv_event(): completing future" << std::endl;
+        // std::cout << "network_connector_recv_event(): completing future" << std::endl;
 
         // this is the address of a stack variable
         // ok because the called code copies the message immediately
@@ -358,7 +358,7 @@ bool read_identity(RawPeer *peer)
     panic("unreachable");
 }
 
-void connector_listener_event(NetworkConnector *connector)
+void network_connector_listener_event(NetworkConnector *connector)
 {
     for (;;)
     {
@@ -401,7 +401,7 @@ void connector_listener_event(NetworkConnector *connector)
     }
 }
 
-void connector_peer_event_connecting(epoll_event *event)
+void network_connector_peer_event_connecting(epoll_event *event)
 {
     auto data = (EpollData *)event->data.ptr;
     auto peer = data->peer;
@@ -420,13 +420,13 @@ void connector_peer_event_connecting(epoll_event *event)
         complete_peer_connect(peer);
 
         // we're edge triggered so it's important that we check this
-        connector_peer_event_connected(event);
+        network_connector_peer_event_connected(event);
     }
 }
 
-void connector_peer_event_connected(epoll_event *event)
+void network_connector_peer_event_connected(epoll_event *event)
 {
-    // std::cout << "connector_peer_event_connected()" << std::endl;
+    // std::cout << "network_connector_peer_event_connected()" << std::endl;
 
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
@@ -441,14 +441,14 @@ void connector_peer_event_connected(epoll_event *event)
 }
 
 // may call reconnect_peer()
-void connector_peer_event(epoll_event *event)
+void network_connector_peer_event(epoll_event *event)
 {
     auto edata = (EpollData *)event->data.ptr;
     auto peer = edata->peer;
 
     // if (event->events & EPOLLHUP)
     // {
-    //     // std::cout << "connector_peer_event(): unexpected hangup" << std::endl;
+    //     // std::cout << "network_connector_peer_event(): unexpected hangup" << std::endl;
 
     //     reconnect_peer(peer);
     //     return;
@@ -462,31 +462,31 @@ void connector_peer_event(epoll_event *event)
             panic("failed to getsockopt: " + std::to_string(errno));
 
         // if (result == ECONNREFUSED)
-        // std::cout << "connector_peer_event(): connection refused" << std::endl;
+        // std::cout << "network_connector_peer_event(): connection refused" << std::endl;
         // else
-        // std::cout << "connector_peer_event(): unexpected error: " << std::to_string(result) << std::endl;
+        // std::cout << "network_connector_peer_event(): unexpected error: " << std::to_string(result) << std::endl;
 
         reconnect_peer(peer);
         return;
     }
 
     if (peer->state == PeerState::Disconnected)
-        panic("connector_peer_event(): peer is disconnected");
+        panic("network_connector_peer_event(): peer is disconnected");
 
     if (peer->state == PeerState::Connecting)
-        connector_peer_event_connecting(event);
+        network_connector_peer_event_connecting(event);
     else if (peer->state == PeerState::Connected)
-        connector_peer_event_connected(event);
+        network_connector_peer_event_connected(event);
 }
 
-void connector_destroy_timeout(NetworkConnector *connector)
+void network_connector_destroy_timeout(NetworkConnector *connector)
 {
     // todo: destroy the client
     // share code with other places client needs to be destroyed:
     //  - control_event(), when there's no peers
     //  - epollout_peer(), when the last peer has disconnected
 
-    // std::cout << "connector_destroy_timeout(): client destroy timed out" << std::endl;
+    // std::cout << "network_connector_destroy_timeout(): client destroy timed out" << std::endl;
 
     connector->destroy->complete();
 }
@@ -510,7 +510,7 @@ void connect_timer_event(ThreadContext *ctx)
             auto peer = ctx->connecting.back();
             ctx->connecting.pop_back();
 
-            connector_connect_peer(peer);
+            network_connector_connect_peer(peer);
         }
     }
 
@@ -601,7 +601,7 @@ void control_event(ThreadContext *ctx)
         case ControlOperation::Connect:
             // std::cout << "control_event(): connect" << std::endl;
 
-            connector_connect_peer(request.peer);
+            network_connector_connect_peer(request.peer);
             request.complete();
             break;
         }
@@ -666,11 +666,11 @@ void io_thread_main(ThreadContext *ctx)
         // clang-format off
         switch (data->type)
         {
-            case EpollType::ConnectorSend:             connector_send_event(data->connector);      break;  // client send()            ET  
-            case EpollType::ConnectorRecv:             connector_recv_event(data->connector);      break;  // client recv()            ET
-            case EpollType::ConnectorListener:         connector_listener_event(data->connector);  break;  // new connection           ET
-            case EpollType::ConnectorDestroyTimeout:   connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
-            case EpollType::ConnectorPeer:             connector_peer_event(&event);               break;  // peer has data            ET
+            case EpollType::ConnectorSend:             network_connector_send_event(data->connector);      break;  // client send()            ET  
+            case EpollType::ConnectorRecv:             network_connector_recv_event(data->connector);      break;  // client recv()            ET
+            case EpollType::ConnectorListener:         network_connector_listener_event(data->connector);  break;  // new connection           ET
+            case EpollType::ConnectorDestroyTimeout:   network_connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
+            case EpollType::ConnectorPeer:             network_connector_peer_event(&event);               break;  // peer has data            ET
             case EpollType::IntraProcessConnectorRecv: intraprocess_recv_event(data->inproc);   break;  // intraprocess recv()      ET
             case EpollType::ConnectTimer:           connect_timer_event(ctx);                break;  // connect timer            LT
             case EpollType::Control:                control_event(ctx);                      break;  // control event            LT

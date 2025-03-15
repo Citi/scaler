@@ -29,18 +29,18 @@ struct Session;
 
 void set_sock_opts(int fd);
 void complete_peer_connect(RawPeer *peer);
-void connector_connect_peer(RawPeer *peer);
+void network_connector_connect_peer(RawPeer *peer);
 
 bool read_identity(RawPeer *peer);
 bool write_identity(RawPeer *peer);
 
 // epoll handlers
-void connector_send_event(NetworkConnector *connector);
-void connector_recv_event(NetworkConnector *connector);
-void connector_listener_event(NetworkConnector *connector);
-void connector_destroy_timeout(NetworkConnector *connector);
-void connector_peer_event_connecting(epoll_event *event);
-void connector_peer_event_connected(epoll_event *event);
+void network_connector_send_event(NetworkConnector *connector);
+void network_connector_recv_event(NetworkConnector *connector);
+void network_connector_listener_event(NetworkConnector *connector);
+void network_connector_destroy_timeout(NetworkConnector *connector);
+void network_connector_peer_event_connecting(epoll_event *event);
+void network_connector_peer_event_connected(epoll_event *event);
 void intraprocess_recv_event(IntraProcessConnector *connector);
 
 void io_thread_main(ThreadContext *ctx);
