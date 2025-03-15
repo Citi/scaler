@@ -24,13 +24,12 @@ from abc import ABC, abstractmethod
 class Session:
     _obj: "FFITypes.CData"
     _clients: list
-    _destroyed: bool
+    _destroyed: bool = False
 
     def __init__(self, io_threads: int) -> None:
         self._obj = ffi.new("struct Session *")
         C.session_init(self._obj, io_threads)
 
-        self._destroyed = False
         self._clients = []
 
     def __del__(self) -> None:
@@ -131,14 +130,6 @@ class TCPAddress(Address):
             raise TypeError(f"port must be an integer; is {type(port)}")
 
         return TCPAddress(host="127.0.0.1", port=port)
-
-    def from_str(addr: str) -> "TCPAddress":
-        addr = Address.from_str(addr)
-
-        if not isinstance(addr, TCPAddress):
-            raise ValueError(f"expected a tcp address, got: {addr}")
-
-        return addr
 
 
 class IntraProcessAddress(Address):

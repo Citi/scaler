@@ -13,7 +13,7 @@ from scaler.io.config import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
 )
 from scaler.utility.event_loop import EventLoopType, register_event_loop
-from scaler.io.model import TCPAddress
+from scaler.io.model import Address
 
 
 def get_args():
@@ -79,7 +79,7 @@ def get_args():
         )
     )
     parser.add_argument(
-        "--log-hub-address", "-la", default=None, type=TCPAddress.from_str, help="address for Worker send logs"
+        "--log-hub-address", "-la", default=None, type=Address.from_str, help="address for Worker send logs"
     )
     parser.add_argument(
         "--logging-paths",
@@ -105,7 +105,7 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-paths and --logging-level at the same time, and this will not work on per worker logging",
     )
-    parser.add_argument("address", type=TCPAddress.from_str, help="scheduler address to connect to")
+    parser.add_argument("address", type=Address.from_str, help="scheduler address to connect to")
     return parser.parse_args()
 
 

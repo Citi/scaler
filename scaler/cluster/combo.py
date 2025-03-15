@@ -21,7 +21,7 @@ from scaler.io.config import (
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
 
-from scaler.io.model import TCPAddress
+from scaler.io.model import Address
 
 class SchedulerClusterCombo:
     def __init__(
@@ -50,7 +50,7 @@ class SchedulerClusterCombo:
         logging_config_file: Optional[str] = None,
     ):
         self._cluster = Cluster(
-            address=TCPAddress.from_str(address),
+            address=Address.from_str(address),
             worker_io_threads=worker_io_threads,
             worker_names=[f"{socket.gethostname().split('.')[0]}_{i}" for i in range(n_workers)],
             heartbeat_interval_seconds=heartbeat_interval_seconds,
@@ -65,7 +65,7 @@ class SchedulerClusterCombo:
             logging_config_file=logging_config_file,
         )
         self._scheduler = SchedulerProcess(
-            address=TCPAddress.from_str(address),
+            address=Address.from_str(address),
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
             per_worker_queue_size=per_worker_queue_size,
