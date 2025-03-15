@@ -609,7 +609,7 @@ void control_event(ThreadContext *ctx)
 }
 
 // either recv() was called or a message was buffered -- same handler
-void intraprocess_recv_event(IntraProcessConnector *connector)
+void intra_process_recv_event(IntraProcessConnector *connector)
 {
     if (eventfd_wait(connector->recv_buffer_event_fd) < 0)
     {
@@ -671,7 +671,7 @@ void io_thread_main(ThreadContext *ctx)
             case EpollType::ConnectorListener:         network_connector_listener_event(data->connector);  break;  // new connection           ET
             case EpollType::ConnectorDestroyTimeout:   network_connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
             case EpollType::ConnectorPeer:             network_connector_peer_event(&event);               break;  // peer has data            ET
-            case EpollType::IntraProcessConnectorRecv: intraprocess_recv_event(data->inproc);   break;  // intraprocess recv()      ET
+            case EpollType::IntraProcessConnectorRecv: intra_process_recv_event(data->inproc);   break;  // intraprocess recv()      ET
             case EpollType::ConnectTimer:           connect_timer_event(ctx);                break;  // connect timer            LT
             case EpollType::Control:                control_event(ctx);                      break;  // control event            LT
             case EpollType::Closed:                                                          return; // exit                     LT
@@ -690,7 +690,7 @@ void session_init(Session *session, size_t num_threads)
     new (session) Session{
         .threads = std::vector<ThreadContext>(),
         .inprocs = std::vector<IntraProcessConnector *>(),
-        .intraprocess_mutex = std::shared_mutex(),
+        .intra_process_mutex = std::shared_mutex(),
         .thread_rr = 0};
 
     // exactly size the vector to avoid reallocation

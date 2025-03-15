@@ -187,7 +187,7 @@ class IntraProcessConnector:
 
     def __init__(self, session: Session, identity: bytes):
         self._obj = ffi.new("struct IntraProcessConnector *")
-        C.intraprocess_init(session._obj, self._obj, identity, len(identity))
+        C.intra_process_init(session._obj, self._obj, identity, len(identity))
 
         session.register_client(self)
         self._destroyed = False
@@ -199,7 +199,7 @@ class IntraProcessConnector:
         if self._destroyed:
             return
 
-        C.intraprocess_destroy(self._obj)
+        C.intra_process_destroy(self._obj)
 
     def __check_destroyed(self) -> None:
         if self._destroyed:
@@ -216,7 +216,7 @@ class IntraProcessConnector:
             case _:
                 raise ValueError(f"addr must be str or IntraProcessAddress; got: {type(addr)}")
 
-        C.intraprocess_bind(self._obj, name.encode(), len(name))
+        C.intra_process_bind(self._obj, name)
 
     def connect(self, addr: str | IntraProcessAddress) -> None:
         self.__check_destroyed()
@@ -229,23 +229,23 @@ class IntraProcessConnector:
             case _:
                 raise ValueError(f"addr must be str or IntraProcessAddress; got: {type(addr)}")
             
-        C.intraprocess_connect(self._obj, name.encode(), len(name))
+        C.intra_process_connect(self._obj, name)
 
     def send_sync(self, data: bytes) -> None:
         self.__check_destroyed()
-        C.intraprocess_send(self._obj, data, len(data))
+        C.intra_process_send(self._obj, data, len(data))
 
     def recv_sync(self) -> Message:
         self.__check_destroyed()
 
         msg = ffi.new("struct Message *")
-        C.intraprocess_recv_sync(self._obj, msg)
+        C.intra_process_recv_sync(self._obj, msg)
         msg_ = Message(msg)
         C.message_destroy(msg)
         return msg_
 
     async def recv(self) -> Message:
-        return await c_async(C.intraprocess_recv_async, self._obj)
+        return await c_async(C.intra_process_recv_async, self._obj)
 
 def easy_hash(b: bytes) -> str:
     import hashlib

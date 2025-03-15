@@ -57,25 +57,25 @@ class LibType:
     def network_connector_recv_sync(connector: "FFITypes.CData", msg: "FFITypes.CData") -> None:
         (connector, msg)
 
-    def intraprocess_init(session: "FFITypes.CData", inproc: "FFITypes.CData", identity: bytes, len: int) -> None:
+    def intra_process_init(session: "FFITypes.CData", inproc: "FFITypes.CData", identity: bytes, len: int) -> None:
         (session, inproc)
 
-    def intraprocess_recv_async(future: "FFITypes.CData", inproc: "FFITypes.CData") -> None:
+    def intra_process_recv_async(future: "FFITypes.CData", inproc: "FFITypes.CData") -> None:
         (future, inproc)
 
-    def intraprocess_recv_sync(inproc: "FFITypes.CData", msg: "FFITypes.CData") -> None:
+    def intra_process_recv_sync(inproc: "FFITypes.CData", msg: "FFITypes.CData") -> None:
         (inproc, msg)
 
-    def intraprocess_send(inproc: "FFITypes.CData", data: bytes, len: int) -> None:
+    def intra_process_send(inproc: "FFITypes.CData", data: bytes, len: int) -> None:
         (inproc, data, len)
 
-    def intraprocess_connect(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
-        (inproc, addr, len)
+    def intra_process_connect(inproc: "FFITypes.CData", addr: bytes) -> None:
+        (inproc, addr)
 
-    def intraprocess_bind(inproc: "FFITypes.CData", addr: bytes, len: int) -> None:
-        (inproc, addr, len)
+    def intra_process_bind(inproc: "FFITypes.CData", addr: bytes) -> None:
+        (inproc, addr)
 
-    def intraprocess_destroy(connector: "FFITypes.CData") -> None:
+    def intra_process_destroy(connector: "FFITypes.CData") -> None:
         (connector,)
 
 

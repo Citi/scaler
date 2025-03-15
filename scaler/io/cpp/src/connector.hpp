@@ -10,9 +10,9 @@ struct Connector {
     } type;
 
     union {
-        IntraProcessConnector *intra_process_connector;
-        NetworkConnector *network_connector;
+        IntraProcessConnector *intra_process;
+        NetworkConnector *network;
     };
 };
 
-// void network_connector_bind(Connector *connector);
+void connector_bind(Connector *connector, const char *addr, uint16_t port);

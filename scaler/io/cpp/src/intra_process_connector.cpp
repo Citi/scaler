@@ -20,7 +20,7 @@ void IntraProcessConnector::remove_from_epoll()
     this->thread->remove_epoll(this->recv_event_fd);
 }
 
-void intraprocess_init(Session *session, IntraProcessConnector *connector, uint8_t *identity, size_t len)
+void intra_process_init(Session *session, IntraProcessConnector *connector, uint8_t *identity, size_t len)
 {
     new (connector) IntraProcessConnector{
         .session = session,
@@ -38,19 +38,19 @@ void intraprocess_init(Session *session, IntraProcessConnector *connector, uint8
     };
 
     // take exclusive lock on the session to add the client
-    session->intraprocess_mutex.lock();
+    session->intra_process_mutex.lock();
     session->inprocs.push_back(connector);
-    session->intraprocess_mutex.unlock();
+    session->intra_process_mutex.unlock();
 }
 
-void intraprocess_bind(IntraProcessConnector *connector, const char *addr, size_t len)
+void intra_process_bind(IntraProcessConnector *connector, const char *addr)
 {
     if (connector->bind)
-        panic("intraprocess_bind(): client already bound");
+        panic("intra_process_bind(): client already bound");
 
-    std::string bind(addr, len);
+    std::string bind(addr);
 
-    connector->session->intraprocess_mutex.lock();
+    connector->session->intra_process_mutex.lock();
 
     // check for conflicts
     for (size_t i = 0; i < connector->session->inprocs.size(); i++)
@@ -61,7 +61,7 @@ void intraprocess_bind(IntraProcessConnector *connector, const char *addr, size_
             continue;
 
         if (other->bind == bind)
-            panic("intraprocess_bind(): address already in use");
+            panic("intra_process_bind(): address already in use");
     }
 
     // set the bind address
@@ -82,18 +82,18 @@ void intraprocess_bind(IntraProcessConnector *connector, const char *addr, size_
             connector->peer = other;
 
             if (eventfd_signal(other->unmuted_event_fd) < 0)
-                panic("intraprocess_bind(): failed to signal unmuted_event_fd");
+                panic("intra_process_bind(): failed to signal unmuted_event_fd");
         }
     }
 
-    connector->session->intraprocess_mutex.unlock();
+    connector->session->intra_process_mutex.unlock();
 }
 
-void intraprocess_connect(IntraProcessConnector *connector, const char *addr, size_t len)
+void intra_process_connect(IntraProcessConnector *connector, const char *addr)
 {
-    std::string connecting(addr, len);
+    std::string connecting(addr);
 
-    connector->session->intraprocess_mutex.lock();
+    connector->session->intra_process_mutex.lock();
 
     for (size_t i = 0; i < connector->session->inprocs.size(); i++)
     {
@@ -109,23 +109,23 @@ void intraprocess_connect(IntraProcessConnector *connector, const char *addr, si
             connector->peer = other;
 
             if (eventfd_signal(other->unmuted_event_fd) < 0)
-                panic("intraprocess_connect(): failed to signal unmuted_event_fd");
+                panic("intra_process_connect(): failed to signal unmuted_event_fd");
 
-            connector->session->intraprocess_mutex.unlock();
+            connector->session->intra_process_mutex.unlock();
             return;
         }
     }
 
     // the connection is pending
     connector->connecting = connecting;
-    connector->session->intraprocess_mutex.unlock();
+    connector->session->intra_process_mutex.unlock();
 }
 
-void intraprocess_send(IntraProcessConnector *connector, uint8_t *data, size_t len)
+void intra_process_send(IntraProcessConnector *connector, uint8_t *data, size_t len)
 {
     for (;;)
     {
-        connector->session->intraprocess_mutex.lock_shared();
+        connector->session->intra_process_mutex.lock_shared();
 
         if (connector->peer)
         {
@@ -145,13 +145,13 @@ void intraprocess_send(IntraProcessConnector *connector, uint8_t *data, size_t l
 
             // signal the receiving client (semaphore)
             if (eventfd_signal(peer->recv_buffer_event_fd) < 0)
-                panic("intraprocess_send(): failed to signal recv_buffer_event_fd");
+                panic("intra_process_send(): failed to signal recv_buffer_event_fd");
 
-            connector->session->intraprocess_mutex.unlock_shared();
+            connector->session->intra_process_mutex.unlock_shared();
             return;
         }
 
-        connector->session->intraprocess_mutex.unlock_shared();
+        connector->session->intra_process_mutex.unlock_shared();
 
         // wait for a connection
         if (auto code = fd_wait(connector->unmuted_event_fd, -1, POLLIN))
@@ -163,12 +163,12 @@ void intraprocess_send(IntraProcessConnector *connector, uint8_t *data, size_t l
             if (errno == EAGAIN)
                 continue;
 
-            panic("intraprocess_send(): failed to wait on unmuted_event_fd");
+            panic("intra_process_send(): failed to wait on unmuted_event_fd");
         }
     }
 }
 
-void intraprocess_recv_sync(IntraProcessConnector *connector, Message *msg)
+void intra_process_recv_sync(IntraProcessConnector *connector, Message *msg)
 {
 wait:
     if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN))
@@ -179,7 +179,7 @@ wait:
         if (errno == EAGAIN)
             goto wait; // pre-empted, try again
 
-        panic("intraprocess_recv_sync(): failed to wait on recv_buffer_event_fd");
+        panic("intra_process_recv_sync(): failed to wait on recv_buffer_event_fd");
     }
 
     // after decrementing the semaphore, we have claimed the message from the queue
@@ -188,7 +188,7 @@ wait:
         ; // wait
 }
 
-void intraprocess_recv_async(void *future, IntraProcessConnector *connector)
+void intra_process_recv_async(void *future, IntraProcessConnector *connector)
 {
     // ensure that the client is in the epoll
     // this allows sync-only clients to avoid epoll overhead
@@ -196,10 +196,10 @@ void intraprocess_recv_async(void *future, IntraProcessConnector *connector)
     connector->recv.enqueue(future);
 
     if (eventfd_signal(connector->recv_event_fd) < 0)
-        panic("intraprocess_recv_async(): failed to signal recv_event_fd");
+        panic("intra_process_recv_async(): failed to signal recv_event_fd");
 }
 
-void intraprocess_destroy(IntraProcessConnector *connector)
+void intra_process_destroy(IntraProcessConnector *connector)
 {
     (void)connector;
 

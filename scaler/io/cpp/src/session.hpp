@@ -41,7 +41,7 @@ void network_connector_listener_event(NetworkConnector *connector);
 void network_connector_destroy_timeout(NetworkConnector *connector);
 void network_connector_peer_event_connecting(epoll_event *event);
 void network_connector_peer_event_connected(epoll_event *event);
-void intraprocess_recv_event(IntraProcessConnector *connector);
+void intra_process_recv_event(IntraProcessConnector *connector);
 
 void io_thread_main(ThreadContext *ctx);
 
@@ -152,7 +152,7 @@ struct Session
     std::vector<ThreadContext> threads;
     std::vector<IntraProcessConnector *> inprocs;
 
-    std::shared_mutex intraprocess_mutex;
+    std::shared_mutex intra_process_mutex;
 
     std::atomic_uint8_t thread_rr;
 

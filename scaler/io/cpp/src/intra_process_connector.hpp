@@ -25,13 +25,13 @@ struct IntraProcessConnector;
 #include "common.hpp"
 #include "session.hpp"
 
-void intraprocess_init(Session *session, IntraProcessConnector *connector, uint8_t *identity, size_t len);
-void intraprocess_bind(struct IntraProcessConnector *connector, const char *addr, size_t len);
-void intraprocess_connect(struct IntraProcessConnector *connector, const char *addr, size_t len);
-void intraprocess_send(struct IntraProcessConnector *connector, uint8_t *data, size_t len);
-void intraprocess_recv_sync(struct IntraProcessConnector *connector, struct Message *msg);
-void intraprocess_recv_async(void *future, struct IntraProcessConnector *connector);
-void intraprocess_destroy(struct IntraProcessConnector *connector);
+void intra_process_init(Session *session, IntraProcessConnector *connector, uint8_t *identity, size_t len);
+void intra_process_bind(struct IntraProcessConnector *connector, const char *addr);
+void intra_process_connect(struct IntraProcessConnector *connector, const char *addr);
+void intra_process_send(struct IntraProcessConnector *connector, uint8_t *data, size_t len);
+void intra_process_recv_sync(struct IntraProcessConnector *connector, struct Message *msg);
+void intra_process_recv_async(void *future, struct IntraProcessConnector *connector);
+void intra_process_destroy(struct IntraProcessConnector *connector);
 
 // -- structs --
 
