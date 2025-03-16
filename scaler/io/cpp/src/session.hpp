@@ -29,6 +29,7 @@ struct Session;
 
 void set_sock_opts(int fd);
 void complete_peer_connect(RawPeer *peer);
+void network_connector_connect_peer_inner(RawPeer *peer, int address_family, socklen_t len);
 void network_connector_connect_peer(RawPeer *peer);
 
 bool read_identity(RawPeer *peer);

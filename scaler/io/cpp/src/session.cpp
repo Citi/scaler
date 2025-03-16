@@ -155,28 +155,18 @@ void complete_peer_connect(RawPeer *peer)
     auto was_muted = peer->connector->muted();
     peer->connector->peers.push_back(peer);
 
-    // std::cout << "client: " << peer->connector->identity.as_string() << ": connected peer: " << peer->identity.as_string() << std::endl;
-
     if (was_muted)
         peer->connector->unmute();
 }
 
-// begin the connection process for a peer
-// the peer's fd will be overwritten with the new socket
-void network_connector_connect_peer(RawPeer *peer)
+void network_connector_connect_peer_inner(RawPeer *peer, int domain, socklen_t len)
 {
-    peer->fd = socket(peer->connector->transport == Transport::TCP ? AF_INET : AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    peer->fd = socket(domain, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
     if (peer->fd < 0)
         panic("failed to create socket: " + std::to_string(errno));
 
-    set_sock_opts(peer->fd);
-
-    auto res = connect(peer->fd, (sockaddr *)&peer->addr, sizeof(peer->addr));
-
-    // theory: this doesn't happen on Linux
-    if (res == 0)
-        panic("connect() returned immediately");
+    auto res = connect(peer->fd, (sockaddr *)&peer->addr, len);
 
     if (res < 0 && errno != EINPROGRESS)
         panic("failed to connect to peer: " + std::to_string(errno));
@@ -188,6 +178,21 @@ void network_connector_connect_peer(RawPeer *peer)
     peer->read_op = IoOperation::read(); // read the peer's identity
 
     peer->connector->thread->add_peer(peer);
+}
+
+// begin the connection process for a peer
+// the peer's fd will be overwritten with the new socket
+void network_connector_connect_peer(RawPeer *peer)
+{
+    switch (peer->connector->transport)
+    {
+    case Transport::TCP:
+        return network_connector_connect_peer_inner(peer, AF_INET, sizeof(sockaddr_in));
+    case Transport::InterProcess:
+        return network_connector_connect_peer_inner(peer, AF_UNIX, sizeof(sockaddr_un));
+    case Transport::IntraProcess:
+        panic("unsupported");
+    }
 }
 
 // epoll handlers
@@ -546,7 +551,7 @@ void control_event(ThreadContext *ctx)
             request.complete();
             break;
         case ControlOperation::DestroyConnector:
-        // std::cout << "control_event(): destroy" << std::endl;
+            // std::cout << "control_event(): destroy" << std::endl;
 
             {
                 auto connector = request.connector;

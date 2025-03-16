@@ -28,9 +28,7 @@ from scaler.utility.object_utility import generate_object_id, serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, ObjectTracker, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
-from scaler.io.model import Session, TCPAddress
-
-import random
+from scaler.io.model import Session, InterProcessAddress
 
 class VanillaProcessorManager(Looper, ProcessorManager):
     def __init__(
@@ -53,8 +51,8 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        # self._address_path = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
-        self._address = TCPAddress.localhost(random.randint(10000, 20000))
+        self._address_path = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
+        self._address = InterProcessAddress(self._address_path)
 
         self._heartbeat: Optional[HeartbeatManager] = None
         self._task_manager: Optional[TaskManager] = None
@@ -236,7 +234,7 @@ class VanillaProcessorManager(Looper, ProcessorManager):
     def destroy(self, reason: str):
         self.__kill_all_processors(reason)
         self._binder_internal.destroy()
-        # os.remove(self._address_path)
+        os.remove(self._address_path)
 
     def initialized(self) -> bool:
         return self._current_holder is not None and self._current_holder.initialized()

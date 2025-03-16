@@ -47,6 +47,11 @@ void remove_peer(RawPeer *peer);
 ControlFlow epollin_peer(RawPeer *peer);
 ControlFlow epollout_peer(RawPeer *peer);
 
+void network_connector_bind_tcp(NetworkConnector *connector, const char *host, uint16_t port);
+void network_connector_bind_unix(NetworkConnector *connector, const char *path);
+
+// -- interface --
+
 void network_connector_init(Session *session, NetworkConnector *connector, Transport transport, ConnectorType type, uint8_t *identity, size_t len);
 void network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port);
 void network_connector_connect(NetworkConnector *connector, const char *addr, uint16_t port);

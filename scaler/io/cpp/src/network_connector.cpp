@@ -592,6 +592,68 @@ void network_connector_init(Session *session, NetworkConnector *connector, Trans
     connector->thread->add_connector(connector);
 }
 
+void network_connector_bind_tcp(NetworkConnector *connector, const char *host, uint16_t port)
+{
+    sockaddr_storage address;
+    std::memset(&address, 0, sizeof(address));
+
+    connector->fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+
+    if (connector->fd < 0)
+        panic("failed to create tcp socket: " + std::to_string(errno));
+
+    set_sock_opts(connector->fd);
+
+    in_addr_t in_addr = strcmp(host, "*") ? inet_addr(host) : INADDR_ANY;
+
+    if (in_addr == INADDR_NONE)
+        panic("failed to parse address: " + std::string(host));
+
+    *(sockaddr_in *)&address = {
+        .sin_family = AF_INET,
+        .sin_port = htons(port),
+        .sin_addr = {
+            .s_addr = in_addr},
+        .sin_zero = {0},
+    };
+
+    connector->addr = address;
+
+    if (bind(connector->fd, (sockaddr *)&address, sizeof(sockaddr_in)) < 0)
+    {
+        if (errno == EADDRINUSE)
+            panic("address in use: " + std::string(host) + ":" + std::to_string(port));
+
+        panic("failed to bind socket: " + std::to_string(errno));
+    }
+}
+
+void network_connector_bind_unix(NetworkConnector *connector, const char *path)
+{
+    sockaddr_storage address;
+    std::memset(&address, 0, sizeof(address));
+
+    connector->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
+
+    if (connector->fd < 0)
+        panic("failed to create unix socket: " + std::to_string(errno));
+
+    // remove the previous lock from the fs
+    if (unlink(path) < 0 && errno != ENOENT)
+        panic("failed to unlink unix socket: " + std::to_string(errno));
+
+    auto addr_un = (sockaddr_un *)&address;
+
+    *addr_un = {
+        .sun_family = AF_UNIX,
+        .sun_path = {0}};
+
+    std::strncpy(addr_un->sun_path, path, sizeof(addr_un->sun_path) - 1);
+
+    if (bind(connector->fd, (sockaddr *)addr_un, sizeof(sockaddr_un)) < 0)
+        panic("failed to bind socket: " + std::to_string(errno));
+}
+
 void network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port)
 {
     if (connector->fd > 0)
@@ -600,62 +662,22 @@ void network_connector_bind(NetworkConnector *connector, const char *host, uint1
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));
 
-    connector->fd = socket(connector->transport == Transport::InterProcess ? AF_UNIX : AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-
-    if (connector->fd < 0)
-        panic("failed to create socket: " + std::to_string(errno));
-
-    set_sock_opts(connector->fd);
-
     switch (connector->transport)
     {
-    case Transport::InterProcess:
-    {
-        auto addr_un = (sockaddr_un *)&address;
-
-        *addr_un = {
-            .sun_family = AF_UNIX,
-            .sun_path = {0}};
-
-        std::strncpy(addr_un->sun_path, host, sizeof(addr_un->sun_path) - 1);
-    }
-    break;
     case Transport::TCP:
-    {
-        in_addr_t in_addr = strcmp(host, "*") ? inet_addr(host) : INADDR_ANY;
-
-        if (in_addr == INADDR_NONE)
-            panic("failed to parse address: " + std::string(host));
-
-        *(sockaddr_in *)&address = {
-            .sin_family = AF_INET,
-            .sin_port = htons(port),
-            .sin_addr = {
-                .s_addr = in_addr},
-            .sin_zero = {0},
-        };
-    }
-    break;
+        network_connector_bind_tcp(connector, host, port);
+        break;
+    case Transport::InterProcess:
+        network_connector_bind_unix(connector, host);
+        break;
     case Transport::IntraProcess:
         panic("Client does not support IntraProcess transport");
-    }
-
-    connector->addr = address;
-
-    if (bind(connector->fd, (sockaddr *)&address, sizeof(address)) < 0)
-    {
-        if (errno == EADDRINUSE)
-            panic("address in use: " + std::string(host) + ":" + std::to_string(port));
-
-        panic("failed to bind socket: " + std::to_string(errno));
     }
 
     if (listen(connector->fd, 16) < 0)
         panic("failed to listen on socket");
 
     connector->thread->add_epoll(connector->fd, EPOLLIN | EPOLLET, EpollType::ConnectorListener, connector);
-
-    // std::cout << "client: " << connector->identity.as_string() << ": bound to: " << host << ":" << std::to_string(port) << std::endl;
 }
 
 void network_connector_connect(NetworkConnector *connector, const char *addr, uint16_t port)
@@ -678,8 +700,6 @@ void network_connector_connect(NetworkConnector *connector, const char *addr, ui
     break;
     case Transport::TCP:
     {
-        // std::cout << "connecting to: " << addr << ":" << std::to_string(port) << std::endl;
-
         *(sockaddr_in *)&address = {
             .sin_family = AF_INET,
             .sin_port = htons(port),

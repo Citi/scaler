@@ -26,6 +26,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <semaphore.h>
+#include <unistd.h>
 
 // 5ca1ab1e = scalable
 static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
@@ -44,10 +45,10 @@ void future_set_result(void *future, void *data);
 
     std::cout << "panic at " << file_name << ":" << location.line()
               << ":" << location.column() << " in function ["
-              << location.function_name() << "] in file ["
-              << location.file_name() << "]: " << message << std::endl;
+              << location.function_name() << "]: "
+              << message << std::endl;
 
-    std::terminate();
+    std::abort();
 }
 
 // how to control flow

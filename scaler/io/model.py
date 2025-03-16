@@ -194,9 +194,9 @@ class Connector:
             case TCPAddress():
                 host, port = addr.host, addr.port
             case InterProcessAddress():
-                host, port = addr.path, -1
+                host, port = addr.path, 0
             case IntraProcessAddress():
-                host, port = addr.name, -1
+                host, port = addr.name, 0
 
         C.connector_bind(self._obj, host.encode(), port)
 
@@ -207,9 +207,9 @@ class Connector:
             case TCPAddress():
                 host, port = addr.host, addr.port
             case InterProcessAddress():
-                host, port = addr.path, -1
+                host, port = addr.path, 0
             case IntraProcessAddress():
-                host, port = addr.name, -1
+                host, port = addr.name, 0
 
         C.connector_connect(self._obj, host.encode(), port)
 
