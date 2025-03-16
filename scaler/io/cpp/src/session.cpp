@@ -682,7 +682,7 @@ void io_thread_main(ThreadContext *ctx)
             case EpollType::Closed:                                                                        return; // exit                     LT
 
             default:
-                panic("epoll: unknown event type");
+                panic("unknown epoll event type: " + std::to_string(data->type));
         }
         // clang-format on
     }
