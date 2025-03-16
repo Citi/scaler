@@ -676,10 +676,10 @@ void io_thread_main(ThreadContext *ctx)
             case EpollType::ConnectorListener:         network_connector_listener_event(data->connector);  break;  // new connection           ET
             case EpollType::ConnectorDestroyTimeout:   network_connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
             case EpollType::ConnectorPeer:             network_connector_peer_event(&event);               break;  // peer has data            ET
-            case EpollType::IntraProcessConnectorRecv: intra_process_recv_event(data->inproc);   break;  // intraprocess recv()      ET
-            case EpollType::ConnectTimer:           connect_timer_event(ctx);                break;  // connect timer            LT
-            case EpollType::Control:                control_event(ctx);                      break;  // control event            LT
-            case EpollType::Closed:                                                          return; // exit                     LT
+            case EpollType::IntraProcessConnectorRecv: intra_process_recv_event(data->inproc);             break;  // intraprocess recv()      ET
+            case EpollType::ConnectTimer:              connect_timer_event(ctx);                           break;  // connect timer            LT
+            case EpollType::Control:                   control_event(ctx);                                 break;  // control event            LT
+            case EpollType::Closed:                                                                        return; // exit                     LT
 
             default:
                 panic("epoll: unknown event type");
