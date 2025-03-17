@@ -7,7 +7,6 @@ import uuid
 from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
-import random
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -26,7 +25,7 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.worker.agent.processor.processor import Processor
 
-from scaler.io.model import Session, ConnectorType, Address, TCPAddress
+from scaler.io.model import Session, ConnectorType, Address, IntraProcessAddress
 
 
 @dataclasses.dataclass
@@ -82,7 +81,7 @@ class Client:
         self._profiling = profiling
         self._identity = f"{os.getpid()}|Client|{uuid.uuid4().bytes.hex()}".encode()
 
-        self._client_agent_address = TCPAddress.localhost(random.randint(10000, 20000)) # IntraProcessAddress(f"scaler_client_{uuid.uuid4().hex}")
+        self._client_agent_address = IntraProcessAddress(f"scaler_client_{uuid.uuid4().hex}")
         self._scheduler_address = Address.from_str(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds

@@ -27,14 +27,14 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
 
-from scaler.io.model import Session, ConnectorType, TCPAddress, Address
+from scaler.io.model import Session, ConnectorType, Address
 
 class ClientAgent(threading.Thread):
     def __init__(
         self,
         identity: bytes,
         client_agent_address: Address,
-        scheduler_address: TCPAddress,
+        scheduler_address: Address,
         session: Session,
         future_manager: ClientFutureManager,
         stop_event: threading.Event,

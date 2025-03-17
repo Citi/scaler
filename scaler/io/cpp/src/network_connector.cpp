@@ -657,7 +657,7 @@ void network_connector_bind_unix(NetworkConnector *connector, const char *path)
 void network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port)
 {
     if (connector->fd > 0)
-        panic("client already bound");
+        panic("connector already bound");
 
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));

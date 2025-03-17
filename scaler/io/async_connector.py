@@ -46,7 +46,7 @@ class AsyncConnector:
             case "connect":
                 self._connector.connect(self._address)
             case _:
-                raise TypeError("bind_or_connect has to be 'bind' or 'connect'")
+                raise TypeError("bind_or_connect must be 'bind' or 'connect'")
 
     def destroy(self):
         self._connector.destroy()

@@ -7,13 +7,17 @@ void connector_init(Session *session, Connector *connector, Transport transport,
     case Transport::TCP:
     case Transport::InterProcess:
     {
-        connector->network = (NetworkConnector *)std::malloc(sizeof(NetworkConnector));
+        new (connector) Connector{
+            .type = Connector::Socket,
+            .network = (NetworkConnector *)std::malloc(sizeof(NetworkConnector))};
 
         return network_connector_init(session, connector->network, transport, type, identity, len);
     }
     case Transport::IntraProcess:
     {
-        connector->intra_process = (IntraProcessConnector *)std::malloc(sizeof(IntraProcessConnector));
+        new (connector) Connector{
+            .type = Connector::IntraProcess,
+            .intra_process = (IntraProcessConnector *)std::malloc(sizeof(IntraProcessConnector))};
 
         return intra_process_init(session, connector->intra_process, identity, len);
     }

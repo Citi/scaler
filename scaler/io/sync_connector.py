@@ -36,7 +36,7 @@ class SyncConnector:
         )
 
         self._connector = Connector(session, self._identity, type_, address.protocol)
-        self._connector.connect(addr=self._address)
+        self._connector.connect(self._address)
         self._lock = threading.Lock()
 
     def close(self):

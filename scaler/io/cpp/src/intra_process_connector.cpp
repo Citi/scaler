@@ -4,7 +4,6 @@ void IntraProcessConnector::ensure_epoll()
 {
     if (this->epoll)
         return;
-
     this->epoll = true;
 
     this->thread->add_epoll(this->recv_buffer_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessConnectorRecv, this);
@@ -46,7 +45,7 @@ void intra_process_init(Session *session, IntraProcessConnector *connector, uint
 void intra_process_bind(IntraProcessConnector *connector, const char *addr)
 {
     if (connector->bind)
-        panic("intra_process_bind(): client already bound");
+        panic("connector already bound");
 
     std::string bind(addr);
 
