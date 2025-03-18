@@ -200,7 +200,10 @@ void intra_process_recv_async(void *future, IntraProcessConnector *connector)
 
 void intra_process_destroy(IntraProcessConnector *connector)
 {
-    (void)connector;
-
-    panic("todo");
+    connector->remove_from_epoll();
+    connector->session->intra_process_mutex.lock();
+    std::erase(connector->session->inprocs, connector);
+    connector->session->intra_process_mutex.unlock();
+    connector->identity.free();
+    connector->~IntraProcessConnector(); // call destructor in-place
 }

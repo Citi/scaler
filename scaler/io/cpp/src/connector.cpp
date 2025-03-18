@@ -31,14 +31,12 @@ void connector_destroy(Connector *connector)
     case Connector::Socket:
     {
         network_connector_destroy(connector->network);
-
         std::free(connector->network);
         return;
     }
     case Connector::IntraProcess:
     {
         intra_process_destroy(connector->intra_process);
-
         std::free(connector->intra_process);
         return;
     }
