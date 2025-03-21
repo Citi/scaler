@@ -81,7 +81,7 @@ struct ControlFlow
 
 uint8_t *datadup(const uint8_t *data, size_t len)
 {
-    uint8_t *dup = (uint8_t *)std::malloc(len * sizeof(uint8_t));
+    uint8_t *dup = (uint8_t *)std::malloc(len);
     std::memcpy(dup, data, len);
     return dup;
 }
@@ -188,6 +188,9 @@ struct Bytes
 
     static Bytes clone(const Bytes &bytes)
     {
+        if (bytes.is_empty())
+            panic("tried to clone empty bytes");
+
         return {
             .data = datadup(bytes.data, bytes.len),
             .len = bytes.len,

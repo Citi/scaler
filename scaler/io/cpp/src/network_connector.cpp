@@ -349,7 +349,6 @@ ControlFlow epollout_peer(RawPeer *peer)
             reconnect_peer(peer);
             return ControlFlow::Break; // we need to go back to epoll_wait() after calling reconnect_peer()
         case WriteResult::Done:
-            // std::cout << "epollout(): wrote message" << std::endl;
 
             peer->write_op->complete();
 

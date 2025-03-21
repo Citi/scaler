@@ -5,6 +5,7 @@
 #include <cstdint>
 
 // C++
+#include <atomic>
 #include <optional>
 #include <string>
 #include <vector>
@@ -53,7 +54,7 @@ struct IntraProcessConnector
     std::optional<std::string> connecting;
     std::optional<IntraProcessConnector *> peer;
 
-    bool epoll;
+    std::atomic_bool epoll;
 
     void ensure_epoll();
     void remove_from_epoll();

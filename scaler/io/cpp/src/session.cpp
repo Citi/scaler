@@ -323,10 +323,9 @@ bool read_identity(RawPeer *peer)
         switch (*peer->read_op->type)
         {
         case MessageType::Data:
-            panic("bad message type while reading identity: remove this after debugging");
             // // std::cout << "bad message type while reading identity: data" << std::endl;
-            // reconnect_peer(peer);
-            // return false;
+            reconnect_peer(peer);
+            return false;
         case MessageType::Disconnect:
             remove_peer(peer);
             delete peer;
@@ -338,24 +337,15 @@ bool read_identity(RawPeer *peer)
         }
 
         peer->identity = peer->read_op->payload; // set identity
-        peer->read_op->complete();               // complete the op
-        peer->read_op = std::nullopt;            // reset
+        peer->read_op->complete();    // complete the op
+        peer->read_op = std::nullopt; // reset
 
-        // std::cout << "client: " << peer->connector->identity.as_string() << ": connected to peer: " << peer->identity.as_string() << std::endl;
-
-        [[fallthrough]];
+        return true;
     case ReadResult::Blocked:
         return true;
     case ReadResult::BadMagic:
-        // std::cout << "bad magic while reading identity" << std::endl;
-        reconnect_peer(peer);
-        return false;
     case ReadResult::BadType:
-        // std::cout << "bad type while reading identity" << std::endl;
-        reconnect_peer(peer);
-        return false;
     case ReadResult::Disconnect:
-        // std::cout << "disconnect while reading identity" << std::endl;
         reconnect_peer(peer);
         return false;
     }
@@ -558,9 +548,11 @@ void control_event(ThreadContext *ctx)
                 auto &peers = connector->peers;
 
                 if (peers.empty())
-                    // todo: remove client from thread
-                    // share logic with epollout
+                // todo: remove client from thread
+                // share logic with epollout
+                {
                     request.complete();
+                }
                 else
                 {
                     // this semaphore will be completed
@@ -638,17 +630,19 @@ void intra_process_recv_event(IntraProcessConnector *connector)
         panic("failed to read from eventfd: " + std::to_string(errno));
     }
 
+
     Message message;
-    while (connector->queue.try_dequeue(message))
+    while (!connector->queue.try_dequeue(message))
         ; // wait
 
     void *future;
-    while (connector->recv.try_dequeue(future))
-        ; // wait
+        while (connector->recv.try_dequeue(future))
+        ;
 
     // this is the address of a stack variable
     // ok because the called code copies the message immediately
     future_set_result(future, &message);
+    message_destroy(&message);
 }
 
 void io_thread_main(ThreadContext *ctx)

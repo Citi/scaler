@@ -2,9 +2,8 @@
 
 void IntraProcessConnector::ensure_epoll()
 {
-    if (this->epoll)
+    if (this->epoll.exchange(true))
         return;
-    this->epoll = true;
 
     this->thread->add_epoll(this->recv_buffer_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessConnectorRecv, this);
     this->thread->add_epoll(this->recv_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessConnectorRecv, this);
@@ -102,7 +101,7 @@ void intra_process_connect(IntraProcessConnector *connector, const char *addr)
             continue;
 
         // we found a matching bind
-        if (connector->bind == connecting)
+        if (other->bind == connecting)
         {
             other->peer = connector;
             connector->peer = other;
@@ -152,15 +151,16 @@ void intra_process_send(IntraProcessConnector *connector, uint8_t *data, size_t 
 
         connector->session->intra_process_mutex.unlock_shared();
 
-        // wait for a connection
+    // wait for a connection
+    wait:
         if (auto code = fd_wait(connector->unmuted_event_fd, -1, POLLIN))
             panic("fd_wait(): " + std::to_string(code) + " ; " + std::to_string(errno));
 
         if (eventfd_wait(connector->unmuted_event_fd) < 0)
         {
-            // pre-empted?
+            // pre-empted, go back to waiting
             if (errno == EAGAIN)
-                continue;
+                goto wait;
 
             panic("intra_process_send(): failed to wait on unmuted_event_fd");
         }
