@@ -203,6 +203,12 @@ void intra_process_destroy(IntraProcessConnector *connector)
     connector->remove_from_epoll();
     connector->session->intra_process_mutex.lock();
     std::erase(connector->session->inprocs, connector);
+
+    if (connector->peer)
+    {
+        auto peer = *connector->peer;
+        peer->peer = std::nullopt;
+    }
     connector->session->intra_process_mutex.unlock();
     connector->identity.free();
     connector->~IntraProcessConnector(); // call destructor in-place
