@@ -166,12 +166,14 @@ class InterProcessAddress(Address):
 class Connector:
     _obj: "FFITypes.CData"
     _destroyed: bool = False
+    _session: Session
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType, protocol: Protocol):
         self._obj = ffi.new("struct Connector *")
         C.connector_init(session._obj, self._obj, protocol.value, type_.value, identity, len(identity))
 
-        session.register_client(self)
+        self._session = session
+        self._session.register_client(self)
 
     def __del__(self):
         self.destroy()
