@@ -22,3 +22,5 @@ dask-worker-space/*
 
 .o
 scaler/io/cpp/build/
+benchmark.py
+benches/**
