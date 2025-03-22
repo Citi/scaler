@@ -24,3 +24,6 @@ builder.set_source(
 
 if __name__ == "__main__":
     builder.compile(verbose=True, tmpdir="build")
+
+    import shutil, glob
+    shutil.copy(glob.glob("build/cpp.*.so")[0], ".")

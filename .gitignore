@@ -24,3 +24,4 @@ dask-worker-space/*
 scaler/io/cpp/build/
 benchmark.py
 benches/**
+*.so

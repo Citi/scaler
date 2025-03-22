@@ -1,13 +1,6 @@
 __ALL__ = ["FFITypes", "ffi", "lib", "c_async", "c_async_wrap"]
 
-import sys
-from os import path
-
-sys.path.append(path.join(path.dirname(__file__), "build"))
 from cpp import ffi, lib
-
-sys.path.pop()
-
 from cffi import FFI as FFITypes
 
 
