@@ -45,7 +45,6 @@ void NetworkConnector::recv_msg(Message message)
     // if there's a waiting recv, complete it immediately
     if (eventfd_wait(this->recv_event_fd) == 0)
     {
-        // std::cout << "Client::recv_msg(): completing future" << std::endl;
 
         void *future;
         while (!this->recv_queue.try_dequeue(future))
@@ -56,7 +55,6 @@ void NetworkConnector::recv_msg(Message message)
     }
     else if (errno == EAGAIN) // o.w. res < 0
     {
-        // std::cout << "Client::recv_msg(): buffering message" << std::endl;
 
         // buffer the message
         this->recv_buffer.enqueue(message);
@@ -84,7 +82,6 @@ void NetworkConnector::send(SendMessage send)
     {
     case ConnectorType::Pair:
     {
-        // std::cout << "pair: " << this->identity.as_string() << ": sending message" << std::endl;
 
         if (this->peers.empty())
             panic("client: muted");
@@ -95,7 +92,6 @@ void NetworkConnector::send(SendMessage send)
     break;
     case ConnectorType::Router:
     {
-        // std::cout << "router: " << this->identity.as_string() << ": sending message to: " << send.msg.address.as_string() << std::endl;
 
         RawPeer *peer;
         if (!this->peer_by_id(send.msg.address, &peer))
@@ -123,7 +119,6 @@ void NetworkConnector::send(SendMessage send)
     break;
     case ConnectorType::Dealer:
     {
-        // std::cout << "dealer: " << this->identity.as_string() << ": sending message" << std::endl;
 
         if (this->peers.empty())
             panic("client: muted");
@@ -259,8 +254,6 @@ void RawPeer::recv_msg(Bytes payload)
         if (result.tag == IoResult::Blocked)
             return WriteResult::Blocked;
 
-        // std::cout << "write_message(): WROTE MESSAGE: " << op->payload.hexhash() << std::endl;
-
         return WriteResult::Done;
     }
     }
@@ -280,16 +273,16 @@ ControlFlow epollin_peer(RawPeer *peer)
         switch (result)
         {
         case ReadResult::Blocked:
-            // std::cout << "network_connector_peer_event_connected(): read blocked; n: " << peer->read_op->cursor << std::endl;
+
             return ControlFlow::Continue; // return from fn, note: no way to break loop
         case ReadResult::Disconnect:
         case ReadResult::BadMagic:
         case ReadResult::BadType:
-            // std::cout << "network_connector_peer_event_connected(): disconnect" << std::endl;
+
             reconnect_peer(peer);
             return ControlFlow::Break;
         case ReadResult::Read:
-            // std::cout << "network_connector_peer_event_connected(): read message" << std::endl;
+
             peer->read_op->complete();
 
             switch (*peer->read_op->type)
@@ -303,11 +296,10 @@ ControlFlow epollin_peer(RawPeer *peer)
                 peer->read_op = std::nullopt;
                 break;
             case MessageType::Identity:
-                // std::cout << "network_connector_peer_event_connected(): unexpected identity message" << std::endl;
+
                 reconnect_peer(peer);
                 return ControlFlow::Break;
             case MessageType::Disconnect:
-                // std::cout << "network_connector_peer_event_connected(): disconnect message!!!" << std::endl;
 
                 remove_peer(peer);
                 delete peer;
@@ -320,7 +312,6 @@ ControlFlow epollin_peer(RawPeer *peer)
 // process the send queue until the socket blocks or the queue is exhausted
 ControlFlow epollout_peer(RawPeer *peer)
 {
-    // std::cout << "epollout()" << std::endl;
 
     for (;;)
     {
@@ -328,7 +319,7 @@ ControlFlow epollout_peer(RawPeer *peer)
         {
             if (peer->queue.empty())
             {
-                // std::cout << "epollout(): queue exhausted" << std::endl;
+
                 return ControlFlow::Continue; // queue exhausted
             }
 
@@ -342,10 +333,10 @@ ControlFlow epollout_peer(RawPeer *peer)
         switch (result)
         {
         case WriteResult::Blocked:
-            // std::cout << "epollout(): blocked" << std::endl;
+
             return ControlFlow::Continue;
         case WriteResult::Disconnect:
-            // std::cout << "epollout(): disconnect" << std::endl;
+
             reconnect_peer(peer);
             return ControlFlow::Break; // we need to go back to epoll_wait() after calling reconnect_peer()
         case WriteResult::Done:
@@ -358,7 +349,7 @@ ControlFlow epollout_peer(RawPeer *peer)
 
                 if (peer->connector->destroy && peer->connector->peers.empty())
                 {
-                    // std::cout << "epollout(): CLIENT DESTROYED" << std::endl;
+
                     // the client is being destroyed and the last peer has disconnected
 
                     // TODO!!!!
@@ -507,8 +498,6 @@ void write_to_peer(RawPeer *peer, SendMessage send)
         if (result.tag == IoResult::Blocked)
             return ReadResult::Blocked;
 
-        // std::cout << "read_message(): READ MESSAGE: " << op->payload.hexhash() << std::endl;
-
         return ReadResult::Read;
     }
     }
@@ -534,7 +523,6 @@ void remove_peer(RawPeer *peer)
         peer->read_op = std::nullopt;
     }
 
-    // std::cout << "closing fd: " << std::to_string(peer->fd) << std::endl;
     close(peer->fd);
     peer->fd = -1;
 
@@ -826,8 +814,6 @@ wait:
 
     while (!connector->recv_buffer.try_dequeue(*msg))
         ; // wait
-
-    // std::cout << "network_connector_recv_sync(): done" << std::endl;
 }
 
 void network_connector_destroy([[maybe_unused]] NetworkConnector *connector)
