@@ -538,7 +538,7 @@ void control_event(ThreadContext *ctx)
                     }};
 
                 for (auto peer : peers)
-                    write_to_peer(peer, send);
+                    write_enqueue(peer, send);
 
                 auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
                 if (tfd < 0)

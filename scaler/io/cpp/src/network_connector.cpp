@@ -87,7 +87,7 @@ void NetworkConnector::send(SendMessage send)
             panic("client: muted");
 
         auto peer = this->peers[0];
-        write_to_peer(peer, send);
+        write_enqueue(peer, send);
     }
     break;
     case ConnectorType::Router:
@@ -97,7 +97,7 @@ void NetworkConnector::send(SendMessage send)
         if (!this->peer_by_id(send.msg.address, &peer))
             break; // routers drop messages
 
-        write_to_peer(peer, send);
+        write_enqueue(peer, send);
     }
     break;
     case ConnectorType::Pub:
@@ -114,7 +114,7 @@ void NetworkConnector::send(SendMessage send)
         // if the socket has no peers, the message is dropped
         // we need to copy the peers because the vector may be modified
         // for (auto peer : std::vector(this->peers))
-        //     write_to_peer(peer, send);
+        //     write_enqueue(peer, send);
     }
     break;
     case ConnectorType::Dealer:
@@ -126,7 +126,7 @@ void NetworkConnector::send(SendMessage send)
         // dealers round-robin their peers
         auto peer = this->peers[this->peer_rr()];
 
-        write_to_peer(peer, send);
+        write_enqueue(peer, send);
     }
     break;
     default:
@@ -369,7 +369,7 @@ ControlFlow epollout_peer(RawPeer *peer)
 
 // note: peer may be in reconnecting state after calling this
 // the peer's EpollData may have been freed
-void write_to_peer(RawPeer *peer, SendMessage send)
+void write_enqueue(RawPeer *peer, SendMessage send)
 {
     peer->queue.push(send);
 

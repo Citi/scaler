@@ -41,7 +41,7 @@ ENUM Transport : uint8_t;
 [[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len);
 [[nodiscard]] ReadResult read_message(int fd, IoOperation *op);
 
-void write_to_peer(RawPeer *peer, SendMessage send);
+void write_enqueue(RawPeer *peer, SendMessage send);
 void reconnect_peer(RawPeer *peer);
 void remove_peer(RawPeer *peer);
 ControlFlow epollin_peer(RawPeer *peer);
