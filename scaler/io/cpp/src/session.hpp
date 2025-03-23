@@ -32,14 +32,13 @@ void complete_peer_connect(RawPeer *peer);
 void network_connector_connect_peer_inner(RawPeer *peer, int address_family, socklen_t len);
 void network_connector_connect_peer(RawPeer *peer);
 
-bool read_identity(RawPeer *peer);
-bool write_identity(RawPeer *peer);
+ControlFlow read_identity(RawPeer *peer);
+ControlFlow write_identity(RawPeer *peer);
 
 // epoll handlers
 void network_connector_send_event(NetworkConnector *connector);
 void network_connector_recv_event(NetworkConnector *connector);
 void network_connector_listener_event(NetworkConnector *connector);
-void network_connector_destroy_timeout(NetworkConnector *connector);
 void network_connector_peer_event_connecting(epoll_event *event);
 void network_connector_peer_event_connected(epoll_event *event);
 void intra_process_recv_event(IntraProcessConnector *connector);
@@ -64,7 +63,6 @@ struct EpollType
         ConnectTimer,
         Control,
         Closed,
-        ConnectorDestroyTimeout,
     };
 
     constexpr EpollType(Value value) : value(value) {}
@@ -131,7 +129,7 @@ struct ThreadContext
     void ensure_timer_armed();
     void add_connector(NetworkConnector *connector);
     void add_peer(RawPeer *peer);
-    void remove_client(NetworkConnector *connector);
+    void remove_connector(NetworkConnector *connector);
     void remove_peer(RawPeer *peer);
 
     // must be called on io-thread

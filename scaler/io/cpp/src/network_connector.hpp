@@ -28,18 +28,17 @@ struct NetworkConnector;
 struct RawPeer;
 struct IoResult;
 struct SendMessage;
-enum class ReadResult;
-enum class WriteResult;
 enum class PeerType;
 enum class PeerState;
+enum class IoState;
 
 ENUM ConnectorType : uint8_t;
 ENUM Transport : uint8_t;
 
 [[nodiscard]] IoResult writeall(int fd, uint8_t *data, size_t len);
-[[nodiscard]] WriteResult write_message(int fd, IoOperation *op);
+[[nodiscard]] IoState write_message(int fd, IoOperation *op);
 [[nodiscard]] IoResult readexact(int fd, uint8_t *buf, size_t len);
-[[nodiscard]] ReadResult read_message(int fd, IoOperation *op);
+[[nodiscard]] IoState read_message(int fd, IoOperation *op);
 
 void write_enqueue(RawPeer *peer, SendMessage send);
 void reconnect_peer(RawPeer *peer);
@@ -108,9 +107,6 @@ struct NetworkConnector
     int recv_buffer_event_fd;                // event fd for recv buffer, only needed for sync clients
     ConcurrentQueue<Message> recv_buffer;    // these are messages that have been received
 
-    int destroy_tfd;
-    std::optional<Completer> destroy; // this is used to wait for the destruction of a client
-
     // must hold mutex
     bool peer_by_id(Bytes id, RawPeer **peer);
     void remove_peer(RawPeer *peer);
@@ -158,30 +154,16 @@ struct RawPeer
     void recv_msg(Bytes payload);
 };
 
-struct IoResult
-{
-    enum Tag
-    {
-        Done,       // the read or write is complete
-        Blocked,    // the operation blocked, but some progress may have been made
-        Disconnect, // the connection was lost
-    } tag;
-
-    size_t n_bytes;
-};
-
-enum class WriteResult
+enum class IoState
 {
     Done,       // the read or write is complete
     Blocked,    // the operation blocked, but some progress may have been made
-    Disconnect, // the connection was lost
+    Closed,     // the peer has closed the connection
+    Reset,      // the connection was reset
 };
 
-enum class ReadResult
+struct IoResult
 {
-    Read,       // data was read
-    Blocked,    // we might have read some data, but the fd blocked
-    Disconnect, // the connection was lost
-    BadMagic,   // the magic didn't match
-    BadType,    // invalid message type
+    IoState tag;
+    size_t n_bytes;
 };

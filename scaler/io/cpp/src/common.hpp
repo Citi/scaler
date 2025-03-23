@@ -28,9 +28,6 @@
 #include <semaphore.h>
 #include <unistd.h>
 
-// 5ca1ab1e = scalable
-static uint8_t MAGIC[4] = {0x5c, 0xa1, 0xab, 0x1e};
-
 // Python callback
 void future_set_result(void *future, void *data);
 
@@ -93,6 +90,9 @@ struct Bytes
 
     void free()
     {
+        if (is_empty())
+            return;
+
         std::free(data);
     }
 
@@ -198,16 +198,8 @@ struct Bytes
     }
 };
 
-ENUM MessageType : uint8_t{
-                       Data = 0,
-                       Identity = 1,
-                       Disconnect = 2,
-                   };
-
 struct Message
 {
-    MessageType type;
-
     // the address the message was received from, or to send to
     //
     // for received messages, the address data is
@@ -423,11 +415,7 @@ struct Completer
     }
 };
 
-ENUM IoProgress : uint8_t{
-                      Magic,
-                      Header,
-                      Type,
-                      Payload};
+ENUM IoProgress : uint8_t{Header, Payload};
 
 // an in-progress io operation
 struct IoOperation
@@ -436,7 +424,6 @@ struct IoOperation
     Completer completer;
     size_t cursor;
 
-    std::optional<MessageType> type;
     uint8_t buffer[4];
     Bytes payload;
 
@@ -453,22 +440,20 @@ struct IoOperation
     static IoOperation read(Completer completer = Completer::none())
     {
         return {
-            .progress = IoProgress::Magic,
+            .progress = IoProgress::Header,
             .completer = completer,
             .cursor = 0,
-            .type = std::nullopt,
             .buffer = {0},
             .payload = Bytes::empty()};
     }
 
     // the payload must live at least as long as the operation does
-    static IoOperation write(Bytes payload, MessageType type = MessageType::Data, Completer completer = Completer::none())
+    static IoOperation write(Bytes payload, Completer completer = Completer::none())
     {
         return {
-            .progress = IoProgress::Magic,
+            .progress = IoProgress::Header,
             .completer = completer,
             .cursor = 0,
-            .type = type,
             .buffer = {0},
             .payload = payload,
         };

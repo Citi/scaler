@@ -12,8 +12,6 @@ std::string EpollType::as_string() const
         return "ConnectorListener";
     case EpollType::ConnectorPeer:
         return "ConnectorPeer";
-    case EpollType::ConnectorDestroyTimeout:
-        return "ConnectorDestroyTimeout";
     case EpollType::IntraProcessConnectorRecv:
         return "IntraProcessConnectorRecv";
     case EpollType::ConnectTimer:
@@ -63,7 +61,7 @@ void ThreadContext::add_peer(RawPeer *peer)
     this->add_epoll(peer->fd, EPOLLIN | EPOLLOUT | EPOLLET, EpollType::ConnectorPeer, peer);
 }
 
-void ThreadContext::remove_client(NetworkConnector *connector)
+void ThreadContext::remove_connector(NetworkConnector *connector)
 {
     this->remove_epoll(connector->send_event_fd);
     this->remove_epoll(connector->recv_event_fd);
@@ -169,11 +167,9 @@ void network_connector_connect_peer_inner(RawPeer *peer, int domain, socklen_t l
     if (res < 0 && errno != EINPROGRESS)
         panic("failed to connect to peer: " + std::to_string(errno));
 
-    peer->state = PeerState::Connecting; // set peer state
-    peer->write_op = IoOperation::write(
-        peer->connector->identity,
-        MessageType::Identity);          // write our identity
-    peer->read_op = IoOperation::read(); // read the peer's identity
+    peer->state = PeerState::Connecting;                            // set peer state
+    peer->write_op = IoOperation::write(peer->connector->identity); // write our identity
+    peer->read_op = IoOperation::read();                            // read the peer's identity
 
     peer->connector->thread->add_peer(peer);
 }
@@ -272,65 +268,49 @@ void network_connector_recv_event(NetworkConnector *connector)
 }
 
 // may call reconnect_peer()
-// true -> ok
-// false -> disconnected
-bool write_identity(RawPeer *peer)
+ControlFlow write_identity(RawPeer *peer)
 {
     auto result = write_message(peer->fd, &*peer->write_op);
 
     switch (result)
     {
-    case WriteResult::Done:
+    case IoState::Done:
         peer->write_op->complete();
         peer->write_op = std::nullopt;
-        return true;
-    case WriteResult::Blocked:
-        return true;
-    case WriteResult::Disconnect:
+        return ControlFlow::Continue;
+    case IoState::Blocked:
+        return ControlFlow::Continue;
+    case IoState::Reset:
         reconnect_peer(peer);
-        return false;
+        return ControlFlow::Break;
+    case IoState::Closed:
+        panic("unreachable"); // never returned by write_message()
     }
 
     panic("unreachable");
 }
 
 // may call reconnect_peer()
-// true -> ok
-// false -> disconnected
-bool read_identity(RawPeer *peer)
+ControlFlow read_identity(RawPeer *peer)
 {
     auto result = read_message(peer->fd, &*peer->read_op);
 
     switch (result)
     {
-    case ReadResult::Read:
-        switch (*peer->read_op->type)
-        {
-        case MessageType::Data:
-            reconnect_peer(peer);
-            return false;
-        case MessageType::Disconnect:
-            remove_peer(peer);
-            delete peer;
-            return false; // explicit disconnect
-        case MessageType::Identity:
-            break;
-        default:
-            panic("unknown message type: " + std::to_string((uint8_t)*peer->read_op->type));
-        }
-
+    case IoState::Done:
         peer->identity = peer->read_op->payload; // set identity
         peer->read_op->complete();               // complete the op
         peer->read_op = std::nullopt;            // reset
-
-        return true;
-    case ReadResult::Blocked:
-        return true;
-    case ReadResult::BadMagic:
-    case ReadResult::BadType:
-    case ReadResult::Disconnect:
+        return ControlFlow::Continue;
+    case IoState::Blocked:
+        return ControlFlow::Continue;
+    case IoState::Reset:
         reconnect_peer(peer);
-        return false;
+        return ControlFlow::Break;
+    case IoState::Closed:
+        remove_peer(peer);
+        delete peer;
+        return ControlFlow::Break;
     }
 
     panic("unreachable");
@@ -370,7 +350,7 @@ void network_connector_listener_event(NetworkConnector *connector)
             // read the peer's identity
             .read_op = IoOperation::read(),
             // write our identity
-            .write_op = IoOperation::write(connector->identity, MessageType::Identity),
+            .write_op = IoOperation::write(connector->identity),
         };
 
         connector->thread->add_peer(peer);
@@ -447,21 +427,10 @@ void network_connector_peer_event(epoll_event *event)
         network_connector_peer_event_connected(event);
 }
 
-void network_connector_destroy_timeout(NetworkConnector *connector)
-{
-    // todo: destroy the client
-    // share code with other places client needs to be destroyed:
-    //  - control_event(), when there's no peers
-    //  - epollout_peer(), when the last peer has disconnected
-
-    connector->destroy->complete();
-}
-
 void connect_timer_event(ThreadContext *ctx)
 {
     for (int i = 0;; i++)
     {
-
         if (timerfd_read2(ctx->connect_timer_tfd) < 0)
         {
             if (errno == EAGAIN)
@@ -507,68 +476,39 @@ void control_event(ThreadContext *ctx)
         case ControlOperation::AddConnector:
 
             ctx->add_connector(request.connector);
-            request.complete();
             break;
         case ControlOperation::DestroyConnector:
-
         {
             auto connector = request.connector;
-            auto &peers = connector->peers;
 
-            if (peers.empty())
-            // todo: remove client from thread
-            // share logic with epollout
+            // make a copy because `connector->peers` will be modified
+            for (RawPeer *peer : std::vector(connector->peers))
             {
-                request.complete();
+                remove_peer(peer);
+                delete peer;
             }
-            else
-            {
-                // this semaphore will be completed
-                // once all the peers have disconnected
-                // or the timeout has been reached <- TODO
-                // and the client has been destroyed
-                connector->destroy = request.completer;
 
-                SendMessage send{
-                    .completer = Completer::none(),
-                    .msg = {
-                        .type = MessageType::Disconnect,
-                        .address = Bytes::empty(),
-                        .payload = Bytes::empty(),
-                    }};
+            ctx->remove_connector(connector);
 
-                for (auto peer : peers)
-                    write_enqueue(peer, send);
+            if (connector->fd > 0)
+                close(connector->fd);
 
-                auto tfd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK);
-                if (tfd < 0)
-                    panic("failed to create timerfd: " + std::to_string(errno));
+            connector->identity.free();
 
-                itimerspec spec{
-                    .it_interval = {
-                        .tv_sec = 0,
-                        .tv_nsec = 0,
-                    },
-                    .it_value = {
-                        .tv_sec = 5,
-                        .tv_nsec = 0,
-                    }};
+            close(connector->send_event_fd);
+            close(connector->recv_event_fd);
+            close(connector->recv_buffer_event_fd);
 
-                if (timerfd_settime(tfd, 0, &spec, NULL) < 0)
-                    panic("failed to arm timer: " + std::to_string(errno));
-
-                connector->destroy_tfd = tfd;
-                ctx->add_epoll(connector->destroy_tfd, EPOLLIN, EpollType::ConnectorDestroyTimeout, connector);
-            }
+            // call the destructor in-place
+            connector->~NetworkConnector();
         }
-
         break;
         case ControlOperation::Connect:
-
             network_connector_connect_peer(request.peer);
-            request.complete();
             break;
         }
+
+        request.complete();
     }
 }
 
@@ -631,7 +571,6 @@ void io_thread_main(ThreadContext *ctx)
             case EpollType::ConnectorSend:             network_connector_send_event(data->connector);      break;  // client send()            ET  
             case EpollType::ConnectorRecv:             network_connector_recv_event(data->connector);      break;  // client recv()            ET
             case EpollType::ConnectorListener:         network_connector_listener_event(data->connector);  break;  // new connection           ET
-            case EpollType::ConnectorDestroyTimeout:   network_connector_destroy_timeout(data->connector); break;  // client destroy timed out LT
             case EpollType::ConnectorPeer:             network_connector_peer_event(&event);               break;  // peer has data            ET
             case EpollType::IntraProcessConnectorRecv: intra_process_recv_event(data->inproc);             break;  // intraprocess recv()      ET
             case EpollType::ConnectTimer:              connect_timer_event(ctx);                           break;  // connect timer            LT

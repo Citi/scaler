@@ -45,7 +45,6 @@ void NetworkConnector::recv_msg(Message message)
     // if there's a waiting recv, complete it immediately
     if (eventfd_wait(this->recv_event_fd) == 0)
     {
-
         void *future;
         while (!this->recv_queue.try_dequeue(future))
             ; // wait
@@ -55,7 +54,6 @@ void NetworkConnector::recv_msg(Message message)
     }
     else if (errno == EAGAIN) // o.w. res < 0
     {
-
         // buffer the message
         this->recv_buffer.enqueue(message);
 
@@ -138,8 +136,6 @@ void NetworkConnector::send(SendMessage send)
 void RawPeer::recv_msg(Bytes payload)
 {
     Message message{
-        .type = MessageType::Data,
-
         // the lifetime of the identity and this message are decoupled
         // so it's important that we clone the data
         .address = Bytes::clone(this->identity),
@@ -151,6 +147,8 @@ void RawPeer::recv_msg(Bytes payload)
 
 // try to write `len` bytes of `data` to `fd`
 // this is a nonblocking operation and may only write some of the bytes
+//
+// never returns IoState::Closed
 [[nodiscard]] IoResult writeall(int fd, uint8_t *data, size_t len)
 {
     size_t total = 0;
@@ -163,13 +161,13 @@ void RawPeer::recv_msg(Bytes payload)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 return {
-                    .tag = IoResult::Blocked,
+                    .tag = IoState::Blocked,
                     .n_bytes = total,
                 };
 
             if (errno == EPIPE || errno == ECONNRESET)
                 return {
-                    .tag = IoResult::Disconnect,
+                    .tag = IoState::Reset,
                     .n_bytes = total,
                 };
 
@@ -181,48 +179,18 @@ void RawPeer::recv_msg(Bytes payload)
     }
 
     return {
-        .tag = IoResult::Done,
+        .tag = IoState::Done,
         .n_bytes = total,
     };
 }
 
 // write a message
 // nonblocking, resumable
-[[nodiscard]] WriteResult write_message(int fd, IoOperation *op)
+// never returns IoState::Closed
+[[nodiscard]] IoState write_message(int fd, IoOperation *op)
 {
     switch (op->progress)
     {
-    case IoProgress::Magic:
-    {
-        auto result = writeall(fd, MAGIC + op->cursor, 4 - op->cursor);
-        op->cursor += result.n_bytes;
-
-        if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked;
-
-        op->progress = IoProgress::Type;
-        op->cursor = 0;
-    }
-        [[fallthrough]];
-    case IoProgress::Type:
-    {
-        uint8_t type[] = {(uint8_t)*op->type};
-
-        auto result = writeall(fd, type, 1);
-
-        if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked;
-
-        op->progress = IoProgress::Header;
-        op->cursor = 0;
-    }
-        [[fallthrough]];
     case IoProgress::Header:
     {
         // serialize the header
@@ -233,11 +201,8 @@ void RawPeer::recv_msg(Bytes payload)
         auto result = writeall(fd, header + op->cursor, 4 - op->cursor);
         op->cursor += result.n_bytes;
 
-        if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked;
+        if (result.tag != IoState::Done)
+            return result.tag;
 
         op->progress = IoProgress::Payload;
         op->cursor = 0;
@@ -248,13 +213,7 @@ void RawPeer::recv_msg(Bytes payload)
         auto result = writeall(fd, op->payload.data + op->cursor, op->payload.len - op->cursor);
         op->cursor += result.n_bytes;
 
-        if (result.tag == IoResult::Disconnect)
-            return WriteResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return WriteResult::Blocked;
-
-        return WriteResult::Done;
+        return result.tag;
     }
     }
 
@@ -272,59 +231,36 @@ ControlFlow epollin_peer(RawPeer *peer)
 
         switch (result)
         {
-        case ReadResult::Blocked:
-
-            return ControlFlow::Continue; // return from fn, note: no way to break loop
-        case ReadResult::Disconnect:
-        case ReadResult::BadMagic:
-        case ReadResult::BadType:
-
+        case IoState::Done:
+            peer->read_op->complete();
+            peer->recv_msg(peer->read_op->payload);
+            peer->read_op = std::nullopt;
+            break;
+        case IoState::Blocked:
+            return ControlFlow::Continue;
+        case IoState::Reset:
             reconnect_peer(peer);
             return ControlFlow::Break;
-        case ReadResult::Read:
-
-            peer->read_op->complete();
-
-            switch (*peer->read_op->type)
-            {
-            case MessageType::Data:
-                peer->recv_msg(peer->read_op->payload);
-
-                // reset the read operation
-                // but don't free the payload;
-                // that's handled when the message is cleaned up
-                peer->read_op = std::nullopt;
-                break;
-            case MessageType::Identity:
-
-                reconnect_peer(peer);
-                return ControlFlow::Break;
-            case MessageType::Disconnect:
-
-                remove_peer(peer);
-                delete peer;
-                return ControlFlow::Break; // exit fn
-            }
+        case IoState::Closed:
+            remove_peer(peer);
+            delete peer;
+            return ControlFlow::Break;
         }
     }
 }
 
-// process the send queue until the socket blocks or the queue is exhausted
+// process the send queue until the socket blocks, the queue is exhausted, or the peer disconnects
 ControlFlow epollout_peer(RawPeer *peer)
 {
-
     for (;;)
     {
         if (!peer->write_op)
         {
             if (peer->queue.empty())
-            {
-
                 return ControlFlow::Continue; // queue exhausted
-            }
 
             auto send = peer->queue.front();
-            peer->write_op = IoOperation::write(send.msg.payload, send.msg.type, send.completer);
+            peer->write_op = IoOperation::write(send.msg.payload, send.completer);
             peer->queue.pop();
         }
 
@@ -332,37 +268,17 @@ ControlFlow epollout_peer(RawPeer *peer)
 
         switch (result)
         {
-        case WriteResult::Blocked:
-
+        case IoState::Done:
+            peer->write_op->complete();
+            peer->write_op = std::nullopt;
+            break;
+        case IoState::Blocked:
             return ControlFlow::Continue;
-        case WriteResult::Disconnect:
-
+        case IoState::Reset:
             reconnect_peer(peer);
             return ControlFlow::Break; // we need to go back to epoll_wait() after calling reconnect_peer()
-        case WriteResult::Done:
-
-            peer->write_op->complete();
-
-            if (peer->write_op->type == MessageType::Disconnect)
-            {
-                remove_peer(peer);
-
-                if (peer->connector->destroy && peer->connector->peers.empty())
-                {
-
-                    // the client is being destroyed and the last peer has disconnected
-
-                    // TODO!!!!
-
-                    peer->connector->destroy->complete();
-                    peer->connector->destroy = std::nullopt;
-                }
-
-                delete peer;
-                return ControlFlow::Break;
-            }
-
-            peer->write_op = std::nullopt;
+        case IoState::Closed:
+            panic("unreachable"); // this is never returned by write_message(); write() cannot detect a graceful disconnect
         }
     }
 }
@@ -393,13 +309,13 @@ void write_enqueue(RawPeer *peer, SendMessage send)
         {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 return {
-                    .tag = IoResult::Blocked,
+                    .tag = IoState::Blocked,
                     .n_bytes = total,
                 };
 
             if (errno == ECONNRESET || errno == EPIPE)
                 return {
-                    .tag = IoResult::Disconnect,
+                    .tag = IoState::Reset,
                     .n_bytes = total,
                 };
 
@@ -410,7 +326,7 @@ void write_enqueue(RawPeer *peer, SendMessage send)
         // graceful disconnect
         if (n == 0)
             return {
-                .tag = IoResult::Disconnect,
+                .tag = IoState::Closed,
                 .n_bytes = total,
             };
 
@@ -418,65 +334,24 @@ void write_enqueue(RawPeer *peer, SendMessage send)
     }
 
     return {
-        .tag = IoResult::Done,
+        .tag = IoState::Done,
         .n_bytes = total,
     };
 }
 
 // read a message
 // nonblocking, resumable
-[[nodiscard]] ReadResult read_message(int fd, IoOperation *op)
+[[nodiscard]] IoState read_message(int fd, IoOperation *op)
 {
     switch (op->progress)
     {
-    case IoProgress::Magic:
-    {
-        auto result = readexact(fd, op->buffer + op->cursor, 4 - op->cursor);
-        op->cursor += result.n_bytes;
-
-        if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked;
-
-        if (std::memcmp(op->buffer, MAGIC, 4) != 0)
-            return ReadResult::BadMagic;
-
-        op->progress = IoProgress::Type;
-        op->cursor = 0;
-    }
-        [[fallthrough]];
-    case IoProgress::Type:
-    {
-        uint8_t type;
-        auto result = readexact(fd, &type, 1);
-
-        if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked;
-
-        if (type > (uint8_t)MessageType::Disconnect)
-            return ReadResult::BadType;
-
-        op->type = (MessageType)type;
-
-        op->progress = IoProgress::Header;
-        op->cursor = 0;
-    }
-        [[fallthrough]];
     case IoProgress::Header:
     {
         auto result = readexact(fd, op->buffer + op->cursor, 4 - op->cursor);
         op->cursor += result.n_bytes;
 
-        if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked;
+        if (result.tag != IoState::Done)
+            return result.tag;
 
         uint32_t len;
         deserialize_u32(op->buffer, &len);
@@ -492,13 +367,7 @@ void write_enqueue(RawPeer *peer, SendMessage send)
         auto result = readexact(fd, op->payload.data + op->cursor, op->payload.len - op->cursor);
         op->cursor += result.n_bytes;
 
-        if (result.tag == IoResult::Disconnect)
-            return ReadResult::Disconnect;
-
-        if (result.tag == IoResult::Blocked)
-            return ReadResult::Blocked;
-
-        return ReadResult::Read;
+        return result.tag;
     }
     }
 
@@ -572,8 +441,6 @@ void network_connector_init(Session *session, NetworkConnector *connector, Trans
         .recv_queue = ConcurrentQueue<void *>(),
         .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
         .recv_buffer = ConcurrentQueue<Message>(),
-        .destroy_tfd = -1,
-        .destroy = std::nullopt,
     };
 
     connector->thread->add_connector(connector);
@@ -731,7 +598,6 @@ void network_connector_send(void *future, NetworkConnector *connector, uint8_t *
     SendMessage send{
         .completer = Completer::future(future),
         .msg = {
-            .type = MessageType::Data,
             .address = {
                 .data = to,
                 .len = to_len,
@@ -762,7 +628,6 @@ void network_connector_send_sync(NetworkConnector *connector, uint8_t *to, size_
     SendMessage send{
         .completer = Completer::semaphore(sem),
         .msg = {
-            .type = MessageType::Data,
             .address = Bytes::copy(to, to_len),
             .payload = Bytes::copy(data, data_len),
         },
@@ -843,7 +708,4 @@ wait:
     if (sem_destroy(sem) < 0)
         panic("failed to destroy semaphore: " + std::to_string(errno));
     std::free(sem);
-
-    // call the destructor in-place
-    connector->~NetworkConnector();
 }
