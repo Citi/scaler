@@ -666,8 +666,12 @@ void network_connector_recv(void *future, NetworkConnector *connector)
 void network_connector_recv_sync(NetworkConnector *connector, Message *msg)
 {
 wait:
-    if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN))
-        panic("fd_wait(): " + std::to_string(code) + " ; " + std::to_string(errno));
+    if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN)) {
+        if (code > 0)
+            return; // sigint, sigquit, or sigterm
+
+        panic("fd_wait(): " + std::to_string(errno));
+    }
 
     if (eventfd_wait(connector->recv_buffer_event_fd) < 0)
     {
