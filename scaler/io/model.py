@@ -9,13 +9,7 @@ __ALL__ = [
     "Protocol",
 ]
 
-import sys
-from os import path
-
-sys.path.append(path.join(path.dirname(__file__), "cpp"))
-from ffi import FFITypes, ffi, lib as C, c_async, Message
-
-sys.path.pop()
+from scaler.io.cpp.ffi import FFITypes, ffi, lib as C, c_async, Message
 
 from enum import IntEnum, unique
 from abc import ABC, abstractmethod

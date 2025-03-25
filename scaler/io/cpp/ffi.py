@@ -1,6 +1,6 @@
 __ALL__ = ["FFITypes", "ffi", "lib", "c_async", "c_async_wrap"]
 
-from cpp import ffi, lib
+from .cpp import ffi, lib
 from cffi import FFI as FFITypes
 
 
