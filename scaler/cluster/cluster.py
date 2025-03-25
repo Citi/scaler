@@ -5,14 +5,15 @@ import signal
 from typing import List, Optional, Tuple
 
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.worker import Worker
+
+from scaler.io.model import TCPAddress
 
 
 class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        address: ZMQConfig,
+        address: TCPAddress,
         worker_io_threads: int,
         worker_names: List[str],
         heartbeat_interval_seconds: int,

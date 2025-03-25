@@ -19,3 +19,9 @@ venv*/
 
 dask-worker-space/*
 .pre-commit-config.yaml
+
+.o
+scaler/io/cpp/build/
+benchmark.py
+benches/**
+*.so

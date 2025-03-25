@@ -1,12 +1,12 @@
 import dataclasses
 
-from scaler.utility.zmq_config import ZMQConfig
 
+from scaler.io.model import TCPAddress
 
 @dataclasses.dataclass
 class SchedulerConfig:
     event_loop: str
-    address: ZMQConfig
+    address: TCPAddress
     io_threads: int
     max_number_of_tasks_waiting: int
     per_worker_queue_size: int

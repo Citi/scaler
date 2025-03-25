@@ -7,13 +7,14 @@ from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.scheduler import Scheduler, scheduler_main
 from scaler.utility.event_loop import register_event_loop
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
+
+from scaler.io.model import TCPAddress
 
 
 class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: ignore[misc]
     def __init__(
         self,
-        address: ZMQConfig,
+        address: TCPAddress,
         io_threads: int,
         max_number_of_tasks_waiting: int,
         per_worker_queue_size: int,

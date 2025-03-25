@@ -13,7 +13,6 @@ from scaler.utility.formatter import (
     format_percentage,
     format_seconds,
 )
-from scaler.utility.zmq_config import ZMQConfig
 
 SORT_BY_OPTIONS = {
     ord("n"): "worker",

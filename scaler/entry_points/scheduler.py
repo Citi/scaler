@@ -17,12 +17,13 @@ from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.scheduler import scheduler_main
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
+
+from scaler.io.model import Address
 
 
 def get_args():
     parser = argparse.ArgumentParser("scaler scheduler", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
+    parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads")
     parser.add_argument(
         "--max-number-of-tasks-waiting",
         "-mt",
@@ -102,7 +103,7 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-path",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument("address", type=Address.from_str, help="scheduler address to connect to")
     return parser.parse_args()
 
 
