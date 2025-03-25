@@ -15,6 +15,9 @@ class LibType:
     IntraProcess: int
     InterProcess: int
 
+    AlreadyBound: int
+    InvalidAddress: int
+
     def session_init(session: "FFITypes.CData", num_threads: int) -> None:
         (session, num_threads)
 
@@ -27,7 +30,7 @@ class LibType:
     def connector_init(session: "FFITypes.CData", connector: "FFITypes.CData", transport: int, type_: int, identity: bytes, len: int) -> None:
         (session, connector, transport, type_, identity, len)
 
-    def connector_bind(connector: "FFITypes.CData", host: bytes, port: int) -> None:
+    def connector_bind(connector: "FFITypes.CData", host: bytes, port: int) -> "FFITypes.CData":
         (connector, host, port)
 
     def connector_connect(connector: "FFITypes.CData", host: bytes, port: int) -> None:

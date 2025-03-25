@@ -46,13 +46,13 @@ void remove_peer(RawPeer *peer);
 ControlFlow epollin_peer(RawPeer *peer);
 ControlFlow epollout_peer(RawPeer *peer);
 
-void network_connector_bind_tcp(NetworkConnector *connector, const char *host, uint16_t port);
-void network_connector_bind_unix(NetworkConnector *connector, const char *path);
+Status network_connector_bind_tcp(NetworkConnector *connector, const char *host, uint16_t port);
+Status network_connector_bind_unix(NetworkConnector *connector, const char *path);
 
 // -- interface --
 
 void network_connector_init(Session *session, NetworkConnector *connector, Transport transport, ConnectorType type, uint8_t *identity, size_t len);
-void network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port);
+Status network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port);
 void network_connector_connect(NetworkConnector *connector, const char *addr, uint16_t port);
 void network_connector_send(void *future, NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
 void network_connector_send_sync(NetworkConnector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);

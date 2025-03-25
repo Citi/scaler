@@ -31,6 +31,10 @@
 // Python callback
 void future_set_result(void *future, void *data);
 
+#define PROPAGATE(expr) \
+    if (auto status = (expr); status.type != ErrorType::Ok) \
+        return status;
+
 // this is an unrecoverable error that exits the program
 // prints a message plus the source location
 [[noreturn]] void panic(
@@ -456,6 +460,52 @@ struct IoOperation
             .cursor = 0,
             .buffer = {0},
             .payload = payload,
+        };
+    }
+};
+
+ENUM Code{
+    AlreadyBound,
+    InvalidAddress};
+
+ENUM ErrorType{
+    Ok,
+    Logical,
+    Errno};
+
+struct Status
+{
+    ErrorType type;
+    const char *message;
+    union
+    {
+        Code code;
+        int no;
+    };
+
+    static Status ok()
+    {
+        return {
+            .type = ErrorType::Ok,
+            .message = NULL,
+            .code = (Code)0};
+    }
+
+    static Status from_code(Code code, const char *message = NULL)
+    {
+        return {
+            .type = ErrorType::Logical,
+            .message = message,
+            .code = code,
+        };
+    }
+
+    static Status from_errno(const char *message = NULL, int err = errno)
+    {
+        return {
+            .type = ErrorType::Errno,
+            .message = message,
+            .no = err,
         };
     }
 };

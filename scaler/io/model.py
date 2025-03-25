@@ -10,6 +10,7 @@ __ALL__ = [
 ]
 
 from scaler.io.cpp.ffi import FFITypes, ffi, lib as C, c_async, Message
+from scaler.io.errors import check_status
 
 from enum import IntEnum, unique
 from abc import ABC, abstractmethod
@@ -194,7 +195,7 @@ class Connector:
             case IntraProcessAddress():
                 host, port = addr.name, 0
 
-        C.connector_bind(self._obj, host.encode(), port)
+        check_status(C.connector_bind(self._obj, host.encode(), port))
 
     def connect(self, addr: Address) -> None:
         self.__check_destroyed()

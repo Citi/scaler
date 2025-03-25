@@ -446,7 +446,7 @@ void network_connector_init(Session *session, NetworkConnector *connector, Trans
     connector->thread->add_connector(connector);
 }
 
-void network_connector_bind_tcp(NetworkConnector *connector, const char *host, uint16_t port)
+Status network_connector_bind_tcp(NetworkConnector *connector, const char *host, uint16_t port)
 {
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));
@@ -454,14 +454,14 @@ void network_connector_bind_tcp(NetworkConnector *connector, const char *host, u
     connector->fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
     if (connector->fd < 0)
-        panic("failed to create tcp socket: " + std::to_string(errno));
+        return Status::from_errno("failed to create tcp socket");
 
     set_sock_opts(connector->fd);
 
     in_addr_t in_addr = strcmp(host, "*") ? inet_addr(host) : INADDR_ANY;
 
     if (in_addr == INADDR_NONE)
-        panic("failed to parse address: " + std::string(host));
+        return Status::from_code(Code::InvalidAddress);
 
     *(sockaddr_in *)&address = {
         .sin_family = AF_INET,
@@ -474,15 +474,12 @@ void network_connector_bind_tcp(NetworkConnector *connector, const char *host, u
     connector->addr = address;
 
     if (bind(connector->fd, (sockaddr *)&address, sizeof(sockaddr_in)) < 0)
-    {
-        if (errno == EADDRINUSE)
-            panic("address in use: " + std::string(host) + ":" + std::to_string(port));
+        return Status::from_errno("failed to bind socket");
 
-        panic("failed to bind socket: " + std::to_string(errno));
-    }
+    return Status::ok();
 }
 
-void network_connector_bind_unix(NetworkConnector *connector, const char *path)
+Status network_connector_bind_unix(NetworkConnector *connector, const char *path)
 {
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));
@@ -490,11 +487,11 @@ void network_connector_bind_unix(NetworkConnector *connector, const char *path)
     connector->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0);
 
     if (connector->fd < 0)
-        panic("failed to create unix socket: " + std::to_string(errno));
+        return Status::from_errno("failed to create unix socket");
 
     // remove the previous lock from the fs
     if (unlink(path) < 0 && errno != ENOENT)
-        panic("failed to unlink unix socket: " + std::to_string(errno));
+        return Status::from_errno("failed to unlink previous unix socket");
 
     auto addr_un = (sockaddr_un *)&address;
 
@@ -505,13 +502,15 @@ void network_connector_bind_unix(NetworkConnector *connector, const char *path)
     std::strncpy(addr_un->sun_path, path, sizeof(addr_un->sun_path) - 1);
 
     if (bind(connector->fd, (sockaddr *)addr_un, sizeof(sockaddr_un)) < 0)
-        panic("failed to bind socket: " + std::to_string(errno));
+        return Status::from_errno("failed to bind unix socket");
+
+    return Status::ok();
 }
 
-void network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port)
+Status network_connector_bind(NetworkConnector *connector, const char *host, uint16_t port)
 {
     if (connector->fd > 0)
-        panic("connector already bound");
+        return Status::from_code(Code::AlreadyBound);
 
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));
@@ -519,19 +518,22 @@ void network_connector_bind(NetworkConnector *connector, const char *host, uint1
     switch (connector->transport)
     {
     case Transport::TCP:
-        network_connector_bind_tcp(connector, host, port);
+        PROPAGATE(network_connector_bind_tcp(connector, host, port));
         break;
     case Transport::InterProcess:
-        network_connector_bind_unix(connector, host);
+        PROPAGATE(network_connector_bind_unix(connector, host));
         break;
     case Transport::IntraProcess:
+        // panic: it should be impossible for this code to be reached no matter what Python does
         panic("Client does not support IntraProcess transport");
     }
 
     if (listen(connector->fd, 16) < 0)
-        panic("failed to listen on socket");
+        return Status::from_errno();
 
     connector->thread->add_epoll(connector->fd, EPOLLIN | EPOLLET, EpollType::ConnectorListener, connector);
+
+    return Status::ok();
 }
 
 void network_connector_connect(NetworkConnector *connector, const char *addr, uint16_t port)
@@ -666,7 +668,8 @@ void network_connector_recv(void *future, NetworkConnector *connector)
 void network_connector_recv_sync(NetworkConnector *connector, Message *msg)
 {
 wait:
-    if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN)) {
+    if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN))
+    {
         if (code > 0)
             return; // sigint, sigquit, or sigterm
 

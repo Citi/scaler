@@ -41,10 +41,10 @@ void intra_process_init(Session *session, IntraProcessConnector *connector, uint
     session->intra_process_mutex.unlock();
 }
 
-void intra_process_bind(IntraProcessConnector *connector, const char *addr)
+Status intra_process_bind(IntraProcessConnector *connector, const char *addr)
 {
     if (connector->bind)
-        panic("connector already bound");
+        return Status::from_code(Code::AlreadyBound);
 
     std::string bind(addr);
 
@@ -59,7 +59,7 @@ void intra_process_bind(IntraProcessConnector *connector, const char *addr)
             continue;
 
         if (other->bind == bind)
-            panic("intra_process_bind(): address already in use");
+            return Status::from_errno("intraprocess address already in use", EADDRINUSE);
     }
 
     // set the bind address
@@ -80,11 +80,13 @@ void intra_process_bind(IntraProcessConnector *connector, const char *addr)
             connector->peer = other;
 
             if (eventfd_signal(other->unmuted_event_fd) < 0)
-                panic("intra_process_bind(): failed to signal unmuted_event_fd");
+                return Status::from_errno("intraprocess failed to signal unmuted_event_fd");
         }
     }
 
     connector->session->intra_process_mutex.unlock();
+
+    return Status::ok();
 }
 
 void intra_process_connect(IntraProcessConnector *connector, const char *addr)

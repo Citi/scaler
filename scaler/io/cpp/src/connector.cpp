@@ -54,7 +54,7 @@ void connector_connect(Connector *connector, const char *host, uint16_t port)
     }
 }
 
-void connector_bind(Connector *connector, const char *host, uint16_t port)
+Status connector_bind(Connector *connector, const char *host, uint16_t port)
 {
     switch (connector->type)
     {
