@@ -53,3 +53,4 @@ class TestExamples(unittest.TestCase):
         assert(os.system("PYTHONPATH=. python examples/simple_client.py") == 0)
         assert(os.system("PYTHONPATH=. python examples/graphtask_client.py") == 0)
         assert(os.system("PYTHONPATH=. python examples/map_client.py") == 0)
+        assert(os.system("PYTHONPATH=. python examples/send_object_client.py") == 0)
