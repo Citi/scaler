@@ -5,31 +5,30 @@ Quickstart
 When to use it
 --------------
 
-Scaler is inspired by dask and meant to be yet another parallel backend. It handles the communication between a Client, Scheduler, and Workers to orchestrate the execution of tasks. It is a good fit to scale out compute heavy jobs that are running too slow. Even on a local machine, slow jobs can be speed up through parallelization.
-
+Scaler is inspired by Dask and functions like other parallel backends. It handles the communication between the Client, Scheduler, and Workers to orchestrate the execution of tasks. It is a good fit for scaling compute-heavy jobs across multiple machines, or even on a local machine using process-level parallelization.
 
 Architecture
 ------------
 
-Below is a diagram of the relationship of the Client, Scheduler, and Workers.
+Below is a diagram of the relationship between the Client, Scheduler, and Workers.
 
 .. image:: images/architecture.png
    :width: 600
 
 
 * The Client submits tasks to the scheduler. This is the primary user-facing API.
-* The Client is responsible for define how to serialize the tasks
-* The Scheduler distributes the tasks to the workers
+* The Client is responsible for serializing the tasks
+* The Scheduler receives tasks from the client and distributes the tasks among the workers
 * Workers perform the computation and return the results
 
 .. note::
-    Though the architecture is similar to Dask, Scaler has a stronger decoupling of these systems. For example, the Client doesn't directly see the number of workers. There is a stronger separation of concerns.
+    Although the architecture is similar to Dask, Scaler has a better decoupling of these systems and separation of concerns. For example, the Client only knows about the Scheduler and doesn't directly see the number of workers.
 
 
-Setup
+Installation
 -----
 
-First, add the ``scaler`` package to your *requirements.txt* file, or install it using PIP:
+The `scaler` package is available on PyPI and can be installed using any compatible package manager.
 
 .. code:: bash
 
