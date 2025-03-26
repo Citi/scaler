@@ -68,6 +68,11 @@ def get_args():
     )
     parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
     parser.add_argument("service_name", type=str, help="symphony service name")
+    parser.add_argument(
+        "worker_queue_size",
+        type=int,
+        help="specify the queue size for the worker",
+    )
     return parser.parse_args()
 
 
@@ -89,6 +94,7 @@ def main():
         death_timeout_seconds=args.death_timeout_seconds,
         event_loop=args.event_loop,
         io_threads=args.io_threads,
+        queue_size=args.worker_queue_size,
     )
 
     def destroy(*args):

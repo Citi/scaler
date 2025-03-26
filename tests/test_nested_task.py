@@ -15,7 +15,7 @@ class TestNestedTask(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
         self.address = "tcp://127.0.0.1:23456"
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=N_WORKERS, event_loop="builtin")
+        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=N_WORKERS, workers_queue_sizes=[N_TASKS for _ in range(0, N_WORKERS)] ,event_loop="builtin")
 
     def tearDown(self) -> None:
         self.cluster.shutdown()

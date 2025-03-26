@@ -27,7 +27,8 @@ class TestGraph(unittest.TestCase):
         setup_logger()
         logging_test_name(self)
         self.address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
-        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=3, event_loop="builtin")
+        QUEUE_SIZE = 100
+        self.cluster = SchedulerClusterCombo(address=self.address, n_workers=3, workers_queue_sizes=[QUEUE_SIZE for _ in range(0, 3)], event_loop="builtin")
 
     def tearDown(self) -> None:
         self.cluster.shutdown()

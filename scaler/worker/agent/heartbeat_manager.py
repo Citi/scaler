@@ -12,7 +12,7 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
 class VanillaHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self):
+    def __init__(self, queue_size: int):
         self._agent_process = psutil.Process()
 
         self._connector_external: Optional[AsyncConnector] = None
@@ -22,6 +22,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
 
         self._start_timestamp_ns = 0
         self._latency_us = 0
+        self._queue_size = queue_size
 
     def register(
         self,
@@ -70,6 +71,7 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
                 self._latency_us,
                 self._processor_manager.can_accept_task(),
                 [self.__get_processor_status_from_holder(processor) for processor in processors],
+                self._queue_size,
             )
         )
         self._start_timestamp_ns = time.time_ns()
