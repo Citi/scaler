@@ -26,7 +26,7 @@ Below is a diagram of the relationship between the Client, Scheduler, and Worker
 
 
 Installation
------
+------------
 
 The `scaler` package is available on PyPI and can be installed using any compatible package manager.
 
@@ -42,11 +42,9 @@ First Look (Code API)
 Client.map
 ----------
 
-In the example below, we spin up the ``SchedulerClusterCombo`` by giving the scheduler address along with the number of
-workers. The `Client` then connects to the scheduler address.
+``Client.map()`` allows us to submit a batch of tasks to execute in parallel by pairing a function with a list of inputs. 
 
-if user have series tasks for the same function, ``client.map()`` is used to pass that function and list of arguments to
-the scheduler.
+In the example below, we spin up a scheduler and some workers on the local machine using ``SchedulerClusterCombo``. We create the scheduler with a localhost address, and then pass that address to the client so that it can connect. We then use ``Client.map()`` to submit tasks.
 
 .. code:: python
 
@@ -77,8 +75,7 @@ the scheduler.
 Client.submit
 -------------
 
-There is another way of to submit task to the scheduler: ``client.submit()``, which is used to submit a single function
-and arguments, the results will be lazily retrieved on the first call to result()
+There is another way of to submit task to the scheduler: ``Client.submit()``, which is used to submit a single function and arguments. The results will be lazily retrieved on the first call to ``result()``.
 
 
 .. code:: python
@@ -101,7 +98,6 @@ and arguments, the results will be lazily retrieved on the first call to result(
 
         with Client(address=address) as client:
             future = client.submit(calculate, argument)
-            print(f"random picked argument: {argument}")
             print(f"double_it(arg={argument}): {future.result()}")
 
         cluster.shutdown()
@@ -111,13 +107,10 @@ and arguments, the results will be lazily retrieved on the first call to result(
         main()
 
 
-Anti-patterns
--------------
+Things to Avoid
+---------------
 
-please note that the ``client.submit()`` is used to submit a single function and arguments, if you want submit same
-function with many arguments, use ``client.map()``. otherwise it will be extremely slow, because it will serialize the
-function every single time when ``client.submit()`` get called, following is exactly the anti pattern, if you have a
-heavy function
+please note that the ``client.submit()`` method is used to submit a single task. If you wish to submit multiple tasks using the same function but with many sets of arguments, use ``client.map()`` instead to avoid unnecessary serialization overhead. The following is an example `what not to do`.
 
 .. code:: python
 
@@ -127,7 +120,6 @@ heavy function
     from scaler import Client, SchedulerClusterCombo
 
     def lookup(heavy_map: bytes, index: int):
-        # assume this function has
         return index * 1
 
 
@@ -136,12 +128,13 @@ heavy function
 
         cluster = SchedulerClusterCombo(address=address, n_workers=3)
 
-        # assume you are packing a heavy function
+        # a heavy function that is expensive to serialize
         big_func = functools.partial(lookup, b"1" * 5_000_000_000)
 
         arguments = [random.randint(0, 100) for _ in range(100)]
 
         with Client(address=address) as client:
+            # we incur serialization overhead for every call to client.submit -- use client.map instead
             futures = [client.submit(big_func, i) for i in arguments]
             print([fut.result() for fut in futures])
 
@@ -152,15 +145,15 @@ heavy function
         main()
 
 
-This will be extremely slow, because it will serialize the function every single time when ``client.submit()`` get
-called. Also only when ``fut.result()`` get called, it will reach to the scheduler to get actual result. It will get
-even worse if your function is very heavy (like enclosed with heavy objects), consider use ``client.send_object`` to
-send the heavy object to the scheduler, and use ``client.submit`` to submit the function with the object reference.
+This will be extremely slow, because it will serialize the argument function ``big_func()`` each time ``client.submit()`` is called.
+
+Function may also be 'heavy' if they accept large objects as arguments. In this case, consider using ``client.send_object()`` to send the object to the scheduler, and then later use ``client.submit()`` to submit the function.
 
 Spinning up Scheduler and Cluster Separately
 --------------------------------------------
 
 The scheduler and workers can be spun up independently through the CLI.
+Here we use localhost addresses for demonstration, however the scheduler and workers can be started on different machines.
 
 .. code:: bash
 
@@ -200,7 +193,7 @@ The scheduler and workers can be spun up independently through the CLI.
     [INFO]2023-03-19 12:19:19-0400: Worker[9] started
 
 
-From here, connect the Python Client and begin submitting work
+From here, connect the Python Client and begin submitting tasks:
 
 .. code:: python
 
