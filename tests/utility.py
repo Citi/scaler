@@ -1,5 +1,4 @@
 import logging
-import socket
 import unittest
 
 def logging_test_name(obj: unittest.TestCase):
