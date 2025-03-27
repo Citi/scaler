@@ -5,7 +5,7 @@ import time
 import unittest
 from concurrent.futures import CancelledError
 
-from tests.utility import get_available_tcp_port, logging_test_name
+from tests.utility import logging_test_name
 
 from scaler import Client, SchedulerClusterCombo
 from scaler.utility.exceptions import MissingObjects, ProcessorDiedError

@@ -2,7 +2,8 @@ import os
 import time
 import unittest
 
-from tests.utility import get_available_tcp_port, logging_test_name
+from tests.utility import logging_test_name
+from scaler.utility.network_util import get_available_tcp_port
 
 from scaler import Client, Cluster, SchedulerClusterCombo
 from scaler.utility.logging.utility import setup_logger

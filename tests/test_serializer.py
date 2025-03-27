@@ -5,7 +5,8 @@ import unittest
 from typing import Any
 
 import cloudpickle
-from tests.utility import get_available_tcp_port, logging_test_name
+from tests.utility import logging_test_name
+from scaler.utility.network_util import get_available_tcp_port
 
 from scaler import Client, SchedulerClusterCombo, Serializer
 from scaler.utility.logging.scoped_logger import ScopedLogger
