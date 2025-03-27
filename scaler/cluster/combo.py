@@ -21,13 +21,14 @@ from scaler.io.config import (
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
 from scaler.utility.zmq_config import ZMQConfig
+from scaler.utility.network_util import get_available_tcp_port
 
 
 class SchedulerClusterCombo:
     def __init__(
         self,
-        address: str,
         n_workers: int,
+        address: Optional[str] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
         max_number_of_tasks_waiting: int = DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
@@ -49,6 +50,8 @@ class SchedulerClusterCombo:
         logging_level: str = "INFO",
         logging_config_file: Optional[str] = None,
     ):
+        if address == None:
+            address = f"tcp://127.0.0.1:{get_available_tcp_port()}"
         self._cluster = Cluster(
             address=ZMQConfig.from_string(address),
             worker_io_threads=worker_io_threads,
@@ -80,6 +83,8 @@ class SchedulerClusterCombo:
             logging_config_file=logging_config_file,
         )
 
+        self._address = address
+
         self._cluster.start()
         self._scheduler.start()
         logging.info(f"{self.__get_prefix()} started")
@@ -93,6 +98,9 @@ class SchedulerClusterCombo:
         self._scheduler.terminate()
         self._cluster.join()
         self._scheduler.join()
+
+    def get_address(self) -> str:
+        return self._address 
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}:"
