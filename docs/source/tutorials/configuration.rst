@@ -16,7 +16,7 @@ For the list of available settings, use the CLI command:
 
 .. _protected:
 
-The Scheduler is started in protected mode by default, which means that it can not be shut down by the Client. This is because multiple Clients can connect to a long-running Scheduler, and calling ``Client.shutdown()`` may inadverdently kill work that another user is executing. This is also because Scaler encourages strong decoupling between Client, Schedule, and Workers. To turn off protected mode, start the scheduler with:
+The Scheduler is started in protected mode by default, which means that it can not be shut down by the Client. This is because multiple Clients can connect to a long-running Scheduler, and calling ``Client.shutdown()`` may inadverdently kill work that another user is executing. This is also because Scaler encourages strong decoupling between Client, Scheduler, and Workers. To turn off protected mode, start the scheduler with:
 
 .. code:: bash
 
