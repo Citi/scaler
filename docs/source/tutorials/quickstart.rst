@@ -147,7 +147,7 @@ please note that the ``client.submit()`` method is used to submit a single task.
 
 This will be extremely slow, because it will serialize the argument function ``big_func()`` each time ``client.submit()`` is called.
 
-Function may also be 'heavy' if they accept large objects as arguments. In this case, consider using ``client.send_object()`` to send the object to the scheduler, and then later use ``client.submit()`` to submit the function.
+Functions may also be 'heavy' if they accept large objects as arguments. In this case, consider using ``client.send_object()`` to send the object to the scheduler, and then later use ``client.submit()`` to submit the function.
 
 Spinning up Scheduler and Cluster Separately
 --------------------------------------------
