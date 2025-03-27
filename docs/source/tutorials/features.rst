@@ -46,7 +46,7 @@ Which will show an interface similar to the standard Linux `top` command:
 * `task_manager` section shows the status of tasks
 * `scheduler_sent` section counts the number of each type of message sent by the scheduler
 * `scheduler_received` section counts the number of each type of message received by the scheduler
-* `worker` section shows worker details, you can use shortcuts to sort by columns, and the char * on column header shows which column is being used for sorting
+* `worker` section shows worker details, you can use shortcuts to sort by columns, and the * in the column header shows which column is being used for sorting
 
   * `agt_cpu/agt_rss` means cpu/memory usage of the worker agent
   * `cpu/rss` means cpu/memory usage of the worker
