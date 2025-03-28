@@ -261,13 +261,11 @@ Below is an example implementation of a custom serializer that uses a different 
             obj_type = ObjType(payload[0])
             payload = payload[1:]
 
-            match obj_type:
-                case ObjType.DataFrame:
-                    buf = BytesIO(payload)
-                    return pd.read_parquet(buf)
+            if obj_type == ObjType.DataFrame:
+                buf = BytesIO(payload)
+                return pd.read_parquet(buf)
 
-                case ObjType.Integer:
-                    return struct.unpack("I", payload)[0]
+            if obj_type == ObjType.Integer:
+                return struct.unpack("I", payload)[0]
 
-                case _:
-                    return cloudpickle.loads(payload)
+            return cloudpickle.loads(payload)
