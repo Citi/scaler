@@ -1,17 +1,32 @@
-import math
-import random
 from scaler import Client
-from scaler.client import future
+from scaler.client.client import Client
+from scaler.cluster.combo import SchedulerClusterCombo
 
-data = [random.randint(1, 100) for _ in range(10)]
 
-with Client(address="tcp://127.0.0.1:2345") as client:
-    results = client.map(math.sqrt, [(x,) for x in data])
-    result = sum(results)
-    # release resources and gracefully disconnect
-    if result < 62:
-        client.clear()
-        client.disconnect()
-    # Do other work
-    else:
-        print(result)
+# This example shows how to clear resources owned by a client
+# and how to disconnect a client from scheduler.
+def main():
+    cluster = SchedulerClusterCombo(n_workers=10)
+    client = Client(address=cluster.get_address())
+    # Client.clear will clear all computation resources owned
+    # by the client. All unfinished tasks will be cancelled,
+    # and all object reference will be invalidated.
+    # The client can reinstall tasks as it wishes.
+    client.clear()
+
+    # Once disconnect is called, this client is invalidated, and
+    # no tasks can be installed on this client. Should the user
+    # wish to initiate more tasks, they should instantiate another
+    # Client.
+    # The scheduler's running state will not be affected by the method.
+    client.disconnect()
+
+    # The user may also choose to shutdown the scheduler while disconnecting
+    # client from the scheduler. Such a request is not guaranteed to succeed,
+    # scheduler can only be closed when it is not running under "protected"
+    # mode.
+    # client.shutdown()
+
+
+if __name__ == "__main__":
+    main()
