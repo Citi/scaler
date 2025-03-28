@@ -21,3 +21,6 @@ Make sure scheduler and cluster are set up before running clients.
     Shows how to initialize a Scheduler
 - simple_cluster.py
     Shows how to initialize a Cluster
+
+```{include} disconnect_client.py
+```
