@@ -1,3 +1,8 @@
+"""
+This example shows how to instantiate a Cluster programmatically.
+For how to instantiate a Scheduler, read simple_scheduler.py
+"""
+
 from scaler import Cluster
 from scaler.io.config import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
@@ -10,17 +15,11 @@ from scaler.io.config import (
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.zmq_config import ZMQConfig
 
-"""
-This example shows how to instantiate a Cluster programmatically.
-For how to instantiate a Scheduler, read simple_scheduler.py
-"""
-
 
 def main():
     N_WORKERS = 8
     # Initialize a Cluster as following.
-    # You may find more information in the file where all these GLOBALs
-    # are defined.
+    # You may find more information in the file where all these GLOBALs are defined.
     cluster = Cluster(
         worker_io_threads=1,
         address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
@@ -37,19 +36,16 @@ def main():
         logging_config_file=None,
     )
 
-    # Calling Cluster.start starts a cluster.
-    # cluster will start to accept tasks from scheduler after this call.
+    # Calling Cluster.start starts a cluster. cluster will start to accept tasks from scheduler after this call.
     cluster.start()
 
-    # Cluster are long running until Cluster.terminate is called.
-    # Should you wish to shutdown a cluster, call this method first.
-    # Another choice is to kill cluster, which can be done by calling
-    # Cluter.kill, which is a more "brutal" way to stop cluster.
+    # Cluster are long running until Cluster.terminate is called. Should you wish to shutdown a cluster, call this
+    # method first. Another choice is to kill cluster, which can be done by calling Cluter.kill, which is a more
+    # "brutal" way to stop cluster.
     cluster.terminate()
 
-    # Wait for the subprocess (initiated by Cluster.start) to join.
-    # This method must be called before Cluster.close is called.
-    # This method will not return unless Cluster.terminate is called.
+    # Wait for the subprocess (initiated by Cluster.start) to join This method must be called before Cluster.close is
+    # called. This method will not return unless Cluster.terminate is called.
     cluster.join()
 
     # Final step of closing a Cluster. The cluster must be joined first.

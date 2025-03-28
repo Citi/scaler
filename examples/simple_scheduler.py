@@ -1,3 +1,5 @@
+"""This example shows how to write instantiate a scheduler programmatically."""
+
 from scaler import Scheduler
 from scaler.io.config import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
@@ -14,16 +16,13 @@ from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.zmq_config import ZMQConfig
 
 
-# This example shows how to write instantiate a scheduler programmatically.
 def main():
     # First we need a SchedulerConfig as the parameter to Scheduler's ctor.
 
-    # scaler provides a set of default to use. Kindly follow the comments
-    # there for detailed explanations.
-    # Note, these defaults aims to be a starting point. You should change
-    # the defaults according to your use case. Arguments that you would
-    # change are most likely "event_loop", "io_threads", "protected",
-    # and "per_worker_queue_size".
+    # scaler provides a set of default to use. Kindly follow the comments there for detailed explanations.
+    # Note, these defaults aims to be a starting point. You should change the defaults according to your use case.
+    # Arguments that you would change are most likely "event_loop", "io_threads", "protected", and
+    # "per_worker_queue_size".
     config = SchedulerConfig(
         event_loop="builtin",  # Either "builtin", or "uvloop"
         address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
@@ -38,11 +37,9 @@ def main():
         protected=False,  # When =False, client can shutdown scheduler.
     )
 
-    # Then we put config into Scheduler
-    # Unlike Cluster, scheduler should always be long running.
-    # Therefore, we don't provide API to close scheduler.
-    # The only way to shutdown a scheduler is through Client.shutdown,
-    # which shutdowns the scheduler if "protected" member variable is set to False
+    # Then we put config into Scheduler. Unlike Cluster, scheduler should always be long running. Therefore, we don't
+    # provide API to close scheduler. The only way to shutdown a scheduler is through Client.shutdown, which shutdowns
+    # the scheduler if "protected" member variable is set to False
     _ = Scheduler(config)
 
 

@@ -1,3 +1,5 @@
+"""This example shows how to utilize graph task functionality provided by scaler."""
+
 from scaler import Client
 from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
@@ -15,8 +17,7 @@ def minus(a, b):
     return a - b
 
 
-# graph is defined to be a dict with str as key type and
-# val_t as value type, where val_t is defined as follows:
+# graph is defined to be a dict with str as key type and val_t as value type, where val_t is defined as follows:
 # Union[Any, Tuple[Union[Callable, str], ...]
 # Each value can be one of the following things:
 # - a basic data type (int, List, etc.),
@@ -31,12 +32,6 @@ graph = {
     "e": (minus, "d", "c"),  # e = d - c = 4 - 3 = 1
     "f": add,
 }
-
-
-"""
-This example shows how to utilize graph task functionality
-provided by scaler.
-"""
 
 
 def main():
