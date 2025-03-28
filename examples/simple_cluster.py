@@ -1,14 +1,4 @@
-
 from scaler import Cluster
-from scaler.utility.logging.utility import LoggingLevel
-from scaler.utility.network_util import get_available_tcp_port
-
-from scaler import SchedulerClusterCombo
-from scaler import Scheduler
-from scaler.scheduler.config import SchedulerConfig
-from scaler.utility.zmq_config import ZMQConfig
-from scaler.utility.network_util import get_available_tcp_port
-
 from scaler.io.config import (
     DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
     DEFAULT_HARD_PROCESSOR_SUSPEND,
@@ -17,6 +7,9 @@ from scaler.io.config import (
     DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
     DEFAULT_WORKER_DEATH_TIMEOUT,
 )
+from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.zmq_config import ZMQConfig
+
 
 # This example shows how to instantiate a Cluster programmatically.
 # For how to instantiate a Scheduler, read simple_scheduler.py
@@ -35,9 +28,9 @@ def main():
         garbage_collect_interval_seconds=DEFAULT_GARBAGE_COLLECT_INTERVAL_SECONDS,
         trim_memory_threshold_bytes=DEFAULT_TRIM_MEMORY_THRESHOLD_BYTES,
         hard_processor_suspend=DEFAULT_HARD_PROCESSOR_SUSPEND,
-        event_loop="builtin", # Or "uvloop"
+        event_loop="builtin",  # Or "uvloop"
         logging_paths=("/dev/stdout",),
-        logging_level="DEBUG", # other choices are "INFO", "WARNING", "ERROR", "CRITICAL"
+        logging_level="DEBUG",  # other choices are "INFO", "WARNING", "ERROR", "CRITICAL"
         logging_config_file=None,
     )
 
