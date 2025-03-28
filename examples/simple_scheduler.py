@@ -17,19 +17,6 @@ from scaler.utility.zmq_config import ZMQConfig
 # This example shows how to write instantiate a scheduler programmatically.
 def main():
     # First we need a SchedulerConfig as the parameter to Scheduler's ctor.
-    # Below is the definition of SchedulerConfig.
-    # class SchedulerConfig:
-    #     event_loop: str
-    #     address: ZMQConfig
-    #     io_threads: int
-    #     max_number_of_tasks_waiting: int
-    #     per_worker_queue_size: int
-    #     client_timeout_seconds: int
-    #     worker_timeout_seconds: int
-    #     object_retention_seconds: int
-    #     load_balance_seconds: int
-    #     load_balance_trigger_times: int
-    #     protected: bool
 
     # scaler provides a set of default to use. Kindly follow the comments
     # there for detailed explanations.

@@ -19,9 +19,9 @@ def minus(a, b):
 # val_t as value type, where val_t is defined as follows:
 # Union[Any, Tuple[Union[Callable, str], ...]
 # Each value can be one of the following things:
-# a basic data type (int, List, etc.),
-# a callable,
-# a tuple of the form (Callable, key_t val1, key_t val2, ...)
+# - a basic data type (int, List, etc.),
+# - a callable,
+# - a tuple of the form (Callable, key_t val1, key_t val2, ...)
 # that represents a function call.
 graph = {
     "a": 2,
@@ -33,8 +33,12 @@ graph = {
 }
 
 
-# This example shows how to utilize graph task functionality
-# provided by scaler.
+"""
+This example shows how to utilize graph task functionality
+provided by scaler.
+"""
+
+
 def main():
     # For how SchedulerClusterCombo and Client work, please read simple_client.py
     cluster = SchedulerClusterCombo(n_workers=1)

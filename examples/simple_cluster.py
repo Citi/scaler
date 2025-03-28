@@ -10,9 +10,12 @@ from scaler.io.config import (
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.zmq_config import ZMQConfig
 
+"""
+This example shows how to instantiate a Cluster programmatically.
+For how to instantiate a Scheduler, read simple_scheduler.py
+"""
 
-# This example shows how to instantiate a Cluster programmatically.
-# For how to instantiate a Scheduler, read simple_scheduler.py
+
 def main():
     N_WORKERS = 8
     # Initialize a Cluster as following.

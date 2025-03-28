@@ -2,9 +2,12 @@ from scaler import Client
 from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
+"""
+This example shows how to clear resources owned by a client
+and how to disconnect a client from scheduler.
+"""
 
-# This example shows how to clear resources owned by a client
-# and how to disconnect a client from scheduler.
+
 def main():
     cluster = SchedulerClusterCombo(n_workers=10)
     client = Client(address=cluster.get_address())

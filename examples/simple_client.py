@@ -4,15 +4,18 @@ from scaler import Client
 from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
-# This example demonstrates the most basic implementation to work with scaler
-# Scaler applications have three parts - scheduler, cluster, and client.
-# Scheduler is used to schedule works send from client to cluster.
-# Cluster, composed of 1 or more worker(s), are used to execute works.
-# Client is used to send tasks to scheduler.
+"""
+This example demonstrates the most basic implementation to work with scaler
+Scaler applications have three parts - scheduler, cluster, and client.
+Scheduler is used to schedule works send from client to cluster.
+Cluster, composed of 1 or more worker(s), are used to execute works.
+Client is used to send tasks to scheduler.
+
+This example shows a client sends 100 tasks, where each task represents the
+execution of math.sqrt function and get back the results.
+"""
 
 
-# This example shows a client sends 100 tasks, where each task represents the
-# execution of math.sqrt function and get back the results.
 def main():
     # Instantiate a SchedulerClusterCombo which contains a scheduler and a cluster
     # that contains n_workers workers. In this case, there are 10 workers.

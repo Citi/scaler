@@ -17,3 +17,7 @@ Make sure scheduler and cluster are set up before running clients.
     Shows how to send a nested task to scheduler
 - simple_client.py
     Shows how to send a basic task to scheduler
+- simple_scheduler.py
+    Shows how to initialize a Scheduler
+- simple_cluster.py
+    Shows how to initialize a Cluster

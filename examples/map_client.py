@@ -4,13 +4,12 @@ from scaler import Client
 from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
-# This example shows how to use Client.map function.
-# Client.map allows user to map a callable to each element in an
-# abstract list. For more information on map functionality, check
-# https://en.wikipedia.org/wiki/Map_(higher-order_function)
-
-# Generate a list of number from 0 to 100 (non-inclusive) in order.
-data = [x for x in range(0, 100)]
+"""
+This example shows how to use Client.map function.
+Client.map allows user to map a callable to each element in an
+abstract list. For more information on map functionality, check
+https://en.wikipedia.org/wiki/Map_(higher-order_function)
+"""
 
 
 def main():
@@ -25,7 +24,7 @@ def main():
     # Note 2, (x,) is a tuple of one element. Client.map assumes the first element
     # to be the callable, and the second element to be a list of tuple, where each
     # tuple represents arguments of a function call.
-    results = client.map(math.sqrt, [(x,) for x in data])
+    results = client.map(math.sqrt, [(x,) for x in range(0, 100)])
 
     # Collects the results and sums them
     result = sum(results)

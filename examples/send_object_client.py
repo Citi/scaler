@@ -2,15 +2,19 @@ from scaler import Client
 from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
-# This example demonstrates how to work with Client.send_object method.
-# Client.send_object method is used to submit large objects to the remote
-# end. User can then reuse this object multiple time. This saves the cost
-# of transmitting objects around.
 large_object = [1, 2, 3, 4, 5]
 
 
 def query(object_reference, idx):
     return object_reference[idx]
+
+
+"""
+This example demonstrates how to work with Client.send_object method.
+Client.send_object method is used to submit large objects to the remote
+end. User can then reuse this object multiple time. This saves the cost
+of transmitting objects around.
+"""
 
 
 def main():
