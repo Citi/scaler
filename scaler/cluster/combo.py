@@ -20,8 +20,8 @@ from scaler.io.config import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.zmq_config import ZMQConfig
 
 
 class SchedulerClusterCombo:
