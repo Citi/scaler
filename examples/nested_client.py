@@ -13,8 +13,8 @@ def fibonacci(client: Client, n: int):
     elif n == 1:
         return 1
     else:
-        a = clnt.submit(fibonacci, client, n - 1)
-        b = clnt.submit(fibonacci, client, n - 2)
+        a = client.submit(fibonacci, client, n - 1)
+        b = client.submit(fibonacci, client, n - 2)
         return a.result() + b.result()
 
 

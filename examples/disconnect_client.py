@@ -1,7 +1,6 @@
 """This example shows how to clear resources owned by a client and how to disconnect a client from scheduler."""
 
 from scaler import Client
-from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
