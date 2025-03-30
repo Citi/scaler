@@ -32,6 +32,8 @@ def main():
         # function defined by you.
         # Note: Users are responsible to correctly provide the argument(s) of a function that the user wish to call.
         # Fail to do so results in exception.
+        # This is to demonstrate client.submit(). A better way to implement this particular case is to use
+        # client.map(). See `map_client.py` for more detail.
         client.submit(math.sqrt, i)
         for i in range(0, 100)
     ]
