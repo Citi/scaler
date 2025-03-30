@@ -1,7 +1,7 @@
 import os
 import unittest
-
 from glob import glob
+
 from scaler.utility.logging.utility import setup_logger
 from tests.utility import logging_test_name
 
