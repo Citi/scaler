@@ -7,7 +7,7 @@ from scaler.cluster.combo import SchedulerClusterCombo
 def main():
     cluster = SchedulerClusterCombo(n_workers=10)
     client = Client(address=cluster.get_address())
-    # Client.clear will clear all computation resources owned by the client. All unfinished tasks will be cancelled,
+    # Client.clear() will clear all computation resources owned by the client. All unfinished tasks will be cancelled,
     # and all object reference will be invalidated. The client can submit tasks as it wishes.
     client.clear()
 

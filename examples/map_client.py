@@ -1,7 +1,7 @@
 """
-This example shows how to use Client.map function.
-Client.map allows user to map a callable to each element in an
-abstract list. For more information on map functionality, check
+This example shows how to use the Client.map() method.
+Client.map() allows the user to invoke a callable many times with different values.
+For more information on the map operation, refer to
 https://en.wikipedia.org/wiki/Map_(higher-order_function)
 """
 
