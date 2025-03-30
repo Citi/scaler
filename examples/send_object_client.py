@@ -17,7 +17,7 @@ def query(object_reference, idx):
 
 
 def main():
-    # For how SchedulerClusterCombo and Client work, please read simple_client.py
+    # For an explanation on how SchedulerClusterCombo and Client work, please see simple_client.py
     cluster = SchedulerClusterCombo(n_workers=1)
     client = Client(address=cluster.get_address())
 

@@ -30,7 +30,7 @@ def fibonacci(clnt: Client, n: int):
 
 
 def main():
-    # For how SchedulerClusterCombo and Client work, please read simple_client.py
+    # For an explanation on how SchedulerClusterCombo and Client work, please see simple_client.py
     cluster = SchedulerClusterCombo(n_workers=10)
     client = Client(address=cluster.get_address())
     result = client.submit(fibonacci, client, 8).result()

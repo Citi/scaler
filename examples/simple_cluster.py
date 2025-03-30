@@ -23,7 +23,7 @@ def main():
     cluster = Cluster(
         worker_io_threads=1,
         address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
-        worker_names=[str(i) for i in range(0, N_WORKERS - 1)],
+        worker_names=[str(i) for i in range(N_WORKERS - 1)],
         heartbeat_interval_seconds=DEFAULT_HEARTBEAT_INTERVAL_SECONDS,
         task_timeout_seconds=DEFAULT_TASK_TIMEOUT_SECONDS,
         death_timeout_seconds=DEFAULT_WORKER_DEATH_TIMEOUT,
@@ -48,7 +48,7 @@ def main():
     # called. This method will not return unless Cluster.terminate is called.
     cluster.join()
 
-    # Final step of closing a Cluster. The cluster must be joined first.
+    # Release resources. Must be called after `.join()` has returned.
     cluster.close()
 
 

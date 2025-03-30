@@ -13,7 +13,7 @@ from scaler.cluster.combo import SchedulerClusterCombo
 
 
 def main():
-    # For how SchedulerClusterCombo and Client work, please read simple_client.py
+    # For an explanation on how SchedulerClusterCombo and Client work, please see simple_client.py
     cluster = SchedulerClusterCombo(n_workers=10)
     client = Client(address=cluster.get_address())
 
@@ -25,7 +25,7 @@ def main():
     # element to be a list of tuple, where each tuple represents arguments of a function call.
     results = client.map(math.sqrt, [(x,) for x in range(0, 100)])
 
-    # Collects the results and sums them
+    # Collect the results and sums them
     result = sum(results)
 
     print(result)

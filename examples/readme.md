@@ -1,9 +1,9 @@
 
-## This directory lists examples of using scaler. 
+## Scaler Examples
 
-If you wish to run examples in current working directory, prefix "python run_xxx.py" with "PYTHONPATH=.."  
+If you wish to run examples in current working directory, prefix `python run_xxx.py` with `PYTHONPATH=..`
 
-Make sure scheduler and cluster are set up before running clients.
+Ensure that the scheduler and cluster are set up before running clients.
 
 - disconnect_client.py 
     Shows how to disconnect a client from scheduler 

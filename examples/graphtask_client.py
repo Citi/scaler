@@ -35,13 +35,13 @@ graph = {
 
 
 def main():
-    # For how SchedulerClusterCombo and Client work, please read simple_client.py
+    # For an explanation on how SchedulerClusterCombo and Client work, please see simple_client.py
     cluster = SchedulerClusterCombo(n_workers=1)
     client = Client(address=cluster.get_address())
 
-    # See grpah's definition for more detail.
-    # Type of result is a dictionary that contains requested keys.
-    # Each value provided in the graph will be evaluated and pass back.
+    # See graph's definition for more detail.
+    # The result is a dictionary that contains the requested keys.
+    # Each value provided in the graph will be evaluated and passed back.
     result = client.get(graph, keys=["a", "b", "c", "d", "e", "f"])
     print(result.get("e"))
     print(result)  # {'a': 2, 'b': 2, 'c': 3, 'd': 4, 'e': 1, 'f': <function add at 0x70af1e29b4c0>}

@@ -26,7 +26,7 @@ def main():
     config = SchedulerConfig(
         event_loop="builtin",  # Either "builtin", or "uvloop"
         address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
-        io_threads=DEFAULT_IO_THREADS,  # Increase this number if you use heavy IO
+        io_threads=DEFAULT_IO_THREADS,  # Consider increasing this number if your workload is IO-heavy
         max_number_of_tasks_waiting=DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
         per_worker_queue_size=DEFAULT_PER_WORKER_QUEUE_SIZE,
         client_timeout_seconds=DEFAULT_CLIENT_TIMEOUT_SECONDS,
@@ -34,7 +34,7 @@ def main():
         object_retention_seconds=DEFAULT_OBJECT_RETENTION_SECONDS,
         load_balance_seconds=DEFAULT_LOAD_BALANCE_SECONDS,
         load_balance_trigger_times=DEFAULT_LOAD_BALANCE_TRIGGER_TIMES,
-        protected=False,  # When =False, client can shutdown scheduler.
+        protected=False,  # When false, clients can shutdown the scheduler.
     )
 
     # Then we put config into Scheduler. Unlike Cluster, scheduler should always be long running. Therefore, we don't
