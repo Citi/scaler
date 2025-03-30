@@ -1,8 +1,7 @@
 """
-This example demonstrates how to work with Client.send_object method.
-Client.send_object method is used to submit large objects to the remote
-end. User can then reuse this object multiple time. This saves the cost
-of transmitting objects around.
+This example demonstrates how to use the Client.send_object() method.
+This method is used to submit large objects to the cluster.
+Users can then reuse this object without needing to retransmit it multiple times.
 """
 
 from scaler import Client
@@ -21,8 +20,8 @@ def main():
     cluster = SchedulerClusterCombo(n_workers=1)
     client = Client(address=cluster.get_address())
 
-    # send the "large_object" to the remote end for reuse. the object name "name" here is optional.
-    # All operation should be based on the reference to the object, which is "large_object_ref" in this case.
+    # Send the "large" to the cluster for reuse. Providing a name for the object is optional.
+    # This method returns a reference to the object that we can use in place of the original object.
     large_object_ref = client.send_object(large_object, name="large_object")
 
     # Reuse through object reference
@@ -32,7 +31,7 @@ def main():
     fut1 = client.submit(query, large_object_ref, 0)
     fut2 = client.submit(query, large_object_ref, 1)
 
-    # For how return value of client.submit (which is a future) can be used, check simple_client.py
+    # Get the result from the future.
     print(fut1.result())
     print(fut2.result())
 

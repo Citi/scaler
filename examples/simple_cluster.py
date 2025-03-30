@@ -1,6 +1,6 @@
 """
-This example shows how to instantiate a Cluster programmatically.
-For how to instantiate a Scheduler, read simple_scheduler.py
+This example shows how to instantiate a Cluster using the Python API.
+For an example on how to instantiate a Scheduler, see simple_scheduler.py
 """
 
 from scaler import Cluster
@@ -18,8 +18,7 @@ from scaler.utility.zmq_config import ZMQConfig
 
 def main():
     N_WORKERS = 8
-    # Initialize a Cluster as following.
-    # You may find more information in the file where all these GLOBALs are defined.
+    # Initialize a Cluster.
     cluster = Cluster(
         worker_io_threads=1,
         address=ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}"),
@@ -36,16 +35,13 @@ def main():
         logging_config_file=None,
     )
 
-    # Calling Cluster.start starts a cluster. cluster will start to accept tasks from scheduler after this call.
+    # Start the cluster. The cluster will begin accepting tasks from the scheduler.
     cluster.start()
 
-    # Cluster are long running until Cluster.terminate is called. Should you wish to shutdown a cluster, call this
-    # method first. Another choice is to kill cluster, which can be done by calling Cluter.kill, which is a more
-    # "brutal" way to stop cluster.
+    # Shut down the cluster. Cluster subclasses Process and can be shutdown using `.terminate()`, or arbitrary signals can be sent using `.kill()`
     cluster.terminate()
 
-    # Wait for the subprocess (initiated by Cluster.start) to join This method must be called before Cluster.close is
-    # called. This method will not return unless Cluster.terminate is called.
+    # Wait for the cluster's process to terminate.
     cluster.join()
 
     # Release resources. Must be called after `.join()` has returned.

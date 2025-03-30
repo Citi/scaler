@@ -1,4 +1,4 @@
-"""This example shows how to write instantiate a scheduler programmatically."""
+"""This example demonstrates how to start a scheduler using the Python API."""
 
 from scaler import Scheduler
 from scaler.io.config import (

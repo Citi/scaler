@@ -17,9 +17,9 @@ def minus(a, b):
     return a - b
 
 
-# graph is defined to be a dict with str as key type and val_t as value type, where val_t is defined as follows:
+# A graph task is defined as a dict with str as the key type and val_t as the value type, where val_t is defined as follows:
 # Union[Any, Tuple[Union[Callable, str], ...]
-# Each value can be one of the following things:
+# Each value can be one of the following:
 # - a basic data type (int, List, etc.),
 # - a callable,
 # - a tuple of the form (Callable, key_t val1, key_t val2, ...)
