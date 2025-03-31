@@ -38,7 +38,8 @@ def main():
     # Start the cluster. The cluster will begin accepting tasks from the scheduler.
     cluster.start()
 
-    # Shut down the cluster. Cluster subclasses Process and can be shutdown using `.terminate()`, or arbitrary signals can be sent using `.kill()`
+    # Shut down the cluster. Cluster subclasses Process and can be shutdown using `.terminate()`, or arbitrary signals
+    # can be sent using `.kill()`
     cluster.terminate()
 
     # Wait for the cluster's process to terminate.

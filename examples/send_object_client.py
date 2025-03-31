@@ -5,7 +5,6 @@ Users can then reuse this object without needing to retransmit it multiple times
 """
 
 from scaler import Client
-from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 large_object = [1, 2, 3, 4, 5]

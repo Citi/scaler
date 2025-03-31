@@ -12,7 +12,6 @@ execution of math.sqrt function and get back the results.
 import math
 
 from scaler import Client
-from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 

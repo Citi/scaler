@@ -1,7 +1,6 @@
 """This example shows how to created nested tasks. Please see graphtask_nested_client.py for more information."""
 
 from scaler import Client
-from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 

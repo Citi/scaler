@@ -1,7 +1,6 @@
 """This example shows how to build graph dynamically in the remote side"""
 
 from scaler import Client
-from scaler.client.client import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
