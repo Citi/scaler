@@ -114,7 +114,7 @@ Tasks can depend on other tasks' result without using graph.
 .. literalinclude:: ../../../examples/nested_client.py
    :language: python
 
-Dynamically Building Graph on Remote End
+Dynamically Building Graph Within a Task
 ----------------------------------------
 
 When the execution graph is undetermined until runtime, one may build graph dynamically on remote end.
