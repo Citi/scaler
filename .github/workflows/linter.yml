@@ -48,3 +48,7 @@ jobs:
             echo "Running $example"
             PYTHONPATH=. python $example
           done
+          for example in "./examples/applications"/*.py; do
+            echo "Running $example"
+            PYTHONPATH=. python $example
+          done
