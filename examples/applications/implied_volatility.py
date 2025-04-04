@@ -32,8 +32,13 @@ def find_vol(target_value, S, K, T, r):
     return sigma  # value wasn't found, return best guess so far
 
 
+def wrapper(find_vol_function, params):
+    return list(map(find_vol_function, *params))
+
+
 def main():
-    cluster = SchedulerClusterCombo(n_workers=2)
+    cluster = SchedulerClusterCombo(n_workers=3)
+    client = Client(address=cluster.get_address())
 
     # If we were to calculate a single implied volatility, this is how we would write this program
     # S = 100
@@ -49,22 +54,20 @@ def main():
     # print ('Market price = %.2f' % V_market)
     # print ('Model price = %.2f' % bs_call(S, K, T, r, implied_vol))
 
-    size = 10000
-    S = np.random.randint(100, 200, size)
-    K = S * 1.25
-    T = np.ones(size)
-    R = np.random.randint(0, 3, size) / 100
-    vols = np.random.randint(15, 50, size) / 100
-    prices = bs_call(S, K, T, R, vols)
+    futs = []
+    for _ in range(0, 3):
+        size = 10000
+        S = np.random.randint(100, 200, size)
+        K = S * 1.25
+        T = np.ones(size)
+        R = np.random.randint(0, 3, size) / 100
+        vols = np.random.randint(15, 50, size) / 100
+        prices = bs_call(S, K, T, R, vols)
+        params = np.vstack((prices, S, K, T, R))
+        futs.append(client.submit(wrapper, find_vol, params))
 
-    # Locally
-    # params = np.vstack((prices, S, K, T, R))
-    # results = list(map(find_vol, *params))
-
-    args = [(price, s, k, t, r) for price, s, k, t, r in zip(prices, S, K, T, R)]
-    client = Client(address=cluster.get_address())
-    results = client.map(find_vol, args)
-    print(results)
+    for fut in futs:
+        fut.result()
 
 
 if __name__ == "__main__":
