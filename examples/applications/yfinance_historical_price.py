@@ -1,9 +1,10 @@
+import datetime
 
 import yfinance as yf
-import datetime
-import math
+
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
+
 
 def get_option_data(stock_symbol, expiration_date, option_type, strike):
     stock = yf.Ticker(stock_symbol)
@@ -21,7 +22,6 @@ def get_option_history_data(contract_symbol, days_before_expiration=30):
     start_date = option_expiration_date - datetime.timedelta(days=days_before_expiration)
     option_history = option.history(start=start_date)
     return option_history
-
 
 
 def main():
@@ -44,8 +44,9 @@ def main():
             first_option_history_date = option_history.index[0]
             first_option_history_close = first_option_history["Close"]
             return (contract_symbol, first_option_history_close, first_option_history_date)
+
     # Original version, without scaler. Wall time: 44.487 s
-    # for strike in range(170, 250): 
+    # for strike in range(170, 250):
     #     res = func(strike)
     #     if res is None:
     #         continue
@@ -61,22 +62,18 @@ def main():
     # With scaler, 32.382 s
     results = client.map(func, [(strike,) for strike in range(170, 250)])
     for res in results:
-        if res is None: 
+        if res is None:
             continue
         contract_symbol = res[0]
         first_option_history_close = res[1]
         first_option_history_date = res[2]
-        
-        print("For {}, the closing price was ${:.2f} on {}.".format(
-                                                                    contract_symbol,
-                                                                    first_option_history_close,
-                                                                    first_option_history_date
-             ))
 
-
+        print(
+            "For {}, the closing price was ${:.2f} on {}.".format(
+                contract_symbol, first_option_history_close, first_option_history_date
+            )
+        )
 
 
 if __name__ == "__main__":
     main()
-
-
