@@ -1,4 +1,5 @@
 import datetime
+from typing import Optional
 
 import yfinance as yf
 
@@ -6,7 +7,7 @@ from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
-def get_option_data(stock_symbol: str, expiration_date: str | None, option_type: str, strike: float):
+def get_option_data(stock_symbol: str, expiration_date: Optional[None], option_type: str, strike: float):
     stock = yf.Ticker(stock_symbol)
     option_chain = stock.option_chain(expiration_date)
     options = getattr(option_chain, "calls" if option_type.startswith("call") else "puts")
