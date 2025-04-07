@@ -73,7 +73,7 @@ def main():
         params = np.vstack((prices, S, K, T, R))
         futs.append(client.submit(wrapper, find_vol, params))
 
-        concurrent.futures.wait(futs)
+    concurrent.futures.wait(futs)
 
 
 if __name__ == "__main__":
