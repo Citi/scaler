@@ -22,7 +22,7 @@ B. The function is very computation heavy or is possible to block.
 Get Option Closing Price
 ------------------------
 
-This example gets option closing price for a specified ticket and the start date. We use `client.map` to reduce the
+This example gets option closing price for a specified ticker and the start date. We use `client.map` to reduce the
 overhead introduced by slow IO speed.
 
 .. literalinclude:: ../../../examples/applications/yfinance_historical_price.py

@@ -6,7 +6,7 @@ from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 
 
-def get_option_data(stock_symbol, expiration_date, option_type, strike):
+def get_option_data(stock_symbol: str, expiration_date: str | None, option_type: str, strike: float):
     stock = yf.Ticker(stock_symbol)
     option_chain = stock.option_chain(expiration_date)
     options = getattr(option_chain, "calls" if option_type.startswith("call") else "puts")
@@ -14,7 +14,7 @@ def get_option_data(stock_symbol, expiration_date, option_type, strike):
     return option_data
 
 
-def get_option_history_data(contract_symbol, days_before_expiration=30):
+def get_option_history_data(contract_symbol, days_before_expiration: int = 30):
     option = yf.Ticker(contract_symbol)
     option_info = option.info
     option_expiration_date = datetime.datetime.fromtimestamp(option_info["expireDate"])
@@ -53,11 +53,8 @@ def main():
     #     contract_symbol = res[0]
     #     first_option_history_close = res[1]
     #     first_option_history_date = res[2]
-    #     print("For {}, the closing price was ${:.2f} on {}.".format(
-    #                                                                 contract_symbol,
-    #                                                                 first_option_history_close,
-    #                                                                 first_option_history_date
-    #          ))
+    #     print(f"For {contract_symbol}, the closing price was ${first_option_history_close:.2f} on "
+    #           f"{first_option_history_date}.")
 
     # With scaler, 32.382 s
     results = client.map(func, [(strike,) for strike in range(170, 250)])
@@ -69,9 +66,8 @@ def main():
         first_option_history_date = res[2]
 
         print(
-            "For {}, the closing price was ${:.2f} on {}.".format(
-                contract_symbol, first_option_history_close, first_option_history_date
-            )
+            f"For {contract_symbol}, the closing price was ${first_option_history_close:.2f} on "
+            f"{first_option_history_date}."
         )
 
 

@@ -1,6 +1,9 @@
 """This program computes the implied volatility given market price and model price"""
 
+import concurrent.futures
+
 import numpy as np
+import psutil
 from scipy.stats import norm
 
 from scaler import Client
@@ -37,7 +40,11 @@ def wrapper(find_vol_function, params):
 
 
 def main():
-    cluster = SchedulerClusterCombo(n_workers=3)
+    n_workers = psutil.cpu_count()
+    if n_workers is None:
+        n_workers = 3
+
+    cluster = SchedulerClusterCombo(n_workers=n_workers)
     client = Client(address=cluster.get_address())
 
     # If we were to calculate a single implied volatility, this is how we would write this program
@@ -66,8 +73,7 @@ def main():
         params = np.vstack((prices, S, K, T, R))
         futs.append(client.submit(wrapper, find_vol, params))
 
-    for fut in futs:
-        fut.result()
+        concurrent.futures.wait(futs)
 
 
 if __name__ == "__main__":
