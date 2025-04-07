@@ -4,7 +4,8 @@
 Applications
 ============
 
-This page shows some real life examples.
+This page shows some real life examples. Before reading this page, be sure that you have read examples in the 
+Quickstart section. Those examples are better starting point than examples in this page. 
 
 
 Calculate Implied Volatility
