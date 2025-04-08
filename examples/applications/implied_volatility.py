@@ -1,7 +1,16 @@
-"""This program computes the implied volatility given market price and model price. This program is revised based on
-https://stackoverflow.com/questions/61289020/fast-implied-volatility-calculation-in-python"""
+"""
+This program computes the implied Black-Scholes volatility given market price and model price.
 
-import concurrent.futures
+This program is revised based on
+https://stackoverflow.com/questions/61289020/fast-implied-volatility-calculation-in-python
+
+Usage:
+
+    $ python -m examples.applications.implied_volatility
+"""
+
+from timeit import default_timer
+from typing import List
 
 import numpy as np
 import psutil
@@ -22,7 +31,7 @@ def bs_vega(S, K, T, r, sigma):
     return S * norm.pdf(d1) * np.sqrt(T)
 
 
-def find_vol(target_value, S, K, T, r):
+def find_volatility(target_value, S, K, T, r) -> float:
     MAX_ITERATIONS = 200
     PRECISION = 1.0e-5
     sigma = 0.5
@@ -36,46 +45,48 @@ def find_vol(target_value, S, K, T, r):
     return sigma  # value wasn't found, return best guess so far
 
 
-def wrapper(find_vol_function, params):
-    return list(map(find_vol_function, *params))
+def find_volatilities(dataset: np.array) -> List[float]:
+    return [find_volatility(*sample) for sample in dataset]
+
+
+def generate_synthetic_data(n_samples: int) -> np.array:
+    S = np.random.randint(100, 200, n_samples)  # stock prices
+    K = S * 1.25  # strike prices
+    T = np.ones(n_samples)  # time maturity (year)
+    r = np.random.randint(0, 3, n_samples) / 100  # risk-free-rate
+    vol = np.random.randint(15, 50, n_samples) / 100  # volatility
+    prices = bs_call(S, K, T, r, vol)
+
+    return np.column_stack((prices, S, K, T, r))
 
 
 def main():
+    N_SAMPLES = 20_000
+    N_SAMPLES_PER_TASK = 1_000
+
     n_workers = psutil.cpu_count()
     if n_workers is None:
-        n_workers = 3
+        n_workers = 4
 
     cluster = SchedulerClusterCombo(n_workers=n_workers)
-    client = Client(address=cluster.get_address())
 
-    # If we were to calculate a single implied volatility, this is how we would write this program
-    # S = 100
-    # K = 100
-    # T = 11
-    # r = 0.01
-    # vol = 0.25
-    #
-    # V_market = bs_call(S, K, T, r, vol)
-    # implied_vol = find_vol(V_market, S, K, T, r)
-    #
-    # print ('Implied vol: %.2f%%' % (implied_vol * 100))
-    # print ('Market price = %.2f' % V_market)
-    # print ('Model price = %.2f' % bs_call(S, K, T, r, implied_vol))
+    dataset = generate_synthetic_data(N_SAMPLES)
 
-    futs = []
-    for _ in range(n_workers):
-        size = 10000
-        S = np.random.randint(100, 200, size)
-        K = S * 1.25
-        T = np.ones(size)
-        R = np.random.randint(0, 3, size) / 100
-        vols = np.random.randint(15, 50, size) / 100
-        prices = bs_call(S, K, T, R, vols)
-        params = np.vstack((prices, S, K, T, R))
-        futs.append(client.submit(wrapper, find_vol, params))
+    # Split the dataset in chunks of up to `N_SAMPLES_PER_TASK`.
+    per_task_dataset = [
+        (dataset[data_begin:data_begin + N_SAMPLES_PER_TASK],)
+        for data_begin in range(0, N_SAMPLES, N_SAMPLES_PER_TASK)
+    ]
 
-    # User may wish to gather the results and do more interesting stuff. For demonstrating purposes, we just wait.
-    concurrent.futures.wait(futs)
+    # Process the dataset in parallel, concatenate the results
+    with Client(address=cluster.get_address()) as client:
+        start = default_timer()
+        results = np.concatenate(client.map(find_volatilities, per_task_dataset))
+        duration = default_timer() - start
+
+    cluster.shutdown()
+
+    print(f"Computed {len(results)} stock volatilities in {duration:.2f}s")
 
 
 if __name__ == "__main__":
