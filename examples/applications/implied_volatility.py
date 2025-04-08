@@ -1,4 +1,5 @@
-"""This program computes the implied volatility given market price and model price"""
+"""This program computes the implied volatility given market price and model price. This program is revised based on
+https://stackoverflow.com/questions/61289020/fast-implied-volatility-calculation-in-python"""
 
 import concurrent.futures
 
@@ -62,7 +63,7 @@ def main():
     # print ('Model price = %.2f' % bs_call(S, K, T, r, implied_vol))
 
     futs = []
-    for _ in range(0, 3):
+    for _ in range(n_workers):
         size = 10000
         S = np.random.randint(100, 200, size)
         K = S * 1.25
@@ -73,6 +74,7 @@ def main():
         params = np.vstack((prices, S, K, T, R))
         futs.append(client.submit(wrapper, find_vol, params))
 
+    # User may wish to gather the results and do more interesting stuff. For demonstrating purposes, we just wait.
     concurrent.futures.wait(futs)
 
 
