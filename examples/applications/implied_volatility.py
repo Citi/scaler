@@ -14,10 +14,9 @@ from typing import List
 
 import numpy as np
 import psutil
-from scipy.stats import norm
-
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
+from scipy.stats import norm
 
 
 def bs_call(S, K, T, r, vol):
@@ -74,7 +73,7 @@ def main():
 
     # Split the dataset in chunks of up to `N_SAMPLES_PER_TASK`.
     per_task_dataset = [
-        (dataset[data_begin:data_begin + N_SAMPLES_PER_TASK],)
+        (dataset[data_begin : data_begin + N_SAMPLES_PER_TASK],)
         for data_begin in range(0, N_SAMPLES, N_SAMPLES_PER_TASK)
     ]
 
