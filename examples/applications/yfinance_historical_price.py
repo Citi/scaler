@@ -5,6 +5,7 @@ import datetime
 from typing import Optional
 
 import yfinance as yf
+
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
 

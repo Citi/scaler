@@ -14,9 +14,10 @@ from typing import List
 
 import numpy as np
 import psutil
+from scipy.stats import norm
+
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
-from scipy.stats import norm
 
 
 def bs_call(S, K, T, r, vol):
