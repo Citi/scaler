@@ -11,10 +11,10 @@ Quickstart section. Those examples are better starting point than examples in th
 Calculate Implied Volatility
 ----------------------------
 
-This example calculate implied volatility for many given market price. We use `client.submit` to achieve such goal.
-Alternatively, one may use `client.map` if their computation function is heavier than what's shown in the example.
-Remember, `client.map` makes sense only in two cases: A. The body of the function you are submitting is quite large; 
-B. The function is very computation heavy or is possible to block.
+This example calculate implied volatility for many given market price. We use `client.map` to achieve such goal.
+Notice that we provide chunk of data as input to `find_volatilities`. This is because `client.map` makes sense only 
+in two cases: A. The body of the function you are submitting is quite large; B. The function is very computation 
+heavy or is possible to block.
 
 .. literalinclude:: ../../../examples/applications/implied_volatility.py
    :language: python

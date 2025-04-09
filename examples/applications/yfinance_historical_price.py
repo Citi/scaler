@@ -4,6 +4,7 @@ https://stackoverflow.com/a/77342764"""
 import datetime
 from typing import Optional
 
+import psutil
 import yfinance as yf
 
 from scaler import Client
@@ -47,14 +48,21 @@ def get_option_close_prices_with_strike(strike):
 
 
 def main():
-    cluster = SchedulerClusterCombo(n_workers=2)
-    client = Client(address=cluster.get_address())
+    n_workers = psutil.cpu_count()
+    if n_workers is None:
+        n_workers = 4
 
-    # With scaler, 32.382 s
-    results = client.map(get_option_close_prices_with_strike, [(strike,) for strike in range(170, 250)])
+    strike_start = 170
+    strike_end = 250
+
+    cluster = SchedulerClusterCombo(n_workers=n_workers)
+    with Client(address=cluster.get_address()) as client:
+        results = client.map(
+            get_option_close_prices_with_strike, [(strike,) for strike in range(strike_start, strike_end)]
+        )
+    cluster.shutdown()
+
     for lists_of_closing_dates in results:
-        if lists_of_closing_dates == []:
-            continue
         for contract_symbol, first_option_history_close, first_option_history_date in lists_of_closing_dates:
             print(
                 f"For {contract_symbol}, the closing price was ${first_option_history_close:.2f} on "
