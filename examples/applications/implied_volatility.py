@@ -5,7 +5,7 @@ This program is revised based on
 https://stackoverflow.com/questions/61289020/fast-implied-volatility-calculation-in-python
 
 Usage:
-
+    $ git clone https://github.com/Citi/scaler && cd scaler
     $ python -m examples.applications.implied_volatility
 """
 
