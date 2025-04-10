@@ -6,6 +6,7 @@ https://stackoverflow.com/questions/61289020/fast-implied-volatility-calculation
 
 Usage:
     $ git clone https://github.com/Citi/scaler && cd scaler
+    $ pip install -r examples/applications/requirements_applications.txt
     $ python -m examples.applications.implied_volatility
 """
 
