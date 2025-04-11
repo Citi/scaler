@@ -18,10 +18,11 @@ import sys
 import itertools
 import numpy as np
 from math import ceil
+from timeit import default_timer as timer
 from PIL import Image, UnidentifiedImageError
 from scaler import SchedulerClusterCombo, Client
 
-TRIANGLE_BASE_WIDTH: int = 60
+TRIANGLE_BASE_WIDTH: int = 120
 
 # needs to be an even number
 assert TRIANGLE_BASE_WIDTH % 2 == 0, "TRIANGLE_BASE_WIDTH must be an even number"
@@ -37,8 +38,6 @@ def calc_down_triangle(x: int, y: int, im: np.ndarray) -> tuple[np.ndarray, np.n
     right = left + TRIANGLE_BASE_WIDTH
     top = y
     bottom = top + TRIANGLE_BASE_WIDTH // 2 + 1
-
-    print(left, right, top, bottom, im.shape, energies.shape, im[left : right, top : bottom].shape)
 
     # calculate the energies for each pixel in the triangle using euclidean distance with all 8 neighbors
     for (a, b) in itertools.product((-1, 0, 1), repeat=2):
@@ -74,12 +73,9 @@ def calc_up_triangle(x: int, y: int, energies: np.ndarray, dp: np.ndarray) -> np
     top = 0 # dp is a strip
     bottom = top + TRIANGLE_BASE_WIDTH // 2 + 1
 
-    print(dp.shape, left, right, top, bottom)
-
     dyn = dp[left : right, top : bottom]
 
     for row in range(TRIANGLE_BASE_WIDTH // 2):
-        print("ROW", row)
         for col in range(TRIANGLE_BASE_WIDTH):
             if col < TRIANGLE_BASE_WIDTH // 2 - row - 1 or col > TRIANGLE_BASE_WIDTH // 2 + row:
                 continue
@@ -99,8 +95,6 @@ def find_min_seam(dp: np.ndarray) -> list[int]:
 
     seam = [i]
 
-    print(dp.shape)
-
     for row in range(dp.shape[1] - 2, -1, -1):
         # we take the min of the three pixels above to recover the seam
         # m = np.argmin(dp[max(i - 1, 0) : min(i + 1, dp.shape[0] - 1), row])
@@ -113,6 +107,12 @@ def find_min_seam(dp: np.ndarray) -> list[int]:
             m = np.argmin(dp[i - 1 : i + 1, row])
 
         i += m - 1
+
+        if i < 0:
+            i = 0
+        elif i >= dp.shape[0]:
+            i = dp.shape[0] - 1
+
         seam.append(i)
 
     # reversing creates a top-down order
@@ -120,15 +120,7 @@ def find_min_seam(dp: np.ndarray) -> list[int]:
 
     return seam
 
-def seq():
-    source, result = sys.argv[1:]
-
-    try:
-        im = Image.open(source)
-    except UnidentifiedImageError:
-        print(f"Error: [{source}] is not a valid image file.")
-        return
-
+def sequential_seam_carve(im: Image.Image, result: str):
     imdata = np.array(im)
 
     # rotate the image 90 degrees so that it's row-major
@@ -138,25 +130,60 @@ def seq():
     width = imdata.shape[0]
     height = imdata.shape[1]
 
+    now = timer()
+
     imdata = np.pad(imdata, ((1, 1), (1, 1), (0, 0)), constant_values=0)
     energies = np.zeros((width, height), dtype=np.float64)
 
     # calculate the energies for each pixel using euclidean distance with all 8 neighbors
-    for (a, b) in itertools.product((-1, 0, 1), repeat=2):
+    for i, (a, b) in enumerate(itertools.product((-1, 0, 1), repeat=2)):
+        print(f"Sequential: energies: {i / 8 * 100:.2f}%")
+
         # shift the area by (a, b), subtract, and norm to calculate euclidean distance with neighbors
         energies += np.apply_along_axis(
-            np.linalg.norm, 2, imdata[1 : -1, 1 : -1] - imdata[1 + a : width - 1 + a, 1 + b : height - 1 + b])
+            np.linalg.norm, 2, imdata[1 : -1, 1 : -1] - imdata[1 + a : width + a + 1, 1 + b : height + b + 1])
 
-    np.savetxt("/tmp/energies.txt", energies)
+    # our dynamic programming table
+    dp = np.zeros((width, height), dtype=np.float64)
+    dp[:, 0] = energies[:, 0]
 
-def main():
-    source, result = sys.argv[1:]
+    counter = 0
 
-    try:
-        im = Image.open(source)
-    except UnidentifiedImageError:
-        print(f"Error: [{source}] is not a valid image file.")
-        return
+    for row in range(1, height):
+        if counter % 25 == 0:
+            print(f"Sequential: dp: {row / height * 100}%")
+
+        counter += 1
+
+        for col in range(width):
+            dp[col, row] = energies[col, row] + min(
+                dp[col, row - 1],  # directly above
+                dp[col - 1, row - 1] if col > 0 else np.inf,  # top left
+                dp[col + 1, row - 1] if col < width - 1 else np.inf,  # top right
+            )
+
+    # normalize dp
+    dp[:] = (dp - np.min(dp)) / (np.max(dp) - np.min(dp))
+
+    elapsed = timer() - now
+    print(f"Sequential: elapsed time: {elapsed:.2f} seconds")
+
+    np.savetxt("/tmp/dp.txt", dp)
+
+    seam = find_min_seam(dp)
+
+    for i, x in enumerate(seam):
+        im.putpixel((x, i), (255, 0, 0))
+
+    im.save(result)
+
+def parallel_seam_carve(im: Image.Image, result: str):
+    address = "tcp://127.0.0.1:2345"
+    cluster = SchedulerClusterCombo(address=address, n_workers=6)
+    client = Client(address=address)
+
+    # warm up the cluster
+    client.submit(lambda _: ..., None)
 
     imdata = np.array(im)
 
@@ -176,63 +203,73 @@ def main():
     # pad the edges with 0s so that we can shift and not worry about going out of bounds
     imdata = np.pad(imdata, ((1, new_width + 1 - width), (1, new_height + 1 - height), (0, 0)), constant_values=0)
 
-    dp2 = None
+    dp = None
+
+    now = timer()
 
     for y in range(0, new_height, TRIANGLE_BASE_WIDTH // 2 + 1):
-        energies, dp = None, None
+        energies, dp_tmp = None, None
 
-        for x in range(1, new_width + 1, TRIANGLE_BASE_WIDTH):
-            en, dyn = calc_down_triangle(x, y + 1, imdata)
+        results = client.map(calc_down_triangle, [(x, y + 1, imdata) for x in range(1, new_width + 1, TRIANGLE_BASE_WIDTH)])
 
-            if energies is None:
-                energies = en
-            else:
-                energies = np.concat((energies, en), axis=0)
+        en = np.concatenate([tup[0] for tup in results], axis=0)
+        dyn = np.concatenate([tup[1] for tup in results], axis=0)
 
-            if dp is None:
-                dp = dyn
-            else:
-                dp = np.concat((dp, dyn), axis=0)
+        if energies is None:
+            energies = en
+        else:
+            energies = np.concat((energies, en), axis=0)
 
-                print(dp.shape)
+        if dp_tmp is None:
+            dp_tmp = dyn
+        else:
+            dp_tmp = np.concat((dp_tmp, dyn), axis=0)
 
         # pad each side by half of the base width so that we can have aligned upward triangles
-        dp = np.pad(dp, ((TRIANGLE_BASE_WIDTH // 2, TRIANGLE_BASE_WIDTH // 2), (0, 0)))
+        dp_tmp = np.pad(dp_tmp, ((TRIANGLE_BASE_WIDTH // 2, TRIANGLE_BASE_WIDTH // 2), (0, 0)))
 
-        for x in range(0, dp.shape[0], TRIANGLE_BASE_WIDTH):
-            dp[x : x + TRIANGLE_BASE_WIDTH, 0 : TRIANGLE_BASE_WIDTH // 2 + 1] = calc_up_triangle(x, y, energies, dp)
+        for x in range(0, dp_tmp.shape[0], TRIANGLE_BASE_WIDTH):
+            dp_tmp[x : x + TRIANGLE_BASE_WIDTH, 0 : TRIANGLE_BASE_WIDTH // 2 + 1] = calc_up_triangle(x, y, energies, dp_tmp)
 
         # cut off padding
-        dp = dp[TRIANGLE_BASE_WIDTH // 2 : -TRIANGLE_BASE_WIDTH // 2, :]
-        dp = dp[: -(new_width - width), :]
+        dp_tmp = dp_tmp[TRIANGLE_BASE_WIDTH // 2 : -TRIANGLE_BASE_WIDTH // 2, :]
+        dp_tmp = dp_tmp[: -(new_width - width), :]
 
-        if dp2 is None:
-            dp2 = dp
+        if dp is None:
+            dp = dp_tmp
         else:
-            dp2 = np.concat((dp2, dp), axis=1)
-
-        print(dp2.shape)
+            dp = np.concat((dp, dp_tmp), axis=1)
 
     # cut off vertical padding
-    dp2 = dp2[:, new_height - height :]
+    dp = dp[:, new_height - height :]
 
     # normalize dp
-    dp2[:] = (dp2 - np.min(dp2)) / (np.max(dp2) - np.min(dp2))
+    dp[:] = (dp - np.min(dp)) / (np.max(dp) - np.min(dp))
 
-    np.savetxt("/tmp/dp.txt", dp2)
+    elapsed = timer() - now
+    print(f"Parallel: elapsed time: {elapsed:.2f} seconds")
 
-    seam = find_min_seam(dp2)
+    seam = find_min_seam(dp)
 
+    # the image is not transposed so we flip the coordinates
     for i, x in enumerate(seam):
-        im.putpixel((i, x), (255, 0, 0))
+        im.putpixel((x, i), (255, 0, 0))
 
     im.save(result)
 
-    # address = "tcp://127.0.0.1:2345"
-    # cluster = SchedulerClusterCombo(address=address, n_workers=6)
-    # client = Client(address=address)
+    cluster.shutdown()
 
-    # cluster.shutdown()
+def main():
+    source, result_seq, result_par = sys.argv[1:]
+
+    try:
+        im = Image.open(source)
+    except UnidentifiedImageError:
+        print(f"Error: [{source}] is not a valid image file.")
+        return
+    
+    sequential_seam_carve(im, result_seq)
+    parallel_seam_carve(im, result_par)
 
 if __name__ == "__main__":
     main()
