@@ -190,7 +190,7 @@ Below is an example implementation of a custom serializer that uses a different 
 * All other objects are serialized using cloudpickle
 
 
-.. code:: python
+.. testcode:: python
 
     import enum
     import pickle
