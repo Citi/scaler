@@ -60,11 +60,6 @@ Scaler uses Python's built-in ``asyncio`` event loop by default, however users c
         event_loop="uvloop"
     )
 
-**Start a scheduler in Python**
-
-.. literalinclude:: ../../../examples/simple_scheduler.py
-   :language: python
-
 
 Worker Settings
 ---------------
@@ -87,8 +82,4 @@ This can be set using the CLI:
 
 Or through the programmatic API:
 
-**Start a cluster in Python**
-
-.. literalinclude:: ../../../examples/simple_cluster.py
-   :language: python
 
