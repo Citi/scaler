@@ -1,3 +1,19 @@
+"""
+This example implements the popular seam carving algorithm[0] for content-aware image resizing in parallel[1] using Scaler.
+
+This program draws the minimum energy seam on the image, which is a path of pixels that minimizes the total energy of the image.
+The energy of a pixel is calculated using the euclidean distance with all 8 neighbors.
+Removing the seam will reduce the image size by one pixel in the cross direction and is left as an exercise for the reader.
+
+As per Sam Westrick's blog post, the image is divided into strips with a height half that of the triangle width (even number) plus one.
+This strip is then tessellated into triangles where the triangles pointing down are processed first in parallel, followed by the triangles pointing up, also in parallel.
+
+---
+
+[0]: https://en.wikipedia.org/wiki/Seam_carving
+[1]: https://shwestrick.github.io/2020/07/29/seam-carve.html
+"""
+
 import sys
 import itertools
 import numpy as np
@@ -5,8 +21,10 @@ from math import ceil
 from PIL import Image, UnidentifiedImageError
 from scaler import SchedulerClusterCombo, Client
 
-# needs to be an even number
 TRIANGLE_BASE_WIDTH: int = 60
+
+# needs to be an even number
+assert TRIANGLE_BASE_WIDTH % 2 == 0, "TRIANGLE_BASE_WIDTH must be an even number"
 
 
 def calc_down_triangle(x: int, y: int, im: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
