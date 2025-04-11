@@ -9,7 +9,7 @@ from PIL import Image, UnidentifiedImageError
 from scaler import SchedulerClusterCombo, Client
 
 
-def process(path: str):
+def process_image(path: str):
     try:
         im = Image.open(path)
     except UnidentifiedImageError:
@@ -36,7 +36,7 @@ def main():
     cluster = SchedulerClusterCombo(n_workers=cpu_count())
     client = Client(address=cluster.get_address())
 
-    client.map(process, [(os.path.join(dir, f),) for f in os.listdir(dir)])
+    client.map(process_image, [(os.path.join(dir, f),) for f in os.listdir(dir)])
 
 
 if __name__ == "__main__":
