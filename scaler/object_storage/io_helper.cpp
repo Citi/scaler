@@ -53,13 +53,11 @@ awaitable<void> read_request_header(tcp::socket& socket, object_header& header) 
 awaitable<void> read_request_payload(tcp::socket& socket, object_header& header, payload_t& payload) {
     using type = ObjectInstructionHeader::ObjectInstructionType;
     switch (header.ins_type) {
-        case type::SET_OBJECT_CONTENT_BY_ID:
-        case type::SET_OBJECT_NAME_BY_ID:
-        case type::DEL_OBJECT_BY_NAME: break;
+        case type::SET_OBJECT_BY_I_D:
+        case type::GET_OBJECT_HEAD_BYTES_BY_I_D: break;
 
-        case type::GET_OBJECT_CONTENT_BY_ID:
-        case type::DEL_OBJECT_BY_ID:
-        case type::GET_OBJECT_NAME_BY_ID:
+        case type::GET_OBJECT_BY_I_D:
+        case type::DEL_OBJECT_BY_I_D:
         default: header.payload_length = 0; break;
     }
 
@@ -71,8 +69,6 @@ awaitable<void> read_request_payload(tcp::socket& socket, object_header& header,
     }
 
     payload.resize(header.payload_length);
-    // we nee to capture exception ehre as well
-    // std::size_t n = co_await socket.async_read_some(boost::asio::buffer(payload), use_awaitable);
     try {
         std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(payload));
     } catch (boost::system::system_error& e) {

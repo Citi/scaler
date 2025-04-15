@@ -1,117 +1,84 @@
 #include <capnp/message.h>
 #include <capnp/serialize.h>
 #include <gtest/gtest.h>
+#include <string.h>
 
 #include <boost/asio.hpp>
+#include <boost/asio/awaitable.hpp>
+#include <boost/asio/detached.hpp>
+#include <boost/asio/use_awaitable.hpp>
+#include <boost/asio/write.hpp>
+#include <span>
 
 #include "../constants.h"
 #include "../defs.h"
+#include "../io_helper.h"
 #include "object_instruction_header.capnp.h"
 
+using boost::asio::awaitable;
+using boost::asio::buffer;
 using boost::asio::ip::tcp;
+using type = ObjectInstructionHeader::ObjectInstructionType;
 
-#define WRITE_HEADER(msg)                                                                                       \
-    do {                                                                                                        \
-        auto header = capnp::messageToFlatArray(msg);                                                           \
-        auto result =                                                                                           \
-            boost::asio::write(socket, boost::asio::buffer(header.asBytes().begin(), header.asBytes().size())); \
-        /* EXPECT_EQ(0, 1); */                                                                                  \
-    } while (0)
+char payload[] = "Hello, world!";
 
-static constexpr size_t header_size = 72;
-static constexpr size_t word_size   = sizeof(capnp::word);
+awaitable<void> testSetObjectByID(tcp::socket& socket) {
+    object_header header;
+    header.ins_type       = type::SET_OBJECT_BY_I_D;
+    header.payload_length = sizeof(payload);
+    header.object_id      = {0, 1, 2, 3};
 
-alignas(8) char resp_header[header_size];
+    // TODO: We should really rename these functions
+    // Req & Resp are in terms of server behavior
+    co_await write_response_header(socket, header, header.payload_length);
+    co_await write_response_payload(socket, {(const unsigned char*)payload, sizeof(payload)});
+    co_await read_request_header(socket, header);
+
+    // we see the ins_type is feed back as is
+    EXPECT_EQ(header.ins_type, type::SET_OBJECT_BY_I_D);
+    // Current Impl makes payload_length equal to 0, but this is undefined
+    EXPECT_EQ(header.payload_length, 0);
+    // object_id is feed back as is
+    EXPECT_EQ(header.object_id[0], 0);
+    EXPECT_EQ(header.object_id[1], 1);
+    EXPECT_EQ(header.object_id[2], 2);
+    EXPECT_EQ(header.object_id[3], 3);
+}
+
+awaitable<void> testGetObjectByID(tcp::socket& socket) {
+    object_header header;
+    header.ins_type       = type::GET_OBJECT_BY_I_D;
+    header.payload_length = 0;
+    header.object_id      = {0, 1, 2, 3};
+
+    co_await write_response_header(socket, header, header.payload_length);
+    co_await read_request_header(socket, header);
+
+    EXPECT_EQ(header.object_id[0], 0);
+    EXPECT_EQ(header.object_id[1], 1);
+    EXPECT_EQ(header.object_id[2], 2);
+    EXPECT_EQ(header.object_id[3], 3);
+    // we see the ins_type is feed back as is
+    EXPECT_EQ(header.ins_type, type::GET_OBJECT_BY_I_D);
+    // // In the previous call, we set this object_id to be payload
+    EXPECT_EQ(header.payload_length, sizeof(payload));
+    // // object_id is feed back as is
+
+    payload_t buf(sizeof(payload));
+    co_await read_request_payload(socket, header, buf);
+    EXPECT_EQ(strncmp((const char*)buf.data(), (const char*)payload, sizeof(payload)), 0);
+}
 
 TEST(ObjectStorageTestSuite, TestHeader) {
     boost::asio::io_context io_context;
-    // we need a socket and a resolver
     tcp::socket socket(io_context);
     tcp::resolver resolver(io_context);
-    // now we can use connect(..)
     boost::asio::connect(socket, resolver.resolve("127.0.0.1", "55555"));
 
-    // msg
-    capnp::MallocMessageBuilder msg;
-    auto this_msg = msg.initRoot<ObjectInstructionHeader>();
+    co_spawn(io_context.get_executor(), testSetObjectByID(socket), boost::asio::use_awaitable);
+    co_spawn(io_context.get_executor(), testGetObjectByID(socket), boost::asio::use_awaitable);
 
-    auto obj_id_builder = this_msg.initObjectId();
-    obj_id_builder.setField0(0);
-    obj_id_builder.setField1(1);
-    obj_id_builder.setField2(2);
-    obj_id_builder.setField3(3);
-
-    using type = ::ObjectInstructionHeader::ObjectInstructionType;
-
-    ///////////////////////////////////////////////////////////////////
-    this_msg.setInstruction(type::SET_OBJECT_CONTENT_BY_ID);
-
-    char payload[] = "Hello, world!";
-    this_msg.setPayloadLength(sizeof(payload));
-
-    WRITE_HEADER(msg);
-
-    // write payload
-    boost::asio::write(socket, boost::asio::buffer(payload));
-
-    EXPECT_EQ(boost::asio::read(socket, boost::asio::buffer(resp_header)), header_size);
-
-    capnp::FlatArrayMessageReader resp_header_reader(
-        kj::ArrayPtr<const capnp::word>((const capnp::word*)resp_header, header_size / word_size));
-    auto response_root = resp_header_reader.getRoot<ObjectInstructionHeader>();
-
-    ///////////////////////////////////////////////////////////////////
-
-    this_msg.setInstruction(type::GET_OBJECT_CONTENT_BY_ID);
-    WRITE_HEADER(msg);
-    EXPECT_EQ(boost::asio::read(socket, boost::asio::buffer(resp_header)), header_size);
-
-    // capnp::FlatArrayMessageReader resp_header_reader(
-    //     kj::ArrayPtr<const capnp::word>((const capnp::word*)resp_header, header_size / word_size));
-    // auto response_root = resp_header_reader.getRoot<ObjectInstructionHeader>();
-
-    EXPECT_EQ(boost::asio::read(socket, boost::asio::buffer(payload)), sizeof(payload));
-    EXPECT_EQ(response_root.getPayloadLength(), sizeof(payload));
-    EXPECT_EQ(response_root.getInstruction(), type::GET_OBJECT_CONTENT_BY_ID);
-    EXPECT_EQ(response_root.getObjectId().getField0(), 0);
-    EXPECT_EQ(response_root.getObjectId().getField1(), 1);
-    EXPECT_EQ(response_root.getObjectId().getField2(), 2);
-    EXPECT_EQ(response_root.getObjectId().getField3(), 3);
-
-    ///////////////////////////////////////////////////////////////////
-    // NOTE: We have not set up name for this object
-    this_msg.setInstruction(type::GET_OBJECT_NAME_BY_ID);
-    WRITE_HEADER(msg);
-    EXPECT_EQ(boost::asio::read(socket, boost::asio::buffer(resp_header)), header_size);
-
-    response_root = resp_header_reader.getRoot<ObjectInstructionHeader>();
-    EXPECT_EQ(response_root.getPayloadLength(), 0);
-
-    // Don't read, this api block when no input
-    // EXPECT_EQ(boost::asio::read(socket, boost::asio::buffer(payload)), 0);
-    EXPECT_EQ(response_root.getInstruction(), type::GET_OBJECT_NAME_BY_ID);
-    EXPECT_EQ(response_root.getObjectId().getField0(), 0);
-    EXPECT_EQ(response_root.getObjectId().getField1(), 1);
-    EXPECT_EQ(response_root.getObjectId().getField2(), 2);
-    EXPECT_EQ(response_root.getObjectId().getField3(), 3);
-
-    ///////////////////////////////////////////////////////////////////
-    // NOTE: the object name is also set to the content of the payload, which is for conveninece
-    this_msg.setInstruction(type::SET_OBJECT_NAME_BY_ID);
-    WRITE_HEADER(msg);
-    boost::asio::write(socket, boost::asio::buffer(payload));
-    EXPECT_EQ(boost::asio::read(socket, boost::asio::buffer(resp_header)), header_size);
-
-    response_root = resp_header_reader.getRoot<ObjectInstructionHeader>();
-    EXPECT_EQ(response_root.getPayloadLength(), 0);
-
-    EXPECT_EQ(response_root.getInstruction(), type::SET_OBJECT_NAME_BY_ID);
-    EXPECT_EQ(response_root.getObjectId().getField0(), 0);
-    EXPECT_EQ(response_root.getObjectId().getField1(), 1);
-    EXPECT_EQ(response_root.getObjectId().getField2(), 2);
-    EXPECT_EQ(response_root.getObjectId().getField3(), 3);
-
-    // and close the connection now
+    io_context.run();
     boost::system::error_code ec;
     auto res = socket.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
     (void)res;

@@ -4,6 +4,7 @@ include(FindGTest)
 add_executable(
   test_scaler_object
   test_scaler_object.cpp
+  ../io_helper.cpp
 )
 
 target_link_libraries(

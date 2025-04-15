@@ -39,53 +39,29 @@ std::map<object_id_t, object_with_meta> object_id_to_meta;
 void update_record(object_header& header, payload_t payload) {
     using type = ObjectInstructionHeader::ObjectInstructionType;
     switch (header.ins_type) {
-        case type::SET_OBJECT_CONTENT_BY_ID:
+        case type::SET_OBJECT_BY_I_D:
             object_id_to_meta[header.object_id].object = std::make_shared<object_t>(std::move(payload));
             break;
 
-        case type::SET_OBJECT_NAME_BY_ID: object_id_to_meta[header.object_id].name = std::move(payload); break;
+        case type::GET_OBJECT_BY_I_D: header.payload_length = object_id_to_meta[header.object_id].object->size(); break;
 
-        case type::DEL_OBJECT_BY_NAME:
-            for (const auto& [obj_id, meta]: object_id_to_meta) {
-                if (meta.name == payload) {
-                    header.object_id = obj_id;
-                    object_id_to_meta.erase(obj_id);
-                    return;
-                }
-            }
-            header.object_id = {0, 0, 0, 0};
+        case type::GET_OBJECT_HEAD_BYTES_BY_I_D:
+            header.payload_length = std::min(header.payload_length, object_id_to_meta[header.object_id].object->size());
             break;
 
-        case type::DEL_OBJECT_BY_ID: object_id_to_meta.erase(header.object_id); break;
-
-        case type::GET_OBJECT_CONTENT_BY_ID:
-            header.payload_length = object_id_to_meta[header.object_id].object->size();
-            break;
-        case type::GET_OBJECT_NAME_BY_ID:
-            header.payload_length = object_id_to_meta[header.object_id]
-                                        .name                                                             //
-                                        .and_then([](const auto& x) { return std::optional(x.size()); })  //
-                                        .value_or(0uz);                                                   //
-            break;
-        default: break;
+        case type::DEL_OBJECT_BY_I_D: object_id_to_meta.erase(header.object_id); break;
     }
 }
 
 std::span<const unsigned char> get_memory_view_for_response_payload(object_header& header) {
     using type = ObjectInstructionHeader::ObjectInstructionType;
     switch (header.ins_type) {
-        case type::GET_OBJECT_CONTENT_BY_ID:
-            return {
-                object_id_to_meta[header.object_id].object->data(), object_id_to_meta[header.object_id].object->size()};
-        case type::GET_OBJECT_NAME_BY_ID:
-            if (!(object_id_to_meta[header.object_id].name))
-                break;
-            return {object_id_to_meta[header.object_id].name->data(), object_id_to_meta[header.object_id].name->size()};
+        case type::GET_OBJECT_BY_I_D:
+        case type::GET_OBJECT_HEAD_BYTES_BY_I_D:
+            return {object_id_to_meta[header.object_id].object->data(), header.payload_length};
 
-        case type::SET_OBJECT_CONTENT_BY_ID:
-        case type::SET_OBJECT_NAME_BY_ID:
-        case type::DEL_OBJECT_BY_NAME:
-        case type::DEL_OBJECT_BY_ID:
+        case type::SET_OBJECT_BY_I_D:
+        case type::DEL_OBJECT_BY_I_D:
         default: break;
     }
     return {static_cast<const unsigned char*>(nullptr), 0};

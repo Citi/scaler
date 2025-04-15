@@ -5,13 +5,20 @@ struct ObjectInstructionHeader {
     payloadLength @1: UInt64; # 8 bytes
     instruction @2: ObjectInstructionType; # 2 bytes
 
+    # enum ObjectInstructionType {
+    #     setObjectContentById @0;
+    #     setObjectNameById @1;
+    #     getObjectContentById @2;
+    #     getObjectNameById @3;
+    #     delObjectByName @4;
+    #     delObjectById @5;
+    # }
+
     enum ObjectInstructionType {
-        setObjectContentById @0;
-        setObjectNameById @1;
-        getObjectContentById @2;
-        getObjectNameById @3;
-        delObjectByName @4;
-        delObjectById @5;
+        setObjectByID @0;
+        getObjectByID @1;
+        getObjectHeadBytesByID @2;
+        delObjectByID @3;
     }
 
     struct ObjectId {
