@@ -1,15 +1,15 @@
 import nest_asyncio
-nest_asyncio.apply()
-
 import sys
 import grequests
 import requests
 import asyncio
-from random import randint
 from psutil import cpu_count
 from timeit import default_timer as timer
 from quart import Quart
 from scaler import SchedulerClusterCombo, Client
+
+nest_asyncio.apply()
+
 
 def server(scaled: bool):
     app = Quart(__name__)
@@ -23,22 +23,23 @@ def server(scaled: bool):
             future = client.submit(requests.get, "https://example.com")
             response: requests.Response = await asyncio.wrap_future(future)
             return response.text
-    
+
         app.run(loop=asyncio.get_event_loop())
         cluster.shutdown()
     else:
         @app.route("/")
         def root():
             return requests.get("https://example.com").text
-    
+
         app.run()
 
 
 def client():
     start = timer()
     requests = [grequests.get("http://127.0.0.1:5000") for _ in range(1000)]
-    responses = grequests.map(requests)
+    _ = grequests.map(requests)
     print(f"Time: {timer() - start:.2f}s")
+
 
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "server" and sys.argv[2] == "scaled":
