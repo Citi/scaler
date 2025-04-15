@@ -21,7 +21,7 @@
 
 #include "defs.h"
 #include "io_helper.h"
-#include "object_instruction_header.capnp.h"
+#include "protocol/object_instruction_header.capnp.h"
 
 using boost::asio::awaitable;
 using boost::asio::co_spawn;

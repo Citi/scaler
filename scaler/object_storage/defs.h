@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include "object_instruction_header.capnp.h"
+#include "protocol/object_instruction_header.capnp.h"
 
 using object_id_t = std::array<uint64_t, 4>;
 // using object_name_t   = std::vector<unsigned char>;

@@ -12,9 +12,9 @@ target_link_libraries(
   GTest::gtest_main
 )
 
-target_sources(test_scaler_object PRIVATE ${messageSources})
+target_sources(test_scaler_object PRIVATE ${objectInstructionHeaderSources})
 target_link_libraries(test_scaler_object PRIVATE CapnProto::capnp)
-target_include_directories(test_scaler_object PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/..)
+target_include_directories(test_scaler_object PRIVATE ${CMAKE_BINARY_DIR})
 
 
 include(GoogleTest)

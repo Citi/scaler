@@ -1,37 +1,8 @@
 
-cmake_minimum_required(VERSION 3.28 FATAL_ERROR)
-
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-# set(CMAKE_CXX_SCAN_FOR_MODULES ON)
-set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
-
-project(
-  scaler_object
-  LANGUAGES C CXX
-  VERSION 0.1
-)
-
-enable_testing()
-
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE "Release")
-  message(STATUS "${PROJECT_NAME} Release build")
-else()
-  set(CMAKE_BUILD_TYPE "Debug")
-  message(STATUS "${PROJECT_NAME} Debug build")
-endif()
-
-
-find_package(CapnProto CONFIG REQUIRED)
-message(STATUS "Found CapnProto")
-
 find_package(Boost CONFIG REQUIRED)
 message(STATUS "Found Boost in ${Boost_INCLUDE_DIRS}")
 
 include_directories(${Boost_INCLUDE_DIRS})
-
 
 add_executable(server)
 target_sources(server PRIVATE
@@ -39,11 +10,16 @@ target_sources(server PRIVATE
   io_helper.cpp
 )
 
-capnp_generate_cpp(messageSources messageHeaders object_instruction_header.capnp)
+set(CAPNPC_SRC_PREFIX "${PROJECT_SOURCE_DIR}/scaler/protocol/capnp" CACHE STRING "" FORCE)
 
-target_sources(server PRIVATE ${messageSources})
+set(CAPNPC_OUTPUT_DIR "${CMAKE_BINARY_DIR}/protocol" CACHE STRING "" FORCE)
+
+file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
+
+capnp_generate_cpp(objectInstructionHeaderSources objectInstructionHeaderHeaders "../protocol/capnp/object_instruction_header.capnp")
+
+target_sources(server PRIVATE ${objectInstructionHeaderSources})
 target_link_libraries(server PRIVATE CapnProto::capnp)
-target_include_directories(server PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-
+target_include_directories(server PRIVATE ${CMAKE_BINARY_DIR})
 
 add_subdirectory(tests)
