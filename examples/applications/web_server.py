@@ -55,7 +55,7 @@ if __name__ == "__main__":
         server_ = multiprocessing.Process(target=server, args=(False,))
         server_.start()
 
-        result = multiprocessing.Queue()
+        result: multiprocessing.Queue = multiprocessing.Queue()
         client_ = multiprocessing.Process(target=client_multiprocess, args=(result,))
         client_.start()
         client_.join()
