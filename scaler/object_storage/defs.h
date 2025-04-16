@@ -39,7 +39,8 @@ struct meta {
 
 struct object_with_meta {
     shared_object_t object;
-    std::optional<meta> meta_info;
+    std::vector<meta> meta_info;
+    // std::optional<meta> meta_info;
 };
 
 };  // namespace object_storage

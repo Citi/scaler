@@ -64,13 +64,11 @@ bool update_record(
                 object_id_to_meta[request_header.object_id].object ? resp_type::SET_O_K_OVERRIDE : resp_type::SET_O_K;
             object_id_to_meta[request_header.object_id].object =
                 std::make_shared<scaler::object_storage::object_t>(std::move(payload));
-            if (object_id_to_meta[request_header.object_id].meta_info) {
-                co_spawn(
-                    object_id_to_meta[request_header.object_id].meta_info->socket.get_executor(),
-                    write_once(std::move(*object_id_to_meta[request_header.object_id].meta_info)),
-                    detached);
-                object_id_to_meta[request_header.object_id].meta_info.reset();
+            for (auto& curr_meta: object_id_to_meta[request_header.object_id].meta_info) {
+                auto executor = curr_meta.socket.get_executor();
+                co_spawn(executor, write_once(std::move(curr_meta)), detached);
             }
+
             break;
 
         case req_type::GET_OBJECT:
@@ -112,7 +110,7 @@ awaitable<void> process_request(tcp::socket socket) {
             bool good_to_send = update_record(requestHeader, responseHeader, std::move(payload));
 
             if (!good_to_send) {
-                object_id_to_meta[requestHeader.object_id].meta_info = scaler::object_storage::meta(
+                object_id_to_meta[requestHeader.object_id].meta_info.emplace_back(
                     std::move(socket), std::move(requestHeader), std::move(responseHeader));
                 break;
             }
