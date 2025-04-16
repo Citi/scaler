@@ -28,7 +28,7 @@ def main():
     script_path = os.path.dirname(os.path.abspath(__file__))
 
     if len(sys.argv) != 2:
-        dir = os.path.join(script_path, "images")
+        dir = os.path.join(script_path, "..", "images")
         print(f"Directory not provided as argument, using default: {dir}")
     else:
         dir = sys.argv[1]
