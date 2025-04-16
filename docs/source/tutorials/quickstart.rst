@@ -63,7 +63,7 @@ Things to Avoid
 
 please note that the :py:func:`~Client.submit()` method is used to submit a single task. If you wish to submit multiple tasks using the same function but with many sets of arguments, use :py:func:`~Client.map()` instead to avoid unnecessary serialization overhead. The following is an example `what not to do`.
 
-.. code:: python
+.. testcode:: python
 
     import functools
     import random
