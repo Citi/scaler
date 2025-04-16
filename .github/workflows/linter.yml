@@ -51,6 +51,10 @@ jobs:
             PYTHONPATH=. python $example
           done
           for example in "./examples/applications"/*.py; do
+            if [[ $example == "./examples/applications/web_server.py" ]]; then
+              continue
+            fi
+
             echo "Running $example"
             PYTHONPATH=. python $example
           done

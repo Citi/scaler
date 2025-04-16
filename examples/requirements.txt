@@ -1,2 +1,0 @@
-prophet==1.*.*
-pillow==11.*.*

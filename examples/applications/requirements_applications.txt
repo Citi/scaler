@@ -5,3 +5,5 @@ nest-asyncio
 requests
 grequests
 quart
+prophet
+pillow
