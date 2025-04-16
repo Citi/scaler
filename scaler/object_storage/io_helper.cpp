@@ -15,24 +15,29 @@
 #include <boost/system/system_error.hpp>
 
 #include "constants.h"
+#include "defs.h"
+#include "protocol/object_instruction_header.capnp.h"
 
 using boost::asio::awaitable;
 using boost::asio::use_awaitable;
 using boost::asio::ip::tcp;
 
-awaitable<void> read_request_header(tcp::socket& socket, object_header& header) {
+namespace scaler {
+namespace object_storage {
+
+awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& header) {
     try {
         std::array<uint64_t, CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE> buf;
         std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(buf.data(), CAPNP_HEADER_SIZE));
 
         capnp::FlatArrayMessageReader reader(
             kj::ArrayPtr<const capnp::word>((const capnp::word*)buf.data(), CAPNP_HEADER_SIZE / CAPNP_WORD_SIZE));
-        auto request_root = reader.getRoot<ObjectInstructionHeader>();
+        auto request_root = reader.getRoot<::ObjectRequestHeader>();
 
-        header.ins_type       = request_root.getInstruction();
+        header.req_type       = request_root.getRequestType();
         header.payload_length = request_root.getPayloadLength();
 
-        auto object_id   = request_root.getObjectId();
+        auto object_id   = request_root.getObjectID();
         header.object_id = {
             object_id.getField0(),
             object_id.getField1(),
@@ -50,14 +55,14 @@ awaitable<void> read_request_header(tcp::socket& socket, object_header& header) 
     }
 }
 
-awaitable<void> read_request_payload(tcp::socket& socket, object_header& header, payload_t& payload) {
-    using type = ObjectInstructionHeader::ObjectInstructionType;
-    switch (header.ins_type) {
-        case type::SET_OBJECT_BY_I_D:
-        case type::GET_OBJECT_HEAD_BYTES_BY_I_D: break;
+awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& header, payload_t& payload) {
+    using type = ::ObjectRequestHeader::ObjectRequestType;
+    switch (header.req_type) {
+        case type::SET_OBJECT:
+        case type::GET_OBJECT_HEADER: break;
 
-        case type::GET_OBJECT_BY_I_D:
-        case type::DEL_OBJECT_BY_I_D:
+        case type::DELETE_OBJECT:
+        case type::GET_OBJECT:
         default: header.payload_length = 0; break;
     }
 
@@ -88,12 +93,12 @@ boost::asio::awaitable<void> write_response_payload(
 }
 
 boost::asio::awaitable<void> write_response_header(
-    boost::asio::ip::tcp::socket& socket, object_header& header, uint64_t payload_length) {
+    boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, uint64_t payload_length) {
     capnp::MallocMessageBuilder return_msg;
-    auto resp_root = return_msg.initRoot<ObjectInstructionHeader>();
-    resp_root.setInstruction(header.ins_type);
+    auto resp_root = return_msg.initRoot<::ObjectResponseHeader>();
+    resp_root.setResponseType(header.resp_type);
     resp_root.setPayloadLength(payload_length);
-    auto resp_root_object_id = resp_root.initObjectId();
+    auto resp_root_object_id = resp_root.initObjectID();
     resp_root_object_id.setField0(header.object_id[0]);
     resp_root_object_id.setField1(header.object_id[1]);
     resp_root_object_id.setField2(header.object_id[2]);
@@ -107,3 +112,6 @@ boost::asio::awaitable<void> write_response_header(
         throw e;
     }
 }
+
+};  // namespace object_storage
+};  // namespace scaler
