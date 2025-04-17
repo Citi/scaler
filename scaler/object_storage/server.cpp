@@ -18,9 +18,14 @@
 #include <map>
 #include <memory>
 
+#include "argparse/argparse.hpp"
 #include "defs.h"
 #include "io_helper.h"
 #include "protocol/object_storage.capnp.h"
+#include "version.h"
+// Helper macros to stringify the macro value
+#define STRINGIFY_HELPER(x) #x
+#define STRINGIFY(x)        STRINGIFY_HELPER(x)
 
 using boost::asio::awaitable;
 using boost::asio::co_spawn;
@@ -136,7 +141,18 @@ awaitable<void> listener(short unsigned port) {
 }
 
 int main(int argc, char* argv[]) {
-    short unsigned port = 55555;
+    argparse::ArgumentParser argParser("server", STRINGIFY(VERSION));
+    argParser.add_argument("-p", "--port").default_value(55555).help("Specify port to listen on.");
+    try {
+        argParser.parse_args(argc, argv);
+    } catch (const std::exception& err) {
+        std::cerr << err.what() << std::endl;
+        std::cerr << argParser;
+        std::exit(1);
+    }
+
+    unsigned short port = argParser.get<unsigned short>("--port");
+
     if (argc == 2)
         port = atoi(argv[1]);
     try {

@@ -9,7 +9,12 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 project(
   scaler
   LANGUAGES C CXX
-  VERSION 0.1
+  VERSION 1.9.4
+)
+
+configure_file(
+	${PROJECT_SOURCE_DIR}/version.h.in
+	${PROJECT_BINARY_DIR}/version.h
 )
 
 enable_testing()
