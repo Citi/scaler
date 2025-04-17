@@ -12,7 +12,7 @@
 
 #include "../constants.h"
 #include "../defs.h"
-#include "protocol/object_instruction_header.capnp.h"
+#include "protocol/object_storage.capnp.h"
 
 using boost::asio::buffer;
 using boost::asio::ip::tcp;

@@ -16,9 +16,9 @@ set(CAPNPC_OUTPUT_DIR "${CMAKE_BINARY_DIR}/protocol" CACHE STRING "" FORCE)
 
 file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
 
-capnp_generate_cpp(objectInstructionHeaderSources objectInstructionHeaderHeaders "../protocol/capnp/object_instruction_header.capnp")
+capnp_generate_cpp(objectStorageSources objectStorageHeaders "../protocol/capnp/object_storage.capnp")
 
-target_sources(server PRIVATE ${objectInstructionHeaderSources})
+target_sources(server PRIVATE ${objectStorageSources})
 target_link_libraries(server PRIVATE CapnProto::capnp)
 target_include_directories(server PRIVATE ${CMAKE_BINARY_DIR})
 

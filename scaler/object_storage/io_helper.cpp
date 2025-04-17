@@ -16,7 +16,7 @@
 
 #include "constants.h"
 #include "defs.h"
-#include "protocol/object_instruction_header.capnp.h"
+#include "protocol/object_storage.capnp.h"
 
 using boost::asio::awaitable;
 using boost::asio::use_awaitable;

@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-#include "protocol/object_instruction_header.capnp.h"
+#include "protocol/object_storage.capnp.h"
 
 namespace scaler {
 namespace object_storage {
