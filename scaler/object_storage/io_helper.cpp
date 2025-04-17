@@ -58,9 +58,9 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
 awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& header, payload_t& payload) {
     using type = ::ObjectRequestHeader::ObjectRequestType;
     switch (header.req_type) {
-        case type::SET_OBJECT:
-        case type::GET_OBJECT_HEADER: break;
+        case type::SET_OBJECT: break;
 
+        case type::GET_OBJECT_HEADER: co_return;
         case type::DELETE_OBJECT:
         case type::GET_OBJECT:
         default: header.payload_length = 0; break;
