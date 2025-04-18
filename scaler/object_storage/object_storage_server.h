@@ -65,6 +65,7 @@ class ObjectStorageServer {
                     auto executor = curr_meta.socket.get_executor();
                     co_spawn(executor, write_once(std::move(curr_meta)), detached);
                 }
+                object_id_to_meta[request_header.object_id].meta_info = std::vector<meta>();
 
                 break;
 
