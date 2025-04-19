@@ -18,9 +18,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       - name: Set up Python 3.8
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
         with:
           python-version: "3.8"
       - name: Install dependencies
@@ -28,12 +33,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install flake8 pyproject-flake8 mypy
           pip install -r requirements.txt
+          
       - name: Lint with flake8
         run: |
           pflake8 .
       - name: Lint with MyPy
         run: |
-          mypy .
+          mypy --install-types --non-interactive .
       - name: Run python unittest
         run: |
           python -m unittest discover -v tests
+      - name: Run examples
+        run: |
+          pip install -r examples/applications/requirements_applications.txt
+          for example in "./examples"/*.py; do
+            echo "Running $example"
+            PYTHONPATH=. python $example
+          done
+          for example in "./examples/applications"/*.py; do
+            echo "Running $example"
+            PYTHONPATH=. python $example
+          done
