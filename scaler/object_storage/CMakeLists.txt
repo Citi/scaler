@@ -1,6 +1,7 @@
-
 find_package(Boost CONFIG REQUIRED)
 message(STATUS "Found Boost in ${Boost_INCLUDE_DIRS}")
+
+include_directories(${Boost_INCLUDE_DIRS})
 
 include(FetchContent)
 FetchContent_Declare(
@@ -11,7 +12,6 @@ FetchContent_MakeAvailable(argparse)
 message(STATUS "Fetched argparse from https://github.com/p-ranav/argparse.git")
 
 
-include_directories(${Boost_INCLUDE_DIRS})
 
 add_executable(server)
 add_library(server_as_so SHARED)
