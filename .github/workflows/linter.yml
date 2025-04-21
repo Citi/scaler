@@ -40,6 +40,11 @@ jobs:
       - name: Lint with MyPy
         run: |
           mypy --install-types --non-interactive .
+      - name: Build Object Storage Component
+        run: |
+          pip install cmake
+          cmake -S . -B build
+          cd build && make
       - name: Run python unittest
         run: |
           python -m unittest discover -v tests
@@ -54,8 +59,3 @@ jobs:
             echo "Running $example"
             PYTHONPATH=. python $example
           done
-      - name: Build Object Storage Component
-        run: |
-          pip install cmake
-          cmake -S . -B build
-          cd build && make
