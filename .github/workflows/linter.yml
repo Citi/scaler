@@ -54,3 +54,8 @@ jobs:
             echo "Running $example"
             PYTHONPATH=. python $example
           done
+      - name: Build Object Storage Component
+        run: |
+          pip install cmake
+          cmake -S . -B build
+          cd build && make

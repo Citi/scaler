@@ -21,3 +21,6 @@ include(GoogleTest)
 gtest_discover_tests(test_scaler_object)
 
 
+add_executable(test_scaler_so test_scaler_so.cpp)
+target_include_directories(test_scaler_so PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
+target_link_libraries(test_scaler_so PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/../libserver_as_so.so)
