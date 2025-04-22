@@ -1,9 +1,12 @@
 from typing import Optional, Set
 
+from redis import Redis
+
 from scaler.client.agent.mixins import ObjectManager
 from scaler.io.async_connector import AsyncConnector
 from scaler.protocol.python.common import ObjectContent
 from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, TaskResult
+from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
 class ClientObjectManager(ObjectManager):
@@ -16,9 +19,17 @@ class ClientObjectManager(ObjectManager):
         self._connector_internal: Optional[AsyncConnector] = None
         self._connector_external: Optional[AsyncConnector] = None
 
+        self._object_storage_client: Optional[Redis] = None
+
     def register(self, connector_internal: AsyncConnector, connector_external: AsyncConnector):
         self._connector_internal = connector_internal
         self._connector_external = connector_external
+
+    def ready(self) -> bool:
+        return self._object_storage_client is not None
+
+    def set_object_storage_client(self, object_storage_config: ObjectStorageConfig):
+        self._object_storage_client = Redis(host=object_storage_config.host, port=object_storage_config.port)
 
     async def on_object_instruction(self, instruction: ObjectInstruction):
         if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Create:

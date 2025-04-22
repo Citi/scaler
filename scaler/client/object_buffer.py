@@ -3,6 +3,7 @@ import pickle
 from typing import Any, Callable, List, Optional, Set
 
 import cloudpickle
+from redis import Redis
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.sync_connector import SyncConnector
@@ -24,6 +25,7 @@ class ObjectBuffer:
     def __init__(self, identity: bytes, serializer: Serializer, connector: SyncConnector):
         self._identity = identity
         self._serializer = serializer
+        self._redis_server: Optional[Redis] = None
         self._connector = connector
 
         self._pending_objects: List[ObjectCache] = list()

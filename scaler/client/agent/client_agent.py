@@ -99,7 +99,9 @@ class ClientAgent(threading.Thread):
             object_manager=self._object_manager,
             future_manager=self._future_manager,
         )
-        self._heartbeat_manager.register(connector_external=self._connector_external)
+        self._heartbeat_manager.register(
+            connector_external=self._connector_external, object_manager=self._object_manager
+        )
 
     def __run_loop(self):
         self._loop = asyncio.new_event_loop()
