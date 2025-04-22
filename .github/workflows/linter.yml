@@ -42,10 +42,10 @@ jobs:
           mypy --install-types --non-interactive .
       - name: Build Object Storage Component
         run: |
-          apt-get update
-          apt-get upgrade
-          apt-get install libboost-all-dev
-          apt-get install capnproto
+          sudo apt-get update
+          sudo apt-get upgrade
+          sudo apt-get install libboost-all-dev
+          sudo apt-get install capnproto
           pip install cmake
           cmake -S . -B build
           cd build && make
