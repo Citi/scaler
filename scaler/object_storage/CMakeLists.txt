@@ -1,7 +1,7 @@
-find_package(Boost CONFIG REQUIRED)
-message(STATUS "Found Boost in ${Boost_INCLUDE_DIRS}")
-
-include_directories(${Boost_INCLUDE_DIRS})
+# find_package(Boost CONFIG REQUIRED)
+# message(STATUS "Found Boost in ${Boost_INCLUDE_DIRS}")
+# 
+# include_directories(${Boost_INCLUDE_DIRS})
 
 include(FetchContent)
 FetchContent_Declare(
