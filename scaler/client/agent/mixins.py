@@ -13,6 +13,7 @@ from scaler.protocol.python.message import (
     TaskCancel,
     TaskResult,
 )
+from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
 class HeartbeatManager(metaclass=abc.ABCMeta):
@@ -32,6 +33,14 @@ class TimeoutManager(metaclass=abc.ABCMeta):
 
 
 class ObjectManager(metaclass=abc.ABCMeta):
+    @abc.abstractmethod
+    def ready(self) -> bool:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def set_object_storage_client(self, object_storage_config: ObjectStorageConfig):
+        raise NotImplementedError()
+
     @abc.abstractmethod
     async def on_object_instruction(self, object_instruction: ObjectInstruction):
         raise NotImplementedError()
