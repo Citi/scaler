@@ -30,10 +30,10 @@ jobs:
           python-version: "3.8"
       - name: Build Object Storage Component
         run: |
-          sudo apt-get update -y
-          sudo apt-get upgrade -y
-          sudo apt-get install libboost-all-dev -y
-          sudo apt-get install capnproto -y
+          # sudo apt-get update -y
+          # sudo apt-get upgrade -y
+          sudo apt install libboost-all-dev -y
+          sudo apt install capnproto -y
           pip install cmake
           cmake -S . -B build
           cd build && make
