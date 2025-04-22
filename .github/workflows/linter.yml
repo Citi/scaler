@@ -30,12 +30,17 @@ jobs:
           python-version: "3.8"
       - name: Build Object Storage Component
         run: |
-          # sudo apt-get update -y
-          # sudo apt-get upgrade -y
-          sudo apt install libboost-all-dev -y
-          sudo apt install capnproto -y
-          pip install cmake
-          cmake -S . -B build
+          apt update -y
+          apt upgrade -y
+          DEBIAN_FRONTEND=noninteractive apt install -y tzdata
+          apt install software-properties-common -y
+          add-apt-repository ppa:mhier/libboost-latest -y
+          apt update -y
+          apt upgrade -y
+          apt install libboost-all-dev cmake capnproto clang -y
+          # sudo apt install capnproto -y
+          # pip install cmake
+          cmake -S . -B build -DCMAKE_CXX_COMPILER=$(which clang++)
           cd build && make
       - name: Install dependencies
         run: |
