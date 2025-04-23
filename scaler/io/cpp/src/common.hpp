@@ -30,6 +30,7 @@
 
 // Python callback
 void future_set_result(void *future, void *data);
+void future_set_status(void *future, void *status);
 
 #define PROPAGATE(expr) \
     if (auto status = (expr); status.type != ErrorType::Ok) \
@@ -50,6 +51,12 @@ void future_set_result(void *future, void *data);
               << message << std::endl;
 
     std::abort();
+}
+
+[[noreturn]] void unreachable(
+    const std::source_location &location = std::source_location::current())
+{
+    panic("unreachable", location);
 }
 
 // how to control flow
@@ -293,7 +300,7 @@ int eventfd_reset(int fd)
 enum FdWait : int8_t
 {
     Ready = 0,
-    FdTimeout = -1,
+    Timeout = -1,
     Other = -2,
 };
 
@@ -306,8 +313,8 @@ enum FdWait : int8_t
 // return value:
 //  - Fdwait::Ready (0): the file descriptor is ready
 //  - Fdwait::Timeout (-1): the timeout expired
-//  - Fdwait::Other (-2): poll failed for some other reason; check errno
-//  - (>0): a signal was received, the value is the negative of the signal number
+//  - Fdwait::Other (-2): fd_wait failed for some other reason; check errno
+//  - (>0): a signal was received, the value is the signal number
 int8_t fd_wait(int fd, int timeout, short int events)
 {
     pollfd fds[2];
@@ -337,7 +344,7 @@ int8_t fd_wait(int fd, int timeout, short int events)
     if (n == 0)
     {
         close(signal_fd);
-        return (int8_t)FdWait::FdTimeout;
+        return (int8_t)FdWait::Timeout;
     }
 
     if (n < 0)
@@ -351,9 +358,7 @@ int8_t fd_wait(int fd, int timeout, short int events)
         signalfd_siginfo info;
 
         if (read(signal_fd, &info, sizeof(info)) != sizeof(info))
-        {
-            panic("failed to read signalfd: " + std::to_string(errno));
-        }
+            return FdWait::Other;
 
         close(signal_fd);
         return info.ssi_signo;
@@ -466,12 +471,14 @@ struct IoOperation
 
 ENUM Code{
     AlreadyBound,
-    InvalidAddress};
+    InvalidAddress,
+    UnsupportedOperation};
 
 ENUM ErrorType{
     Ok,
     Logical,
-    Errno};
+    Errno,
+    Signal};
 
 struct Status
 {
@@ -481,6 +488,7 @@ struct Status
     {
         Code code;
         int no;
+        int signal;
     };
 
     static Status ok()
@@ -506,6 +514,15 @@ struct Status
             .type = ErrorType::Errno,
             .message = message,
             .no = err,
+        };
+    }
+
+    static Status from_signal(int signal, const char *message = NULL)
+    {
+        return {
+            .type = ErrorType::Signal,
+            .message = message,
+            .signal = signal,
         };
     }
 };

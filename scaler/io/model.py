@@ -10,7 +10,7 @@ __ALL__ = [
 ]
 
 from scaler.io.cpp.ffi import FFITypes, ffi, lib as C, c_async, Message
-from scaler.io.errors import check_status
+from scaler.io.cpp.errors import check_status
 
 from enum import IntEnum, unique
 from abc import ABC, abstractmethod
@@ -23,7 +23,9 @@ class Session:
 
     def __init__(self, io_threads: int) -> None:
         self._obj = ffi.new("struct Session *")
-        C.session_init(self._obj, io_threads)
+        check_status(
+            C.session_init(self._obj, io_threads)
+        )
 
         self._clients = []
 
@@ -38,7 +40,9 @@ class Session:
         for client in self._clients:
             client.destroy()
 
-        C.session_destroy(self._obj)
+        check_status(
+            C.session_destroy(self._obj)
+        )
 
     def register_client(self, client) -> None:
         self._clients.append(client)
@@ -165,7 +169,9 @@ class Connector:
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType, protocol: Protocol):
         self._obj = ffi.new("struct Connector *")
-        C.connector_init(session._obj, self._obj, protocol.value, type_.value, identity, len(identity))
+        check_status(
+            C.connector_init(session._obj, self._obj, protocol.value, type_.value, identity, len(identity))
+        )
 
         self._session = session
         self._session.register_client(self)
@@ -178,7 +184,9 @@ class Connector:
             return
         self._destroyed = True
 
-        C.connector_destroy(self._obj)
+        check_status(
+            C.connector_destroy(self._obj)
+        )
 
     def __check_destroyed(self) -> None:
         if self._destroyed:
@@ -195,7 +203,9 @@ class Connector:
             case IntraProcessAddress():
                 host, port = addr.name, 0
 
-        check_status(C.connector_bind(self._obj, host.encode(), port))
+        check_status(
+            C.connector_bind(self._obj, host.encode(), port)
+        )
 
     def connect(self, addr: Address) -> None:
         self.__check_destroyed()
@@ -208,7 +218,9 @@ class Connector:
             case IntraProcessAddress():
                 host, port = addr.name, 0
 
-        C.connector_connect(self._obj, host.encode(), port)
+        check_status(
+            C.connector_connect(self._obj, host.encode(), port)
+        )
 
     async def send(self, to: bytes | None = None, data: bytes | None = None) -> None:
         self.__check_destroyed()
@@ -228,7 +240,9 @@ class Connector:
         else:
             to_len = len(to)
 
-        C.connector_send_sync(self._obj, to, to_len, data, len(data))
+        check_status(
+            C.connector_send_sync(self._obj, to, to_len, data, len(data))
+        )
 
     async def recv(self) -> Message:
         self.__check_destroyed()
@@ -239,7 +253,9 @@ class Connector:
         self.__check_destroyed()
 
         msg = ffi.new("struct Message *")
-        C.connector_recv_sync(self._obj, msg)
+        check_status(
+            C.connector_recv_sync(self._obj, msg)
+        )
 
         # copy the message
         msg_ = Message(msg)

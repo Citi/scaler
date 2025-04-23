@@ -3,6 +3,8 @@ __ALL__ = ["FFITypes", "ffi", "lib", "c_async", "c_async_wrap"]
 from .cpp import ffi, lib
 from cffi import FFI as FFITypes
 
+from .errors import CppException
+
 
 class LibType:
     Pair: int
@@ -17,6 +19,12 @@ class LibType:
 
     AlreadyBound: int
     InvalidAddress: int
+    UnsupportedOperation: int
+
+    Ok: int
+    Errno: int
+    Logical: int
+    Signal: int
 
     def session_init(session: "FFITypes.CData", num_threads: int) -> None:
         (session, num_threads)
@@ -93,6 +101,21 @@ def future_set_result(future_handle: "FFITypes.CData", result: "FFITypes.CData")
     # - https://docs.python.org/3/library/asyncio-eventloop.html#asyncio.loop.call_soon_threadsafe
     future.get_loop().call_soon_threadsafe(future.set_result, result)
 
+@ffi.def_extern()
+def future_set_status(future_handle: "FFITypes.CData", status: "FFITypes.CData") -> None:
+    status = ffi.cast("struct Status *", status)
+    future: asyncio.Future = ffi.from_handle(future_handle)
+
+    if future.done():
+        return
+    
+    exc = CppException.from_status(status)
+
+    # status was "ok"
+    if exc is None:
+        future.get_loop().call_soon_threadsafe(future.set_result, None)
+    else:
+        future.get_loop().call_soon_threadsafe(future.set_exception, exc)
 
 # these type variables make type hints work
 # in Python 3.12+ we can use the new syntax instead of defining these:

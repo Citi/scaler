@@ -45,14 +45,16 @@ struct Connector
 enum Code
 {
     AlreadyBound,
-    InvalidAddress
+    InvalidAddress,
+    UnsupportedOperation
 };
 
 enum ErrorType
 {
     Ok,
     Logical,
-    Errno
+    Errno,
+    Signal
 };
 
 struct Status
@@ -63,21 +65,23 @@ struct Status
     {
         enum Code code;
         int no;
+        int signal;
     };
 };
 
 // Python callback
 extern "Python+C" void future_set_result(void *future, void *data);
+extern "Python+C" void future_set_status(void *future, void *status);
 
-void session_init(struct Session *session, size_t num_threads);
-void session_destroy(struct Session *session);
+struct Status session_init(struct Session *session, size_t num_threads);
+struct Status session_destroy(struct Session *session);
 void message_destroy(struct Message *message);
 
-void connector_init(struct Session *session, struct Connector *connector, enum Transport transport, enum ConnectorType type, uint8_t *identity, size_t len);
-void connector_destroy(struct Connector *connector);
+struct Status connector_init(struct Session *session, struct Connector *connector, enum Transport transport, enum ConnectorType type, uint8_t *identity, size_t len);
+struct Status connector_destroy(struct Connector *connector);
 struct Status connector_bind(struct Connector *connector, const char *host, uint16_t port);
-void connector_connect(struct Connector *connector, const char *host, uint16_t port);
+struct Status connector_connect(struct Connector *connector, const char *host, uint16_t port);
 void connector_send_async(void *future, struct Connector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
-void connector_send_sync(struct Connector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
+struct Status connector_send_sync(struct Connector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);
 void connector_recv_async(void *future, struct Connector *connector);
-void connector_recv_sync(struct Connector *connector, struct Message *msg);
+struct Status connector_recv_sync(struct Connector *connector, struct Message *msg);

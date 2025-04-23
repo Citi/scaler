@@ -586,7 +586,7 @@ void io_thread_main(ThreadContext *ctx)
 
 // --- public api ---
 
-void session_init(Session *session, size_t num_threads)
+Status session_init(Session *session, size_t num_threads)
 {
     new (session) Session{
         .threads = std::vector<ThreadContext>(),
@@ -623,10 +623,12 @@ void session_init(Session *session, size_t num_threads)
 
         ctx->start();
     }
+
+    return Status::ok();
 }
 
 // this must be called after all registered clients have been destroyed
-void session_destroy(Session *session)
+Status session_destroy(Session *session)
 {
     for (auto &ctx : session->threads)
     {
@@ -638,4 +640,6 @@ void session_destroy(Session *session)
 
     // run destructor in-place without freeing memory (it's owned by Python)
     session->~Session();
+
+    return Status::ok();
 }

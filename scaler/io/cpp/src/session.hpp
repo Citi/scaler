@@ -45,8 +45,8 @@ void intra_process_recv_event(IntraProcessConnector *connector);
 
 void io_thread_main(ThreadContext *ctx);
 
-void session_init(Session *session, size_t num_threads);
-void session_destroy(Session *session);
+Status session_init(Session *session, size_t num_threads);
+Status session_destroy(Session *session);
 
 // --- structs ---
 

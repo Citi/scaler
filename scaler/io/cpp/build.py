@@ -11,7 +11,7 @@ import os
 
 builder.set_source(
     "cpp",
-    '#include "../src/main.hpp"',
+    '#include "src/main.hpp"',
     source_extension=".cpp",
     # runs gcc like it's g++ and links the C++ standard library
     extra_compile_args=(
@@ -23,7 +23,4 @@ builder.set_source(
 )
 
 if __name__ == "__main__":
-    builder.compile(verbose=True, tmpdir="build")
-
-    import shutil, glob
-    shutil.copy(glob.glob("build/cpp.*.so")[0], ".")
+    builder.compile(verbose=True)
