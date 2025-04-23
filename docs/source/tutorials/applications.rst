@@ -30,4 +30,31 @@ overhead introduced by slow IO speed.
    :language: python
 
 
+Timeseries Forecasting
+----------------------
+
+This example performs timeseries forecasting on the daily page views for a Wikipedia article using Meta's Prophet library.
+We use Scaler to parallelize the cross-validation process and achieve a huge speedup.
+
+.. literalinclude:: ../../../examples/applications/timeseries.py
+   :language: python
+
+
+Image Processing
+----------------
+
+This example uses Scaler to process a directory of images in parallel using Pillow.
+
+.. literalinclude:: ../../../examples/applications/pillow.py
+   :language: python
+
+
+Web Server
+----------
+
+This example shows how Scaler can be used to parallelize a web server.
+It includes a sequential version and a parallelized version using Scaler for comparison, plus an implementation of a client that rapidly sends requests to test the server.
+
+.. literalinclude:: ../../../examples/applications/web_server.py
+   :language: python
 
