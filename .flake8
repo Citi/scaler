@@ -3,5 +3,5 @@ exclude =
     migrations
     __pycache__
     ./build
-    ./capnproto-c++-1.1.0
-    ./boost_1_88_0
+    ./capnproto*
+    ./boost*
