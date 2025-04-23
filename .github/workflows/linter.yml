@@ -34,31 +34,20 @@ jobs:
           sudo apt update -y
           sudo apt upgrade -y
           sudo DEBIAN_FRONTEND=noninteractive sudo apt install -y tzdata
-          # DEBIAN_FRONTEND=noninteractive apt install -y tzdata
           sudo apt install software-properties-common -y
           sudo apt install cmake clang curl pkg-config -y
-
-      # - name: Make third party directory
-      #   run: |
-      #     mkdir -p third_party/include
-      #     mkdir -p third_party/lib
-      #     mkdir -p third_party/bin
 
       - name: Cache Boost
         id: cache-boost
         uses: actions/cache@v4
         with:
-          # path: third_party/include/boost
           path: /usr/include/boost
           key: ${{ runner.os }}-boost
 
       - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
         run: |
-          curl -L https://archives.boost.io/release/1.88.0/source/boost_1_88_0.tar.gz -o boost188.tar.gz
-          tar -xzf boost188.tar.gz
-          sudo mkdir -p /usr/include/boost
-          sudo mv boost_1_88_0/boost /usr/include/.
-          echo "Installed Boost into third_party/include/boost"
+          sudo chmod 755 ./download_dependencies.sh
+          sudo ./download_dependencies.sh boost
 
       - name: Cache Capnp
         id: cache-capnp
@@ -69,13 +58,8 @@ jobs:
 
       - if: ${{ steps.cache-capnp.outputs.cache-hit != 'true' }}
         run: |
-          curl -O https://capnproto.org/capnproto-c++-1.1.0.tar.gz
-          tar zxf capnproto-c++-1.1.0.tar.gz
-          cd capnproto-c++-1.1.0
-          ./configure --prefix=/usr/
-          make -j6 check
-          sudo make install
-          echo "Installed capnp into third_party/include/capnp"
+          sudo chmod 755 ./download_dependencies.sh
+          sudo ./download_dependencies.sh capnp
 
 
       - name: Build Object Storage Component
@@ -88,7 +72,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install flake8 pyproject-flake8 mypy
           pip install -r requirements.txt
-          
+
       - name: Lint with flake8
         run: |
           pflake8 .
