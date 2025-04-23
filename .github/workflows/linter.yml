@@ -47,8 +47,8 @@ jobs:
 
       - if: ${{ steps.cache-boost.outputs.cache-hit != 'true' }}
         run: |
-          sudo chmod 755 ./download_dependencies.sh
-          sudo ./download_dependencies.sh boost
+          sudo chmod 755 ./scripts/download_dependencies.sh
+          sudo ./scripts/download_dependencies.sh boost
 
       - name: Cache Capnp
         id: cache-capnp
@@ -59,8 +59,8 @@ jobs:
 
       - if: ${{ steps.cache-capnp.outputs.cache-hit != 'true' }}
         run: |
-          sudo chmod 755 ./download_dependencies.sh
-          sudo ./download_dependencies.sh capnp
+          sudo chmod 755 ./scripts/download_dependencies.sh
+          sudo ./scripts/download_dependencies.sh capnp
 
 
       - name: Build Object Storage Component

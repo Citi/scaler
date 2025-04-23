@@ -5,3 +5,4 @@ exclude =
     ./build
     ./capnproto*
     ./boost*
+    ./scripts
