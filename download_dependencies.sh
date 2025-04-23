@@ -5,7 +5,7 @@ if [ "$1" == "boost" ]; then
 	tar -xzf boost188.tar.gz
 	sudo mkdir -p /usr/include/boost
 	sudo mv boost_1_88_0/boost /usr/include/.
-	echo "Installed Boost into third_party/include/boost"
+	echo "Installed Boost into /usr/include/boost"
 
 elif [ "$1" == "capnp" ]; then
 	curl -O https://capnproto.org/capnproto-c++-1.1.0.tar.gz
@@ -14,7 +14,7 @@ elif [ "$1" == "capnp" ]; then
 	./configure --prefix=/usr/
 	make -j6 check
 	sudo make install
-	echo "Installed capnp into third_party/include/capnp"
+	echo "Installed capnp into /usr"
 
 else 
     echo "Usage: ./download_dependencies.sh [boost|capnp]"
