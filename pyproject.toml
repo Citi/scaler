@@ -57,7 +57,14 @@ count = true
 statistics = true
 max-line-length = 120
 extend-ignore = ["E203"]
-exclude = "venv312"
+exclude = [
+    "migrations",
+    "__pycache__",
+    "./build",
+    "./capnproto*",
+    "./boost*",
+    "./scripts"
+]
 
 [tool.black]
 line-length = 120
