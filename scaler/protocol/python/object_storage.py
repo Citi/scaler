@@ -14,6 +14,10 @@ class ObjectRequestHeader(Message):
     class ObjectRequestType(enum.Enum):
         SetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.setObject
         GetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.getObject
+<<<<<<< HEAD
+=======
+        GetObjectHeader = _object_storage.ObjectRequestHeader.ObjectRequestType.getObjectHeader
+>>>>>>> 4c5ff76 (Adds a asyncio connector for the Object Storage protocol.)
         DeleteObject = _object_storage.ObjectRequestHeader.ObjectRequestType.deleteObject
 
     def __init__(self, msg):
