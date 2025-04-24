@@ -29,6 +29,19 @@ jobs:
         with:
           python-version: "3.8"
 
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pyproject-flake8 mypy
+          pip install -r requirements.txt
+
+      - name: Lint with flake8
+        run: |
+          pflake8 .
+      - name: Lint with MyPy
+        run: |
+          mypy --install-types --non-interactive .
+
       - name: Install necessary component
         run: |
           sudo apt update -y
@@ -68,18 +81,6 @@ jobs:
           cmake -S . -B build -DCMAKE_CXX_COMPILER=$(which clang++)
           cd build && make
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8 pyproject-flake8 mypy
-          pip install -r requirements.txt
-
-      - name: Lint with flake8
-        run: |
-          pflake8 .
-      - name: Lint with MyPy
-        run: |
-          mypy --install-types --non-interactive .
       - name: Run python unittest
         run: |
           python -m unittest discover -v tests
