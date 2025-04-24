@@ -223,9 +223,12 @@ class ClientHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
+    def object_storage_address(self) -> str:
+        return self._msg.objectStorageAddress.decode()
+
     @staticmethod
-    def new_msg() -> "ClientHeartbeatEcho":
-        return ClientHeartbeatEcho(_message.ClientHeartbeatEcho())
+    def new_msg(object_storage_address: str) -> "ClientHeartbeatEcho":
+        return ClientHeartbeatEcho(_message.ClientHeartbeatEcho(objectStorageAddress=object_storage_address.encode()))
 
 
 class WorkerHeartbeat(Message):
@@ -281,9 +284,12 @@ class WorkerHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
+    def object_storage_address(self) -> bytes:
+        return self._msg.objectStorageAddress
+
     @staticmethod
-    def new_msg() -> "WorkerHeartbeatEcho":
-        return WorkerHeartbeatEcho(_message.WorkerHeartbeatEcho())
+    def new_msg(object_storage_address: bytes) -> "WorkerHeartbeatEcho":
+        return WorkerHeartbeatEcho(_message.WorkerHeartbeatEcho(objectStorageAddress=object_storage_address))
 
 
 class ObjectInstruction(Message):
