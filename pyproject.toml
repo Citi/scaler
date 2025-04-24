@@ -52,10 +52,10 @@ exclude = [
     "^venv.*$",
     "migrations",
     "__pycache__",
-    "./build.*$",
-    "./capnproto.*$",
-    "./boost.*$",
-    "./scripts.*$"
+    "^build.*$",
+    "^capnproto.*$",
+    "^boost.*$",
+    "^scripts.*$"
 ]
 
 [tool.flake8]
