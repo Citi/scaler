@@ -9,7 +9,7 @@ CAPNP_VERSION="1.1.0"
 if [ "$1" == "boost" ]; then
 	BOOST_FOLDER_NAME="boost_$(echo $BOOST_VERSION | tr '.' '_')"
 	BOOST_PACKAGE_NAME=${BOOST_FOLDER_NAME}.tar.gz
-	curl -O https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_PACKAGE_NAME}
+	curl -O https://archives.boost.io/release/${BOOST_VERSION}/source/${BOOST_PACKAGE_NAME} --retry 100 --retry-max-time 3600
 	tar -xzf ${BOOST_PACKAGE_NAME}
 	sudo mkdir -p /usr/include/boost
 	sudo mv ${BOOST_FOLDER_NAME}/boost /usr/include/.
@@ -19,7 +19,7 @@ if [ "$1" == "boost" ]; then
 elif [ "$1" == "capnp" ]; then
 	CAPNP_FOLDER_NAME="capnproto-c++-$(echo $CAPNP_VERSION)"
 	CAPNP_PACKAGE_NAME=${CAPNP_FOLDER_NAME}.tar.gz
-	curl -O https://capnproto.org/${CAPNP_PACKAGE_NAME}
+	curl -O https://capnproto.org/${CAPNP_PACKAGE_NAME} --retry 100 --retry-max-time 3600
 	tar -xzf ${CAPNP_PACKAGE_NAME}
 	cd ${CAPNP_FOLDER_NAME}
 	./configure --prefix=/usr/
