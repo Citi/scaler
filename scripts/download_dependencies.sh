@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/bash -e
 # Remember:
 #	Update the usage string when you are add/remove dependency
 #	Bump version should be done through variables, not hard coded strs.
