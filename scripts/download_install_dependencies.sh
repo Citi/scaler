@@ -29,7 +29,7 @@ elif [ "$1" == "capnp" ]; then
 	sudo rm -rf ${CAPNP_FOLDER_NAME} ${CAPNP_PACKAGE_NAME}
 
 else 
-    echo "Usage: ./download_dependencies.sh [boost|capnp]"
+    echo "Usage: ./download_install_dependencies.sh [boost|capnp]"
     exit 1
 fi
 
