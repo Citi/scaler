@@ -1,4 +1,3 @@
-import argparse
 import ctypes
 import sys
 
@@ -24,19 +23,4 @@ def run_object_storage_server(lib_path: str, name: str = "127.0.0.1", port: str 
     port_bytes = port.encode('utf-8')
 
     lib.run_object_storage_server(name_bytes, port_bytes)
-
-def main():
-    parser = argparse.ArgumentParser(description='Call main_entrance from a dynamic library.')
-    parser.add_argument('--lib', required=True, help='Path to the foundational library')
-    parser.add_argument('--name', '-n', default='127.0.0.1', 
-                        help='Ip address or NS record. Default to 127.0.0.1')
-    parser.add_argument('--port', '-p', default='55555', 
-                        help='Port number to connect. Default to 55555')
-    args = parser.parse_args()
-
-    run_object_storage_server(args.lib, args.name, args.port)
-
-
-if __name__ == '__main__':
-    main()
 
