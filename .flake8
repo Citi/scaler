@@ -6,3 +6,5 @@ exclude =
     ./capnproto*
     ./boost*
     ./scripts
+extend-ignore = E203
+max-line-length = 120
