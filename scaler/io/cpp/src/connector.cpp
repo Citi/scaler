@@ -21,17 +21,21 @@ Status connector_init(
     }
 }
 
-Status connector_destroy(Connector* connector) {
+Status connector_destroy(Connector* connector, bool destruct) {
     switch (connector->type) {
         case Connector::Socket: {
-            network_connector_destroy(connector->network);
+            auto status = network_connector_destroy(connector->network);
+            if (destruct)
+                connector->network->~NetworkConnector();
             std::free(connector->network);
-            return Status::ok();
+            return status;
         }
         case Connector::IntraProcess: {
-            intra_process_destroy(connector->intra_process);
+            auto status = intra_process_destroy(connector->intra_process);
+            if (destruct)
+                connector->intra_process->~IntraProcessConnector();
             std::free(connector->intra_process);
-            return Status::ok();
+            return status;
         }
         default: unreachable();
     }

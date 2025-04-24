@@ -472,7 +472,8 @@ struct IoOperation
 ENUM Code{
     AlreadyBound,
     InvalidAddress,
-    UnsupportedOperation};
+    UnsupportedOperation,
+    NoThreads};
 
 ENUM ErrorType{
     Ok,

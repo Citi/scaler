@@ -142,7 +142,6 @@ void RawPeer::recv_msg(Bytes payload) {
                     .n_bytes = total,
                 };
 
-            // todo: handle other errors?
             panic("write error: " + std::to_string(errno));
         }
 
@@ -184,7 +183,7 @@ void RawPeer::recv_msg(Bytes payload) {
         }
     }
 
-    panic("unreachable");
+    unreachable();
 }
 
 ControlFlow epollin_peer(RawPeer* peer) {
@@ -372,6 +371,9 @@ Status network_connector_init(
     ConnectorType type,
     uint8_t* identity,
     size_t len) {
+    if (connector->thread == nullptr)
+        return Status::from_code(Code::NoThreads, "network connectors require a session with threads");
+
     new (connector) NetworkConnector {
         .type                 = type,
         .transport            = transport,
@@ -523,7 +525,8 @@ Status network_connector_connect(NetworkConnector* connector, const char* addr, 
 void network_connector_send_async(
     void* future, NetworkConnector* connector, uint8_t* to, size_t to_len, uint8_t* data, size_t data_len) {
     if (connector->type == ConnectorType::Sub) {
-        auto status = Status::from_code(Code::UnsupportedOperation, "clients of type 'sub' do not support sending messages");
+        auto status =
+            Status::from_code(Code::UnsupportedOperation, "clients of type 'sub' do not support sending messages");
 
         return future_set_status(future, &status);
     }

@@ -41,7 +41,7 @@ class Session:
             client.destroy()
 
         check_status(
-            C.session_destroy(self._obj)
+            C.session_destroy(self._obj, True)
         )
 
     def register_client(self, client) -> None:
@@ -185,7 +185,7 @@ class Connector:
         self._destroyed = True
 
         check_status(
-            C.connector_destroy(self._obj)
+            C.connector_destroy(self._obj, True)
         )
 
     def __check_destroyed(self) -> None:

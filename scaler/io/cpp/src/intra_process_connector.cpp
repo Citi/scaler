@@ -1,11 +1,16 @@
 #include "intra_process_connector.hpp"
 
-void IntraProcessConnector::ensure_epoll() {
+Status IntraProcessConnector::ensure_epoll() {
+    if (this->thread == nullptr)
+        return Status::from_code(Code::NoThreads, "async operations require a session with threads");
+
     if (this->epoll.exchange(true))
-        return;
+        return Status::ok();
 
     this->thread->add_epoll(this->recv_buffer_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessConnectorRecv, this);
     this->thread->add_epoll(this->recv_event_fd, EPOLLIN | EPOLLET, EpollType::IntraProcessConnectorRecv, this);
+
+    return Status::ok();
 }
 
 void IntraProcessConnector::remove_from_epoll() {
@@ -49,9 +54,7 @@ Status intra_process_bind(IntraProcessConnector* connector, const char* addr) {
     connector->session->intra_process_mutex.lock();
 
     // check for conflicts
-    for (size_t i = 0; i < connector->session->inprocs.size(); i++) {
-        auto other = connector->session->inprocs[i];
-
+    for (auto other : connector->session->inprocs) {
         if (other == connector)
             continue;
 
@@ -63,9 +66,7 @@ Status intra_process_bind(IntraProcessConnector* connector, const char* addr) {
     connector->bind = bind;
 
     // check for any pending connections
-    for (size_t i = 0; i < connector->session->inprocs.size(); i++) {
-        auto other = connector->session->inprocs[i];
-
+    for (auto other : connector->session->inprocs) {
         if (other == connector)
             continue;
 
@@ -89,9 +90,7 @@ Status intra_process_connect(IntraProcessConnector* connector, const char* addr)
 
     connector->session->intra_process_mutex.lock();
 
-    for (size_t i = 0; i < connector->session->inprocs.size(); i++) {
-        auto other = connector->session->inprocs[i];
-
+    for (auto other : connector->session->inprocs) {
         if (other == connector)
             continue;
 
@@ -156,7 +155,7 @@ Status intra_process_send(IntraProcessConnector* connector, uint8_t* data, size_
             if (errno == EAGAIN)
                 goto wait;
 
-            panic("intra_process_send(): failed to wait on unmuted_event_fd");
+            return Status::from_errno("failed to wait on unmuted_event_fd");
         }
     }
 
@@ -190,7 +189,9 @@ wait:
 void intra_process_recv_async(void* future, IntraProcessConnector* connector) {
     // ensure that the client is in the epoll
     // this allows sync-only clients to avoid epoll overhead
-    connector->ensure_epoll();
+    if (auto status = connector->ensure_epoll(); status.type != ErrorType::Ok)
+        return future_set_status(future, &status);
+
     connector->recv.enqueue(future);
 
     if (eventfd_signal(connector->recv_event_fd) < 0) {
@@ -211,7 +212,6 @@ Status intra_process_destroy(IntraProcessConnector* connector) {
 
     connector->session->intra_process_mutex.unlock();
     connector->identity.free();
-    connector->~IntraProcessConnector();  // call destructor in-place
 
     return Status::ok();
 }

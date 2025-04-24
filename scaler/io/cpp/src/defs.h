@@ -46,7 +46,8 @@ enum Code
 {
     AlreadyBound,
     InvalidAddress,
-    UnsupportedOperation
+    UnsupportedOperation,
+    NoThreads
 };
 
 enum ErrorType
@@ -74,11 +75,11 @@ extern "Python+C" void future_set_result(void *future, void *data);
 extern "Python+C" void future_set_status(void *future, void *status);
 
 struct Status session_init(struct Session *session, size_t num_threads);
-struct Status session_destroy(struct Session *session);
+struct Status session_destroy(struct Session *session, bool destruct);
 void message_destroy(struct Message *message);
 
 struct Status connector_init(struct Session *session, struct Connector *connector, enum Transport transport, enum ConnectorType type, uint8_t *identity, size_t len);
-struct Status connector_destroy(struct Connector *connector);
+struct Status connector_destroy(struct Connector *connector, bool destruct);
 struct Status connector_bind(struct Connector *connector, const char *host, uint16_t port);
 struct Status connector_connect(struct Connector *connector, const char *host, uint16_t port);
 void connector_send_async(void *future, struct Connector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);

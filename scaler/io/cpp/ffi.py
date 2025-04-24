@@ -20,6 +20,7 @@ class LibType:
     AlreadyBound: int
     InvalidAddress: int
     UnsupportedOperation: int
+    NoThreads: int
 
     Ok: int
     Errno: int

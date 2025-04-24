@@ -628,18 +628,19 @@ Status session_init(Session *session, size_t num_threads)
 }
 
 // this must be called after all registered clients have been destroyed
-Status session_destroy(Session *session)
+Status session_destroy(Session *session, bool destruct)
 {
     for (auto &ctx : session->threads)
     {
         if (eventfd_signal(ctx.epoll_close_efd) < 0)
-            panic("failed to write to eventfd: " + std::to_string(errno));
+            return Status::from_errno("failed to write to epoll_close_efd");
 
         ctx.thread.join();
     }
 
     // run destructor in-place without freeing memory (it's owned by Python)
-    session->~Session();
+    if (destruct)
+        session->~Session();
 
     return Status::ok();
 }

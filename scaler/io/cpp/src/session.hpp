@@ -46,7 +46,7 @@ void intra_process_recv_event(IntraProcessConnector *connector);
 void io_thread_main(ThreadContext *ctx);
 
 Status session_init(Session *session, size_t num_threads);
-Status session_destroy(Session *session);
+Status session_destroy(Session *session, bool destruct);
 
 // --- structs ---
 
@@ -160,8 +160,13 @@ struct Session
         return threads.size();
     };
 
+    // round-robin the threads
+    // returns nullptr if there are no threads
     ThreadContext *next_thread()
     {
+        if (threads.empty())
+            return nullptr;
+
         auto rr = thread_rr++;
         return &threads[rr % num_threads()];
     }

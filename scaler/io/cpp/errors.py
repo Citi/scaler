@@ -14,6 +14,7 @@ class Code(IntEnum):
     AlreadyBound = lib.AlreadyBound
     InvalidAddress = lib.InvalidAddress
     UnsupportedOperation = lib.UnsupportedOperation
+    NoThreads = lib.NoThreads
 
 class CppException(Exception):
     message: str | None
