@@ -64,7 +64,7 @@ exclude = [
     "./capnproto*",
     "./boost*",
     "./scripts",
-    "venv312"
+    "venv*"
 ]
 
 [tool.black]
