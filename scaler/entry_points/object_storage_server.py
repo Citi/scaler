@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from scaler.object_storage.object_storage_server import run_object_storage_server
 
@@ -22,4 +23,6 @@ def get_args():
 
 def main():
     args = get_args()
-    run_object_storage_server("../lib/libserver.so", args.name, args.port)
+    run_object_storage_server(
+        os.path.join(os.path.dirname(__file__), "..", "lib", "libserver.so"), args.name, args.port
+    )
