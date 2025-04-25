@@ -109,7 +109,7 @@ def future_set_status(future_handle: "FFITypes.CData", status: "FFITypes.CData")
 
     if future.done():
         return
-    
+
     exc = CppException.from_status(status)
 
     # status was "ok"

@@ -2,7 +2,7 @@
 
 Status IntraProcessConnector::ensure_epoll() {
     if (this->thread == nullptr)
-        return Status::from_code(Code::NoThreads, "async operations require a session with threads");
+        return Status::from_code("async operations require a session with threads", Code::NoThreads);
 
     if (this->epoll.exchange(true))
         return Status::ok();
@@ -47,7 +47,7 @@ Status intra_process_init(Session* session, IntraProcessConnector* connector, ui
 
 Status intra_process_bind(IntraProcessConnector* connector, const char* addr) {
     if (connector->bind)
-        return Status::from_code(Code::AlreadyBound);
+        return Status::from_code("interprocess connector already bound", Code::AlreadyBound);
 
     std::string bind(addr);
 
@@ -145,7 +145,7 @@ Status intra_process_send(IntraProcessConnector* connector, uint8_t* data, size_
     wait:
         if (auto code = fd_wait(connector->unmuted_event_fd, -1, POLLIN)) {
             if (code > 0)
-                return Status::from_signal(code, "fdwait: unmuted_event_fd");
+                return Status::from_signal("fdwait: unmuted_event_fd", code);
 
             return Status::from_errno("failed to wait for unmuted_event_fd");
         }
@@ -166,7 +166,7 @@ Status intra_process_recv_sync(IntraProcessConnector* connector, Message* msg) {
 wait:
     if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN)) {
         if (code > 0)
-            return Status::from_signal(code, "fdwait: recv_buffer_event_fd");
+            return Status::from_signal("fdwait: recv_buffer_event_fd", code);
 
         return Status::from_errno("failed to wait for recv_buffer_event_fd");
     }

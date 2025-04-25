@@ -195,7 +195,7 @@ ControlFlow epollin_peer(RawPeer* peer) {
 
         switch (result) {
             case IoState::Done:
-                peer->read_op->complete();
+                peer->read_op->completer.complete_ok();
                 peer->recv_msg(peer->read_op->payload);
                 peer->read_op = std::nullopt;
                 break;
@@ -224,10 +224,10 @@ ControlFlow epollout_peer(RawPeer* peer) {
         auto result = write_message(peer->fd, &*peer->write_op);
 
         switch (result) {
-            case IoState::Done:
-                peer->write_op->complete();
+            case IoState::Done: {
+                peer->write_op->completer.complete_ok();
                 peer->write_op = std::nullopt;
-                break;
+            } break;
             case IoState::Blocked: return ControlFlow::Continue;
             case IoState::Reset:
                 reconnect_peer(peer);
@@ -371,8 +371,8 @@ Status network_connector_init(
     ConnectorType type,
     uint8_t* identity,
     size_t len) {
-    if (connector->thread == nullptr)
-        return Status::from_code(Code::NoThreads, "network connectors require a session with threads");
+    if (session->threads.empty())
+        return Status::from_code("network connectors require a session with threads", Code::NoThreads);
 
     new (connector) NetworkConnector {
         .type                 = type,
@@ -411,7 +411,7 @@ Status network_connector_bind_tcp(NetworkConnector* connector, const char* host,
     in_addr_t in_addr = strcmp(host, "*") ? inet_addr(host) : INADDR_ANY;
 
     if (in_addr == INADDR_NONE)
-        return Status::from_code(Code::InvalidAddress);
+        return Status::from_code("tcp address could not be parsed", Code::InvalidAddress);
 
     *(sockaddr_in*)&address = {
         .sin_family = AF_INET,
@@ -455,7 +455,7 @@ Status network_connector_bind_unix(NetworkConnector* connector, const char* path
 
 Status network_connector_bind(NetworkConnector* connector, const char* host, uint16_t port) {
     if (connector->fd > 0)
-        return Status::from_code(Code::AlreadyBound);
+        return Status::from_code("network connector already bound", Code::AlreadyBound);
 
     sockaddr_storage address;
     std::memset(&address, 0, sizeof(address));
@@ -526,7 +526,7 @@ void network_connector_send_async(
     void* future, NetworkConnector* connector, uint8_t* to, size_t to_len, uint8_t* data, size_t data_len) {
     if (connector->type == ConnectorType::Sub) {
         auto status =
-            Status::from_code(Code::UnsupportedOperation, "clients of type 'sub' do not support sending messages");
+            Status::from_code("clients of type 'sub' do not support sending messages", Code::UnsupportedOperation);
 
         return future_set_status(future, &status);
     }
@@ -561,7 +561,7 @@ void network_connector_send_async(
 Status network_connector_send_sync(
     NetworkConnector* connector, uint8_t* to, size_t to_len, uint8_t* data, size_t data_len) {
     if (connector->type == ConnectorType::Sub)
-        return Status::from_code(Code::UnsupportedOperation, "clients of type 'sub' do not support sending messages");
+        return Status::from_code("clients of type 'sub' do not support sending messages", Code::UnsupportedOperation);
 
     sem_t* sem = (sem_t*)std::malloc(sizeof(sem_t));
 
@@ -611,7 +611,7 @@ Status network_connector_recv_sync(NetworkConnector* connector, Message* msg) {
 wait:
     if (auto code = fd_wait(connector->recv_buffer_event_fd, -1, POLLIN)) {
         if (code > 0)
-            return Status::from_signal(code, "fdwait: recv_buffer_event_fd");
+            return Status::from_signal("fdwait: recv_buffer_event_fd", code);
 
         return Status::from_errno("failed to wait for fd in sync recv");
     }

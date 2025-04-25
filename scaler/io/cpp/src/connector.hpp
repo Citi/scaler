@@ -16,6 +16,8 @@ struct Connector
         IntraProcessConnector *intra_process;
         NetworkConnector *network;
     };
+
+    ~Connector() {}
 };
 
 Status connector_init(Session *session, Connector *connector, Transport transport, ConnectorType type, uint8_t *identity, size_t len);
