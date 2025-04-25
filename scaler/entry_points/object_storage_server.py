@@ -17,16 +17,9 @@ def get_args():
     parser.add_argument(
         "--port", "-p", type=str, default="55555", help="Specify port the server will be listening to. Default to 55555"
     )
-    parser.add_argument(
-        "--library-path",
-        "-i",
-        type=str,
-        required=True,
-        help="Specify the path of underlying server implementation the program will use",
-    )
     return parser.parse_args()
 
 
 def main():
     args = get_args()
-    run_object_storage_server(args.library_path, args.name, args.port)
+    run_object_storage_server("../lib/libserver.so", args.name, args.port)

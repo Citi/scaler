@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools", "setuptools-scm", "mypy", "black", "flake8", "pyproject-flake8"]
+requires = ["setuptools", "setuptools-scm", "mypy", "black", "flake8", "pyproject-flake8", "cmake"]
 build-backend = "setuptools.build_meta"
 
 [project]
