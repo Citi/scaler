@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import NetworkConnector, Address, Session, ConnectorType
+from scaler.io.model import Connector, Address, Session, ConnectorType
 
 class SyncSubscriber(threading.Thread):
     def __init__(
@@ -19,8 +19,6 @@ class SyncSubscriber(threading.Thread):
         daemonic: bool = False,
         timeout_seconds: int = -1,
     ):
-        raise NotImplementedError
-
         threading.Thread.__init__(self)
 
         self._stop_event = stop_event
@@ -32,7 +30,7 @@ class SyncSubscriber(threading.Thread):
         self._timeout_seconds = timeout_seconds
 
         self._session: Session | None = None
-        self._client: NetworkConnector | None = None
+        self._client: Connector | None = None
 
     def __close(self):
         self._connector.destroy()
@@ -56,25 +54,12 @@ class SyncSubscriber(threading.Thread):
 
     def __initialize(self):
         self._session = Session(io_threads=1)
-        self._connector = NetworkConnector(self._session, "sync_subscriber".encode(), ConnectorType.Sub)
-        # self._context = zmq.Context.instance()
-        # self._socket = self._context.socket(zmq.SUB)
-        # self._socket.setsockopt(zmq.RCVHWM, 0)
-
-        # if self._timeout_seconds == -1:
-        #     self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds)
-        # else:
-        #     self._socket.setsockopt(zmq.RCVTIMEO, self._timeout_seconds * 1000)
-
-        # self._socket.subscribe(self._topic)
-        # self._socket.connect(self._address)
-        # self._socket.connect(self._address)
+        self._connector = Connector(self._session, "sync_subscriber".encode(), ConnectorType.Sub, self._address.protocol)
+        self._connector.connect(self._address)
 
     def __routine_polling(self):
-        try:
-            self.__routine_receive(self._socket.recv(copy=False).bytes)
-        except zmq.Again:
-            raise TimeoutError(f"Cannot connect to {self._address} in {self._timeout_seconds} seconds")
+        msg_ = self._connector.recv_sync()
+        self.__routine_receive(msg_.payload)
 
     def __routine_receive(self, payload: bytes):
         result: Optional[Message] = deserialize(payload)

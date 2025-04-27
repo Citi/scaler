@@ -77,7 +77,6 @@ void print_trace(void) {
     panic("unreachable", location);
 }
 
-
 ENUM Code {AlreadyBound, InvalidAddress, UnsupportedOperation, NoThreads};
 
 ENUM ErrorType {Ok, Logical, Errno, Signal};
@@ -382,30 +381,29 @@ struct Completer {
         sem_t* sem;
     };
 
-    static constexpr Completer none() {
-        return {
-            .type       = Type::None,
-            .future_ptr = nullptr,
-        };
-    }
+    uint8_t counter;
 
-    static Completer future(void* future) {
-        return {
-            .type       = Type::Future,
-            .future_ptr = future,
-        };
-    }
+    bool completed() const { return counter == 0; }
 
-    static Completer semaphore(sem_t* sem) {
-        return {
-            .type = Type::Semaphore,
-            .sem  = sem,
-        };
+    void set_counter(uint8_t counter) {
+        if (this->completed())
+            panic("counter already completed");
+
+        if (counter <= 0)
+            panic("counter must be > 0");
+
+        this->counter = counter;
     }
 
     // complete with a result
     // may be NULL
+    // not thread safe
     void complete(void* result = NULL) {
+        --this->counter;
+
+        if (this->counter > 0)
+            return;
+
         switch (this->type) {
             case Completer::Type::None: break;
             case Completer::Type::Future: future_set_result(this->future_ptr, result); break;
@@ -416,7 +414,12 @@ struct Completer {
         }
     }
 
-    void complete_status(Status *status) {
+    void complete_status(Status* status) {
+        --this->counter;
+
+        if (this->counter > 0)
+            return;
+
         switch (this->type) {
             case Completer::Type::None: break;
             case Completer::Type::Future: future_set_status(this->future_ptr, status); break;
@@ -430,6 +433,30 @@ struct Completer {
     void complete_ok() {
         auto status = Status::ok();
         this->complete_status(&status);
+    }
+
+    static constexpr Completer none() {
+        return {
+            .type       = Type::None,
+            .future_ptr = nullptr,
+            .counter    = 0,
+        };
+    }
+
+    static Completer future(void* future, uint8_t counter = 1) {
+        return {
+            .type       = Type::Future,
+            .future_ptr = future,
+            .counter    = counter,
+        };
+    }
+
+    static Completer semaphore(sem_t* sem, uint8_t counter = 1) {
+        return {
+            .type    = Type::Semaphore,
+            .sem     = sem,
+            .counter = counter,
+        };
     }
 };
 

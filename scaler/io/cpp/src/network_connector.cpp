@@ -80,19 +80,22 @@ void NetworkConnector::send(SendMessage send) {
             write_enqueue(peer, send);
         } break;
         case ConnectorType::Pub: {
-            // NOTE: IMPLEMENT THIS
-            // the completer needs to be completed once the message is written to every peer
-            // do we need to use a counting semaphore? maybe we can use an atomic or something?
+            auto n_peers = this->peers.size();
 
-            // for now just complete the request, it's not essential to the function of the scaler
-            send.completer.complete();
+            // pub sockets don't mute
+            // we only do this check so .set_counter() doesn't panic
+            if (n_peers == 0)
+                return;
 
-            // ---
-
+            // the completer needs to be completed once for each peer
+            // note: completer.complete*() is not thread safe
+            // however, all of the peers run on the same thread
+            send.completer.set_counter(n_peers);
+ 
             // if the socket has no peers, the message is dropped
             // we need to copy the peers because the vector may be modified
-            // for (auto peer : std::vector(this->peers))
-            //     write_enqueue(peer, send);
+            for (auto peer : std::vector(this->peers))
+                write_enqueue(peer, send);
         } break;
         case ConnectorType::Dealer: {
             if (this->peers.empty())
