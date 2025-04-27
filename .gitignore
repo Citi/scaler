@@ -26,3 +26,4 @@ scaler/io/cpp/cpp.cpp
 benchmark.py
 benches/**
 *.so
+*.out
