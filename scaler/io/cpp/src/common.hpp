@@ -134,7 +134,7 @@ struct ControlFlow {
             case Break: return false;
         }
 
-        panic("unreachable");
+        unreachable();
     }
 };
 

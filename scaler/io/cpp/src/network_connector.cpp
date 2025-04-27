@@ -91,10 +91,10 @@ void NetworkConnector::send(SendMessage send) {
             // note: completer.complete*() is not thread safe
             // however, all of the peers run on the same thread
             send.completer.set_counter(n_peers);
- 
+
             // if the socket has no peers, the message is dropped
             // we need to copy the peers because the vector may be modified
-            for (auto peer : std::vector(this->peers))
+            for (auto peer: std::vector(this->peers))
                 write_enqueue(peer, send);
         } break;
         case ConnectorType::Dealer: {
@@ -106,7 +106,7 @@ void NetworkConnector::send(SendMessage send) {
 
             write_enqueue(peer, send);
         } break;
-        default: panic("unknown client type");
+        default: unreachable();
     }
 }
 
@@ -236,8 +236,8 @@ ControlFlow epollout_peer(RawPeer* peer) {
                 reconnect_peer(peer);
                 return ControlFlow::Break;  // we need to go back to epoll_wait() after calling reconnect_peer()
             case IoState::Closed:
-                panic("unreachable");  // this is never returned by write_message(); write() cannot detect a graceful
-                                       // disconnect
+                unreachable();  // this is never returned by write_message(); write() cannot detect a graceful
+                                // disconnect
         }
     }
 }
@@ -322,7 +322,7 @@ void write_enqueue(RawPeer* peer, SendMessage send) {
         }
     }
 
-    panic("unreachable");
+    unreachable();
 }
 
 void remove_peer(RawPeer* peer) {

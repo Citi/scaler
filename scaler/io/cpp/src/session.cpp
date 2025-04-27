@@ -12,7 +12,7 @@ std::string EpollType::as_string() const {
         case EpollType::Closed: return "Closed";
     }
 
-    panic("unreachable: " + std::to_string(value));
+    unreachable();
 }
 
 void ThreadContext::control(ControlRequest request) {
@@ -233,10 +233,10 @@ ControlFlow write_identity(RawPeer* peer) {
             return ControlFlow::Continue;
         case IoState::Blocked: return ControlFlow::Continue;
         case IoState::Reset: reconnect_peer(peer); return ControlFlow::Break;
-        case IoState::Closed: panic("unreachable");  // never returned by write_message()
+        case IoState::Closed: unreachable();  // never returned by write_message()
     }
 
-    panic("unreachable");
+    unreachable();
 }
 
 // may call reconnect_peer()
@@ -257,7 +257,7 @@ ControlFlow read_identity(RawPeer* peer) {
             return ControlFlow::Break;
     }
 
-    panic("unreachable");
+    unreachable();
 }
 
 void network_connector_listener_event(NetworkConnector* connector) {
@@ -363,7 +363,7 @@ void network_connector_peer_event(epoll_event* event) {
 }
 
 void connect_timer_event(ThreadContext* ctx) {
-    for (int i = 0;; i++) {
+    for (;;) {
         if (timerfd_read2(ctx->connect_timer_tfd) < 0) {
             if (errno == EAGAIN)
                 break;
