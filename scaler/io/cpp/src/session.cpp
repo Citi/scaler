@@ -420,9 +420,6 @@ void control_event(ThreadContext* ctx) {
                 close(connector->send_event_fd);
                 close(connector->recv_event_fd);
                 close(connector->recv_buffer_event_fd);
-
-                // call the destructor in-place
-                connector->~NetworkConnector();
             } break;
             case ControlOperation::Connect: network_connector_connect_peer(request.peer); break;
         }
