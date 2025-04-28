@@ -399,6 +399,9 @@ struct Completer {
     // may be NULL
     // not thread safe
     void complete(void* result = NULL) {
+        if (this->completed())
+            panic("counter already completed");
+
         --this->counter;
 
         if (this->counter > 0)
@@ -415,6 +418,9 @@ struct Completer {
     }
 
     void complete_status(Status* status) {
+        if (this->completed())
+            panic("counter already completed");
+
         --this->counter;
 
         if (this->counter > 0)
@@ -435,11 +441,11 @@ struct Completer {
         this->complete_status(&status);
     }
 
-    static constexpr Completer none() {
+    static constexpr Completer none(uint8_t counter = 1) {
         return {
             .type       = Type::None,
             .future_ptr = nullptr,
-            .counter    = 0,
+            .counter    = counter,
         };
     }
 
