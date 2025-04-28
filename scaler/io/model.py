@@ -189,11 +189,6 @@ class Connector:
             C.connector_destroy(self._obj, True)
         )
 
-        print(f"destroyed!")
-
-        import traceback
-        traceback.print_stack()
-
     def __check_destroyed(self) -> None:
         if self._destroyed:
             raise RuntimeError("client is destroyed")
