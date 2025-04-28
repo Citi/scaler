@@ -102,7 +102,7 @@ class SchedulerClusterCombo:
         self._scheduler.join()
 
     def get_address(self) -> str:
-        return self._address.to_address()
+        return f"{self._address}"
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}:"
