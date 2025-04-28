@@ -14,7 +14,6 @@ class ObjectRequestHeader(Message):
     class ObjectRequestType(enum.Enum):
         SetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.setObject
         GetObject = _object_storage.ObjectRequestHeader.ObjectRequestType.getObject
-        GetObjectHeader = _object_storage.ObjectRequestHeader.ObjectRequestType.getObjectHeader
         DeleteObject = _object_storage.ObjectRequestHeader.ObjectRequestType.deleteObject
 
     def __init__(self, msg):
