@@ -8,4 +8,4 @@ message(STATUS "Found Capnp in ${CAPNP_INCLUDE_DIRS}")
 include_directories(${CAPNP_INCLUDE_DIRS})
 
 add_subdirectory(object_storage)
-
+add_subdirectory(io/cpp)

@@ -23,8 +23,14 @@ dask-worker-space/*
 
 *.o
 scaler/io/cpp/cpp.cpp
+scaler/io/cpp/CMakeFiles
+scaler/io/cpp/example
+scaler/io/cpp/Makefile
 benchmark.py
 benches/**
 *.so
 *.out
 .DS_Store
+scaler/CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
