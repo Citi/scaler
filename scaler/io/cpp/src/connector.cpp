@@ -64,7 +64,7 @@ void connector_send_async(
             return network_connector_send_async(future, connector->network, to, to_len, data, data_len);
         case Connector::IntraProcess: {
             // intraprocess only support sync send, so perform the send synchronously and complete the future
-            auto status = intra_process_send(connector->intra_process, data, data_len);
+            auto status = intra_process_send_sync(connector->intra_process, data, data_len);
             return future_set_status(future, &status);
         }
         default: unreachable();
@@ -74,7 +74,7 @@ void connector_send_async(
 Status connector_send_sync(Connector* connector, uint8_t* to, size_t to_len, uint8_t* data, size_t data_len) {
     switch (connector->type) {
         case Connector::Socket: return network_connector_send_sync(connector->network, to, to_len, data, data_len);
-        case Connector::IntraProcess: return intra_process_send(connector->intra_process, data, data_len);
+        case Connector::IntraProcess: return intra_process_send_sync(connector->intra_process, data, data_len);
         default: unreachable();
     }
 }

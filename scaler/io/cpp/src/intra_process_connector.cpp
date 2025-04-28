@@ -114,7 +114,7 @@ Status intra_process_connect(IntraProcessConnector* connector, const char* addr)
     return Status::ok();
 }
 
-Status intra_process_send(IntraProcessConnector* connector, uint8_t* data, size_t len) {
+Status intra_process_send_sync(IntraProcessConnector* connector, uint8_t* data, size_t len) {
     for (;;) {
         connector->session->intra_process_mutex.lock_shared();
 

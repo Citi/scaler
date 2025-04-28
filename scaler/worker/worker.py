@@ -178,7 +178,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         await self._connector_external.send(DisconnectRequest.new_msg(self._connector_external.identity))
 
         self._processor_manager.destroy("quitted")
-        self._connector_external.destroy()
         self._session.destroy()
         logging.info(f"Worker[{self.pid}]: quitted")
 
@@ -189,6 +188,4 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._loop.add_signal_handler(signal.SIGINT, self.__destroy)
 
     def __destroy(self):
-        self._session.destroy()
         self._task.cancel()
-        # self._connector_external.destroy()

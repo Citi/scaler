@@ -29,9 +29,6 @@ class Session:
 
         self._clients = []
 
-    def __del__(self) -> None:
-        self.destroy()
-
     def destroy(self) -> None:
         if self._destroyed:
             return
@@ -43,6 +40,10 @@ class Session:
         check_status(
             C.session_destroy(self._obj, True)
         )
+
+    @property
+    def destroyed(self) -> bool:
+        return self._destroyed
 
     def register_client(self, client) -> None:
         self._clients.append(client)
@@ -168,6 +169,9 @@ class Connector:
     _session: Session
 
     def __init__(self, session: Session, identity: bytes, type_: ConnectorType, protocol: Protocol):
+        if session.destroyed:
+            raise RuntimeError("session is destroyed")
+
         self._obj = ffi.new("struct Connector *")
         check_status(
             C.connector_init(session._obj, self._obj, protocol.value, type_.value, identity, len(identity))
@@ -175,9 +179,6 @@ class Connector:
 
         self._session = session
         self._session.register_client(self)
-
-    def __del__(self):
-        self.destroy()
 
     def destroy(self) -> None:
         if self._destroyed:
@@ -187,6 +188,11 @@ class Connector:
         check_status(
             C.connector_destroy(self._obj, True)
         )
+
+        print(f"destroyed!")
+
+        import traceback
+        traceback.print_stack()
 
     def __check_destroyed(self) -> None:
         if self._destroyed:
