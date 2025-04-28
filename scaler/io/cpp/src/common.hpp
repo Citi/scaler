@@ -64,10 +64,6 @@ void print_trace(void) {
     std::cout << "panic at " << file_name << ":" << location.line() << ":" << location.column() << " in function ["
               << location.function_name() << "]: " << message << std::endl;
 
-    // backtrace_state *state = backtrace_create_state(NULL, 0, NULL, NULL);
-    // backtrace_simple(state, 0, NULL, NULL, NULL);
-    // backtrace_print(state, 0, NULL);
-
     print_trace();
 
     std::abort();
@@ -373,6 +369,7 @@ int8_t fd_wait(int fd, int timeout, short int events) {
     return 0;
 }
 
+// not thread safe, but can be copied safely
 struct Completer {
     ENUM Type {None, Future, Semaphore} type;
 
@@ -383,6 +380,8 @@ struct Completer {
     };
 
     // must be allocated with `new`
+    // this is why the completer is not thread safe
+    // but can be copied and shared within the same thread
     uint8_t* counter;
 
     bool completed() const { return counter == NULL; }
