@@ -80,22 +80,25 @@ void NetworkConnector::send(SendMessage send) {
             write_enqueue(peer, send);
         } break;
         case ConnectorType::Pub: {
-            auto n_peers = this->peers.size();
+            send.completer.complete_ok();
+            return;
 
-            // pub sockets don't mute
-            // we only do this check so .set_counter() doesn't panic
-            if (n_peers == 0)
-                return;
+            // auto n_peers = this->peers.size();
 
-            // the completer needs to be completed once for each peer
-            // note: completer.complete*() is not thread safe
-            // however, all of the peers run on the same thread
-            send.completer.set_counter(n_peers);
+            // // pub sockets don't mute
+            // // we only do this check so .set_counter() doesn't panic
+            // if (n_peers == 0)
+            //     return;
 
-            // if the socket has no peers, the message is dropped
-            // we need to copy the peers because the vector may be modified
-            for (auto peer: std::vector(this->peers))
-                write_enqueue(peer, send);
+            // // the completer needs to be completed once for each peer
+            // // note: completer.complete*() is not thread safe
+            // // however, all of the peers run on the same thread
+            // send.completer.set_counter(n_peers);
+
+            // // if the socket has no peers, the message is dropped
+            // // we need to copy the peers because the vector may be modified
+            // for (auto peer: std::vector(this->peers))
+            //     write_enqueue(peer, send);
         } break;
         case ConnectorType::Dealer: {
             if (this->peers.empty())
@@ -233,6 +236,8 @@ ControlFlow epollout_peer(RawPeer* peer) {
             } break;
             case IoState::Blocked: return ControlFlow::Continue;
             case IoState::Reset:
+                peer->write_op->completer.complete_ok();
+                peer->write_op = std::nullopt;
                 reconnect_peer(peer);
                 return ControlFlow::Break;  // we need to go back to epoll_wait() after calling reconnect_peer()
             case IoState::Closed:

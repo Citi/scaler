@@ -376,14 +376,16 @@ int8_t fd_wait(int fd, int timeout, short int events) {
 struct Completer {
     ENUM Type {None, Future, Semaphore} type;
 
+    // owned by the caller
     union {
         void* future_ptr;
         sem_t* sem;
     };
 
-    uint8_t counter;
+    // must be allocated with `new`
+    uint8_t* counter;
 
-    bool completed() const { return counter == 0; }
+    bool completed() const { return counter == NULL; }
 
     void set_counter(uint8_t counter) {
         if (this->completed())
@@ -392,7 +394,7 @@ struct Completer {
         if (counter <= 0)
             panic("counter must be > 0");
 
-        this->counter = counter;
+        *this->counter = counter;
     }
 
     // complete with a result
@@ -402,10 +404,13 @@ struct Completer {
         if (this->completed())
             panic("counter already completed");
 
-        --this->counter;
+        (*this->counter)--;
 
-        if (this->counter > 0)
+        if (*this->counter > 0)
             return;
+
+        delete this->counter;
+        this->counter = NULL;
 
         switch (this->type) {
             case Completer::Type::None: break;
@@ -421,10 +426,13 @@ struct Completer {
         if (this->completed())
             panic("counter already completed");
 
-        --this->counter;
+        (*this->counter)--;
 
-        if (this->counter > 0)
+        if (*this->counter > 0)
             return;
+
+        delete this->counter;
+        this->counter = NULL;
 
         switch (this->type) {
             case Completer::Type::None: break;
@@ -445,7 +453,7 @@ struct Completer {
         return {
             .type       = Type::None,
             .future_ptr = nullptr,
-            .counter    = counter,
+            .counter    = new uint8_t(counter),
         };
     }
 
@@ -453,7 +461,7 @@ struct Completer {
         return {
             .type       = Type::Future,
             .future_ptr = future,
-            .counter    = counter,
+            .counter    = new uint8_t(counter),
         };
     }
 
@@ -461,7 +469,7 @@ struct Completer {
         return {
             .type    = Type::Semaphore,
             .sem     = sem,
-            .counter = counter,
+            .counter = new uint8_t(counter),
         };
     }
 };
