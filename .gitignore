@@ -27,3 +27,4 @@ benchmark.py
 benches/**
 *.so
 *.out
+.DS_Store
