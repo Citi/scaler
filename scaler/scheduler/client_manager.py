@@ -4,6 +4,7 @@ from typing import Dict, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeat,
@@ -19,9 +20,11 @@ from scaler.utility.one_to_many_dict import OneToManyDict
 
 
 class VanillaClientManager(ClientManager, Looper, Reporter):
-    def __init__(self, client_timeout_seconds: int, protected: bool):
+    def __init__(self, client_timeout_seconds: int, protected: bool, object_storage_address: ObjectStorageAddress):
         self._client_timeout_seconds = client_timeout_seconds
         self._protected = protected
+        self._object_storage_address = object_storage_address
+
         self._client_to_task_ids: OneToManyDict[bytes, bytes] = OneToManyDict()
 
         self._binder: Optional[AsyncBinder] = None
@@ -62,7 +65,10 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         return self._client_to_task_ids.remove_value(task_id)
 
     async def on_heartbeat(self, client: bytes, info: ClientHeartbeat):
-        await self._binder.send(client, ClientHeartbeatEcho.new_msg())
+        await self._binder.send(
+            client,
+            ClientHeartbeatEcho.new_msg(object_storage_address=self._object_storage_address)
+        )
         if client not in self._client_last_seen:
             logging.info(f"client {client!r} connected")
 

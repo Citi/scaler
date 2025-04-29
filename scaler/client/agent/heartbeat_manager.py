@@ -52,9 +52,8 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         if self._object_manager.ready():
             return
 
-        await self._object_manager.connect_to_object_storage(
-            ObjectStorageConfig.from_string(heartbeat.object_storage_address())
-        )
+        object_storage_address = heartbeat.object_storage_address()
+        await self._object_manager.connect_to_object_storage(object_storage_address.host, object_storage_address.port)
 
     async def routine(self):
         if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:

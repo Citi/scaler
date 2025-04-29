@@ -55,6 +55,7 @@ struct ClientHeartbeat {
 }
 
 struct ClientHeartbeatEcho {
+    objectStorageAddress @0 :CommonType.ObjectStorageAddress;
 }
 
 struct WorkerHeartbeat {
@@ -67,6 +68,7 @@ struct WorkerHeartbeat {
 }
 
 struct WorkerHeartbeatEcho {
+    objectStorageAddress @0 :CommonType.ObjectStorageAddress;
 }
 
 struct ObjectInstruction {

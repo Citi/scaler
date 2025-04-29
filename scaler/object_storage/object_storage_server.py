@@ -1,5 +1,11 @@
 import ctypes
+import os.path
 import sys
+
+from scaler.utility.object_storage_config import ObjectStorageConfig
+
+
+DEFAULT_OBJECT_STORAGE_LIB_PATH = os.path.join(os.path.dirname(__file__), "..", "lib", "libserver.so")
 
 
 def load_library(lib_path):
@@ -13,7 +19,10 @@ def load_library(lib_path):
         sys.exit(1)
 
 
-def run_object_storage_server(lib_path: str, name: str = "127.0.0.1", port: str = "55555"):
+def run_object_storage_server(
+    config: ObjectStorageConfig,
+    lib_path: str = DEFAULT_OBJECT_STORAGE_LIB_PATH,
+):
     # Load the library
     lib = load_library(lib_path=lib_path)
     # Define the argument and return types for the main_entrance function
@@ -21,7 +30,7 @@ def run_object_storage_server(lib_path: str, name: str = "127.0.0.1", port: str 
     lib.run_object_storage_server.restype = None
 
     # Call the function
-    name_bytes = name.encode("utf-8")
-    port_bytes = port.encode("utf-8")
+    name_bytes = config.host.encode("utf-8")
+    port_bytes = str(config.port).encode("utf-8")
 
     lib.run_object_storage_server(name_bytes, port_bytes)

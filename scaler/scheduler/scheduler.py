@@ -7,6 +7,7 @@ import zmq.asyncio
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
+from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeat,
@@ -40,6 +41,16 @@ class Scheduler:
                 f"{self.__class__.__name__}: scheduler address must be tcp type: {config.address.to_address()}"
             )
 
+        if config.object_storage_config is None:
+            self._object_storage_address = ObjectStorageAddress.new_msg(
+                host=config.address.host, port=config.address.port + 1
+            )
+        else:
+            self._object_storage_address = ObjectStorageAddress.new_msg(
+                host=config.object_storage_config.host,
+                port=config.object_storage_config.port
+            )
+
         if config.monitor_address is None:
             self._address_monitor = ZMQConfig(type=ZMQType.tcp, host=config.address.host, port=config.address.port + 2)
         else:
@@ -63,9 +74,11 @@ class Scheduler:
         )
 
         self._client_manager = VanillaClientManager(
-            client_timeout_seconds=config.client_timeout_seconds, protected=config.protected
+            client_timeout_seconds=config.client_timeout_seconds,
+            protected=config.protected,
+            object_storage_address=self._object_storage_address
         )
-        self._object_manager = VanillaObjectManager()
+        self._object_manager = VanillaObjectManager(object_storage_config=config.object_storage_config)
         self._graph_manager = VanillaGraphTaskManager()
         self._task_manager = VanillaTaskManager(max_number_of_tasks_waiting=config.max_number_of_tasks_waiting)
         self._worker_manager = VanillaWorkerManager(
@@ -73,6 +86,7 @@ class Scheduler:
             timeout_seconds=config.worker_timeout_seconds,
             load_balance_seconds=config.load_balance_seconds,
             load_balance_trigger_times=config.load_balance_trigger_times,
+            object_storage_address=self._object_storage_address,
         )
         self._status_reporter = StatusReporter(self._binder_monitor)
 
