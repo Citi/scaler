@@ -32,15 +32,17 @@ class ObjectStorageServer {
         std::vector<meta> metaInfo;
     };
 
+    using reqType  = ::ObjectRequestHeader::ObjectRequestType;
+    using respType = ::ObjectResponseHeader::ObjectResponseType;
+
     std::span<const unsigned char> getMemoryViewForResponsePayload(
         scaler::object_storage::ObjectResponseHeader& header) {
-        using type = ::ObjectResponseHeader::ObjectResponseType;
         switch (header.respType) {
-            case type::GET_O_K: return {objectIDToMeta[header.objectID].object->data(), header.payloadLength};
-            case type::SET_O_K:
-            case type::SET_O_K_OVERRIDE:
-            case type::DEL_O_K:
-            case type::DEL_NOT_EXISTS:
+            case respType::GET_O_K: return {objectIDToMeta[header.objectID].object->data(), header.payloadLength};
+            case respType::SET_O_K:
+            case respType::SET_O_K_OVERRIDE:
+            case respType::DEL_O_K:
+            case respType::DEL_NOT_EXISTS:
             default: break;
         }
         return {static_cast<const unsigned char*>(nullptr), 0};
@@ -50,8 +52,6 @@ class ObjectStorageServer {
         const scaler::object_storage::ObjectRequestHeader& requestHeader,
         scaler::object_storage::ObjectResponseHeader& responseHeader,
         scaler::object_storage::payload_t payload) {
-        using reqType           = ::ObjectRequestHeader::ObjectRequestType;
-        using respType          = ::ObjectResponseHeader::ObjectResponseType;
         responseHeader.objectID = requestHeader.objectID;
         switch (requestHeader.reqType) {
             case reqType::SET_OBJECT:
@@ -59,12 +59,6 @@ class ObjectStorageServer {
                     objectIDToMeta[requestHeader.objectID].object ? respType::SET_O_K_OVERRIDE : respType::SET_O_K;
                 objectIDToMeta[requestHeader.objectID].object =
                     std::make_shared<scaler::object_storage::object_t>(std::move(payload));
-                for (auto& curr_meta: objectIDToMeta[requestHeader.objectID].metaInfo) {
-                    auto executor = curr_meta.socket.get_executor();
-                    co_spawn(executor, write_once(std::move(curr_meta)), detached);
-                }
-                objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<meta>();
-
                 break;
 
             case reqType::GET_OBJECT:
@@ -86,8 +80,7 @@ class ObjectStorageServer {
     }
 
     awaitable<void> write_once(meta meta) {
-        using type = ::ObjectRequestHeader::ObjectRequestType;
-        if (meta.requestHeader.reqType == type::GET_OBJECT) {
+        if (meta.requestHeader.reqType == reqType::GET_OBJECT) {
             meta.responseHeader.payloadLength =
                 std::min(objectIDToMeta[meta.responseHeader.objectID].object->size(), meta.requestHeader.payloadLength);
         }
@@ -101,6 +94,16 @@ class ObjectStorageServer {
 
     std::map<scaler::object_storage::object_id_t, object_with_meta> objectIDToMeta;
 
+    void optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
+        if (requestHeader.reqType == reqType::SET_OBJECT) {
+            for (auto& curr_meta: objectIDToMeta[requestHeader.objectID].metaInfo) {
+                auto executor = curr_meta.socket.get_executor();
+                co_spawn(executor, write_once(std::move(curr_meta)), detached);
+            }
+            objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<meta>();
+        }
+    }
+
 public:
     awaitable<void> process_request(tcp::socket socket) {
         try {
@@ -113,6 +116,8 @@ public:
 
                 scaler::object_storage::ObjectResponseHeader responseHeader;
                 bool good_to_send = updateRecord(requestHeader, responseHeader, std::move(payload));
+
+                optionally_send_pending_requests(requestHeader);
 
                 if (!good_to_send) {
                     objectIDToMeta[requestHeader.objectID].metaInfo.emplace_back(
