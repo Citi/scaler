@@ -1,15 +1,8 @@
 import asyncio
-import dataclasses
 from typing import Awaitable, Callable, Optional, Tuple
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
-
-
-@dataclasses.dataclass
-class ObjectStorageGetResponse:
-    object_id: bytes
-    payload: bytes
 
 
 class AsyncObjectStorageConnector:
@@ -19,7 +12,7 @@ class AsyncObjectStorageConnector:
         self,
         host: str,
         port: int,
-        on_object_get_response: Optional[Callable[[ObjectStorageGetResponse], Awaitable[None]]],
+        on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]],  # TODO: add comment on argument types
     ):
         self._host = host
         self._port = port
@@ -27,9 +20,7 @@ class AsyncObjectStorageConnector:
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
 
-        self._on_object_get_response: Optional[Callable[[ObjectStorageGetResponse], Awaitable[None]]] = (
-            on_object_get_response
-        )
+        self._on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]] = on_object_get_response
 
     def __del__(self):
         if self._writer is None:
@@ -77,7 +68,7 @@ class AsyncObjectStorageConnector:
         header, payload = response
 
         if header.response_type == ObjectResponseHeader.ObjectResponseType.GetOK:
-            await self._on_object_get_response(ObjectStorageGetResponse(header.object_id, payload))
+            await self._on_object_get_response(header.object_id, payload)
 
     async def send_set_request(self, object_id: bytes, payload: bytes) -> None:
         await self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)

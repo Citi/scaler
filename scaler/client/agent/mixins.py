@@ -7,8 +7,6 @@ from scaler.protocol.python.message import (
     ClientShutdownResponse,
     GraphTask,
     ObjectInstruction,
-    ObjectRequest,
-    ObjectResponse,
     Task,
     TaskCancel,
     TaskResult,
@@ -38,7 +36,11 @@ class ObjectManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def set_object_storage_client(self, object_storage_config: ObjectStorageConfig):
+    def wait_until_ready(self) -> None:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def connect_to_object_storage(self, object_storage_config: ObjectStorageConfig):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -46,7 +48,7 @@ class ObjectManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_object_request(self, request: ObjectRequest):
+    async def on_object_storage_get_response(self, object_id: bytes, payload: bytes):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -94,7 +96,7 @@ class FutureManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_object_response(self, response: ObjectResponse):
+    def on_object_storage_get_response(self, object_id: bytes, payload: bytes):
         raise NotImplementedError()
 
 
