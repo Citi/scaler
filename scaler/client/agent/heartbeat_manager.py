@@ -52,7 +52,7 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         if self._object_manager.ready():
             return
 
-        self._object_manager.set_object_storage_client(
+        await self._object_manager.connect_to_object_storage(
             ObjectStorageConfig.from_string(heartbeat.object_storage_address())
         )
 
