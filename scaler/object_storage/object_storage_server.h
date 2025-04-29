@@ -48,6 +48,9 @@ class ObjectStorageServer {
         return {static_cast<const unsigned char*>(nullptr), 0};
     }
 
+#ifndef NDEBUG
+public:
+#endif
     bool updateRecord(
         const scaler::object_storage::ObjectRequestHeader& requestHeader,
         scaler::object_storage::ObjectResponseHeader& responseHeader,
@@ -79,6 +82,7 @@ class ObjectStorageServer {
         return true;
     }
 
+private:
     awaitable<void> write_once(meta meta) {
         if (meta.requestHeader.reqType == reqType::GET_OBJECT) {
             meta.responseHeader.payloadLength =
@@ -92,8 +96,6 @@ class ObjectStorageServer {
         co_spawn(meta.socket.get_executor(), process_request(std::move(meta.socket)), detached);
     }
 
-    std::map<scaler::object_storage::object_id_t, object_with_meta> objectIDToMeta;
-
     void optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
         if (requestHeader.reqType == reqType::SET_OBJECT) {
             for (auto& curr_meta: objectIDToMeta[requestHeader.objectID].metaInfo) {
@@ -103,6 +105,11 @@ class ObjectStorageServer {
             objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<meta>();
         }
     }
+
+#ifndef NDEBUG
+public:
+#endif
+    std::map<scaler::object_storage::object_id_t, object_with_meta> objectIDToMeta;
 
 public:
     awaitable<void> process_request(tcp::socket socket) {
