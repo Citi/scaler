@@ -3,6 +3,7 @@ import socket
 from typing import Optional, Tuple
 
 from scaler.cluster.cluster import Cluster
+from scaler.cluster.object_storage_server import ObjectStorageServerProcess
 from scaler.cluster.scheduler import SchedulerProcess
 from scaler.io.config import (
     DEFAULT_CLIENT_TIMEOUT_SECONDS,
@@ -20,6 +21,7 @@ from scaler.io.config import (
     DEFAULT_WORKER_DEATH_TIMEOUT,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.zmq_config import ZMQConfig
 
@@ -29,6 +31,7 @@ class SchedulerClusterCombo:
         self,
         n_workers: int,
         address: Optional[str] = None,
+        object_storage_config: Optional[ObjectStorageConfig] = None,
         monitor_address: Optional[str] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
@@ -56,10 +59,17 @@ class SchedulerClusterCombo:
         else:
             self._address = ZMQConfig.from_string(address)
 
+        if object_storage_config is None:
+            self._object_storage_config = ObjectStorageConfig(self._address.host, self._address.port + 1)
+        else:
+            self._object_storage_config = object_storage_config
+
         if monitor_address is None:
             self._monitor_address = None
         else:
             self._monitor_address = ZMQConfig.from_string(monitor_address)
+
+        self._object_storage = ObjectStorageServerProcess(self._object_storage_config)
 
         self._cluster = Cluster(
             address=self._address,
@@ -76,8 +86,10 @@ class SchedulerClusterCombo:
             logging_level=logging_level,
             logging_config_file=logging_config_file,
         )
+
         self._scheduler = SchedulerProcess(
             address=self._address,
+            object_storage_config=self._object_storage_config,
             monitor_address=self._monitor_address,
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
@@ -102,8 +114,10 @@ class SchedulerClusterCombo:
 
     def shutdown(self):
         logging.info(f"{self.__get_prefix()} shutdown")
+        self._object_storage.terminate()
         self._cluster.terminate()
         self._scheduler.terminate()
+        self._object_storage.join()
         self._cluster.join()
         self._scheduler.join()
 

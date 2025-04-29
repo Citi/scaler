@@ -8,7 +8,6 @@ from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.io.utility import concat_list_of_bytes
 from scaler.protocol.python.common import ObjectContent
 from scaler.protocol.python.message import ObjectInstruction, ObjectRequest, TaskResult
-from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
 class ClientObjectManager(ObjectManager):
@@ -33,14 +32,10 @@ class ClientObjectManager(ObjectManager):
     def wait_until_ready(self) -> None:
         self._is_ready_event.wait()
 
-    async def connect_to_object_storage(self, object_storage_config: ObjectStorageConfig):
+    async def connect_to_object_storage(self, host: str, port: int):
         assert self._connector_object_storage is None
 
-        self._connector_object_storage = AsyncObjectStorageConnector(
-            object_storage_config.host,
-            object_storage_config.port,
-            self.on_object_storage_get_response,
-        )
+        self._connector_object_storage = AsyncObjectStorageConnector(host, port, self.on_object_storage_get_response)
         await self._connector_object_storage.connect()
 
         self._is_ready_event.set()

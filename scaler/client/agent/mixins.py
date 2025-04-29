@@ -11,7 +11,6 @@ from scaler.protocol.python.message import (
     TaskCancel,
     TaskResult,
 )
-from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
 class HeartbeatManager(metaclass=abc.ABCMeta):
@@ -40,7 +39,7 @@ class ObjectManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def connect_to_object_storage(self, object_storage_config: ObjectStorageConfig):
+    async def connect_to_object_storage(self, host: str, port: int):
         raise NotImplementedError()
 
     @abc.abstractmethod
