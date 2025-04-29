@@ -26,3 +26,8 @@ struct ObjectContent {
         object @1;
     }
 }
+
+struct ObjectStorageAddress {
+    host @0 :Text;
+    port @1 :UInt16;
+}

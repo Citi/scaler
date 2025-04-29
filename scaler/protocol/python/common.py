@@ -70,3 +70,24 @@ class ObjectContent(Message):
 
     def get_message(self):
         return self._msg
+
+
+@dataclasses.dataclass
+class ObjectStorageAddress(Message):
+    def __init__(self, msg):
+        super().__init__(msg)
+
+    @property
+    def host(self) -> str:
+        return self._msg.host
+
+    @property
+    def port(self) -> int:
+        return self._msg.port
+
+    @staticmethod
+    def new_msg(host: str, port: int) -> "ObjectStorageAddress":
+        return ObjectStorageAddress(_common.ObjectStorageAddress(host=host, port=port))
+
+    def get_message(self):
+        return self._msg

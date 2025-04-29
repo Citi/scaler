@@ -6,7 +6,7 @@ from typing import List, Optional, Set, Tuple, Type
 import bidict
 
 from scaler.protocol.capnp._python import _message  # noqa
-from scaler.protocol.python.common import ObjectContent, TaskStatus
+from scaler.protocol.python.common import ObjectContent, ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import (
     BinderStatus,
@@ -223,12 +223,14 @@ class ClientHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
-    def object_storage_address(self) -> str:
-        return self._msg.objectStorageAddress.decode()
+    def object_storage_address(self) -> ObjectStorageAddress:
+        return ObjectStorageAddress(self._msg.objectStorageAddress)
 
     @staticmethod
-    def new_msg(object_storage_address: str) -> "ClientHeartbeatEcho":
-        return ClientHeartbeatEcho(_message.ClientHeartbeatEcho(objectStorageAddress=object_storage_address.encode()))
+    def new_msg(object_storage_address: ObjectStorageAddress) -> "ClientHeartbeatEcho":
+        return ClientHeartbeatEcho(
+            _message.ClientHeartbeatEcho(objectStorageAddress=object_storage_address.get_message())
+        )
 
 
 class WorkerHeartbeat(Message):
@@ -284,12 +286,14 @@ class WorkerHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
-    def object_storage_address(self) -> bytes:
-        return self._msg.objectStorageAddress
+    def object_storage_address(self) -> ObjectStorageAddress:
+        return ObjectStorageAddress(self._msg.objectStorageAddress)
 
     @staticmethod
-    def new_msg(object_storage_address: bytes) -> "WorkerHeartbeatEcho":
-        return WorkerHeartbeatEcho(_message.WorkerHeartbeatEcho(objectStorageAddress=object_storage_address))
+    def new_msg(object_storage_address: ObjectStorageAddress) -> "WorkerHeartbeatEcho":
+        return WorkerHeartbeatEcho(
+            _message.WorkerHeartbeatEcho(objectStorageAddress=object_storage_address.get_message())
+        )
 
 
 class ObjectInstruction(Message):

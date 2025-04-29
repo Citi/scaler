@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.common import ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
@@ -32,10 +32,12 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         timeout_seconds: int,
         load_balance_seconds: int,
         load_balance_trigger_times: int,
+        object_storage_address: ObjectStorageAddress,
     ):
         self._timeout_seconds = timeout_seconds
         self._load_balance_seconds = load_balance_seconds
         self._load_balance_trigger_times = load_balance_trigger_times
+        self._object_storage_address = object_storage_address
 
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
@@ -97,7 +99,10 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
             await self._binder_monitor.send(StateWorker.new_msg(worker, b"connected"))
 
         self._worker_alive_since[worker] = (time.time(), info)
-        await self._binder.send(worker, WorkerHeartbeatEcho.new_msg())
+        await self._binder.send(
+            worker,
+            WorkerHeartbeatEcho.new_msg(object_storage_address=self._object_storage_address)
+        )
 
     async def on_client_shutdown(self, client: bytes):
         for worker in self._allocator.get_worker_ids():
