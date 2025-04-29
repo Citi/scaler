@@ -1,5 +1,4 @@
 import asyncio
-import dataclasses
 from typing import Awaitable, Callable, Optional, Tuple
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
@@ -7,27 +6,30 @@ from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectRes
 from scaler.utility.exceptions import ObjectStorageException
 
 
-@dataclasses.dataclass
-class ObjectStorageGetResponse:
-    object_id: bytes
-    payload: bytes
-
-
 class AsyncObjectStorageConnector:
     """An asyncio connector that uses an raw TCP socket to connect to a Scaler's object storage instance."""
 
+<<<<<<< HEAD
     def __init__(self):
         self._host: Optional[str] = None
         self._port: Optional[int] = None
 
         self._connected_event = asyncio.Event()
+=======
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]],  # TODO: add comment on argument types
+    ):
+        self._host = host
+        self._port = port
+>>>>>>> 8b617d4 (Client uses the new object storage process.)
 
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
 
-        self._on_object_get_response: Optional[Callable[[ObjectStorageGetResponse], Awaitable[None]]] = (
-            on_object_get_response
-        )
+        self._on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]] = on_object_get_response
 
     def __del__(self):
         if not self.is_connected():
@@ -87,7 +89,7 @@ class AsyncObjectStorageConnector:
         header, payload = response
 
         if header.response_type == ObjectResponseHeader.ObjectResponseType.GetOK:
-            await self._on_object_get_response(ObjectStorageGetResponse(header.object_id, payload))
+            await self._on_object_get_response(header.object_id, payload)
 
 <<<<<<< HEAD
     async def send_set_request(self, object_id: bytes, payload: bytes) -> None:

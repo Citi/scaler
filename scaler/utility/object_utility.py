@@ -9,11 +9,14 @@ POSTFIX_SERIALIZER = hashlib.md5(SERIALIZER_INDICATOR).digest()
 def generate_object_id(identity: bytes, object_bytes: bytes) -> bytes:
     identity_hash = hashlib.md5(identity).digest()
     object_hash = hashlib.md5(object_bytes).digest()
-    return identity_hash[:8] + object_hash
+    object_id = identity_hash + object_hash
+    assert len(object_id) == 32
+
+    return object_id
 
 
 def split_object_id(object_id: bytes) -> Tuple[bytes, bytes]:
-    return object_id[:7], object_id[8:]
+    return object_id[:16], object_id[16:]
 
 
 def generate_serializer_object_id(source: bytes) -> bytes:

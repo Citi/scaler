@@ -1,4 +1,4 @@
-from scaler.scheduler.scheduler_process import Scheduler
+from scaler.scheduler.scheduler import Scheduler
 from .about import __version__
 from .client.client import Client, ScalerFuture
 from .client.serializer.mixins import Serializer

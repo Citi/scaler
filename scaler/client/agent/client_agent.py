@@ -20,7 +20,6 @@ from scaler.protocol.python.message import (
     GraphTaskCancel,
     ObjectInstruction,
     ObjectRequest,
-    ObjectResponse,
     Task,
     TaskCancel,
     TaskResult,
@@ -84,16 +83,14 @@ class ClientAgent(threading.Thread):
     def __initialize(self):
         self._disconnect_manager = ClientDisconnectManager()
         self._heartbeat_manager = ClientHeartbeatManager(death_timeout_seconds=self._timeout_seconds)
-        self._object_manager = ClientObjectManager(identity=self._identity)
+        self._object_manager = ClientObjectManager()
         self._task_manager = ClientTaskManager()
 
         # register all managers
         self._disconnect_manager.register(
             connector_internal=self._connector_internal, connector_external=self._connector_external
         )
-        self._object_manager.register(
-            connector_internal=self._connector_internal, connector_external=self._connector_external
-        )
+        self._object_manager.register(connector_internal=self._connector_internal, future_manager=self._future_manager)
         self._task_manager.register(
             connector_external=self._connector_external,
             object_manager=self._object_manager,
@@ -112,6 +109,9 @@ class ClientAgent(threading.Thread):
     def run(self):
         self.__initialize()
         self.__run_loop()
+
+    def wait_until_ready(self):
+        self._object_manager.wait_until_ready()
 
     async def __on_receive_from_client(self, message: Message):
         if isinstance(message, ClientDisconnect):
@@ -155,10 +155,6 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, TaskResult):
             await self._task_manager.on_task_result(message)
-            return
-
-        if isinstance(message, ObjectResponse):
-            self._future_manager.on_object_response(message)
             return
 
         raise TypeError(f"Unknown {message=}")

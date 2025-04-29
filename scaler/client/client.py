@@ -113,6 +113,8 @@ class Client:
         self._object_buffer = ObjectBuffer(self._identity, self._serializer, self._connector)
         self._future_factory = functools.partial(ScalerFuture, connector=self._connector)
 
+        self._agent.wait_until_ready()
+
         self._object_buffer.buffer_send_serializer()
         self._object_buffer.commit_send_objects()
 
