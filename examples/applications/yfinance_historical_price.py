@@ -11,14 +11,11 @@ Usage:
 import datetime
 from typing import Optional
 
-# import numpy as np
 import pandas as pd
 import psutil
 import yfinance as yf
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
-
-# from yfinance.base import YFRateLimitError
 
 
 def get_option_data(stock_symbol: str, expiration_date: Optional[str], option_type: str, strike: float):
@@ -40,6 +37,7 @@ def get_option_history_data(contract_symbol, days_before_expiration: int = 30):
 
 
 def get_option_close_prices_with_strike(strike):
+    # from yfinance.base import YFRateLimitError
     # stock_symbol = "AAPL"
     # expiration_date = None  # User may wish to specify expiration_date
     # days_before_expiration = 30
@@ -62,7 +60,7 @@ def get_option_close_prices_with_strike(strike):
     # NOTE: Here, we are mocking data that we will be receiving, and pass them back. This is to avoid creating network
     # traffic to a third party. If you wish to get data from Yahoo, comment out below section, and uncomment everything
     # that's above.
-    df = pd.read_csv("mock_data.csv")
+    df = pd.read_csv("downloaded_data.csv")
     mock_data = [(row["contractSymbol"], float(row["close"]), pd.to_datetime(row["date"])) for _, row in df.iterrows()]
 
     if strike % 5 != 0:
