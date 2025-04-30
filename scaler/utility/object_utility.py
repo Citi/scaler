@@ -10,7 +10,7 @@ def generate_object_id(identity: bytes, object_bytes: bytes) -> bytes:
     identity_hash = hashlib.md5(identity).digest()
     object_hash = hashlib.md5(object_bytes).digest()
     object_id = identity_hash + object_hash
-    assert len(object_id) == 32
+    assert len(object_id) == 32, "Scaler object ID must be 32 bytes"
 
     return object_id
 
