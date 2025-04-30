@@ -13,9 +13,9 @@ from typing import Optional
 
 import psutil
 import yfinance as yf
-
 from scaler import Client
 from scaler.cluster.combo import SchedulerClusterCombo
+from yfinance.base import YFRateLimitError
 
 
 def get_option_data(stock_symbol: str, expiration_date: Optional[str], option_type: str, strike: float):
@@ -43,14 +43,17 @@ def get_option_close_prices_with_strike(strike):
     option_type = "call"
 
     res = []
-    option_data = get_option_data(stock_symbol, expiration_date, option_type, strike)
-    for _, od in option_data.iterrows():
-        contract_symbol = od["contractSymbol"]
-        option_history = get_option_history_data(contract_symbol, days_before_expiration)
-        first_option_history = option_history.iloc[0]
-        first_option_history_date = option_history.index[0]
-        first_option_history_close = first_option_history["Close"]
-        res.append((contract_symbol, first_option_history_close, first_option_history_date))
+    try:
+        option_data = get_option_data(stock_symbol, expiration_date, option_type, strike)
+        for _, od in option_data.iterrows():
+            contract_symbol = od["contractSymbol"]
+            option_history = get_option_history_data(contract_symbol, days_before_expiration)
+            first_option_history = option_history.iloc[0]
+            first_option_history_date = option_history.index[0]
+            first_option_history_close = first_option_history["Close"]
+            res.append((contract_symbol, first_option_history_close, first_option_history_date))
+    except YFRateLimitError:
+        print("Early return due to requesting too many requests.")
     return res
 
 
