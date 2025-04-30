@@ -31,23 +31,7 @@ class TimeoutManager(metaclass=abc.ABCMeta):
 
 class ObjectManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def ready(self) -> bool:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def wait_until_ready(self) -> None:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    async def connect_to_object_storage(self, host: str, port: int):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
     async def on_object_instruction(self, object_instruction: ObjectInstruction):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    async def on_object_storage_get_response(self, object_id: bytes, payload: bytes):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -92,10 +76,6 @@ class FutureManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def on_cancel_task(self, task_cancel: TaskCancel):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def on_object_storage_get_response(self, object_id: bytes, payload: bytes):
         raise NotImplementedError()
 
 

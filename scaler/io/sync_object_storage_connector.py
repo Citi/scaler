@@ -37,7 +37,7 @@ class SyncObjectStorageConnector:
         """
         Sets the object's payload on the object storage server.
 
-        Returns `True` if the object data got overridden. Otherwise, return `False`.
+        Returns `True` if the object data got overridden. Otherwise, returns `False`.
         """
 
         with self._socket_lock:

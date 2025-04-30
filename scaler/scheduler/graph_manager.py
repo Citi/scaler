@@ -327,9 +327,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 continue
 
             # delete intermediate results as they are not needed anymore
-            self._object_manager.on_del_objects(
-                graph_info.client, set(graph_info.tasks[argument_task_id].result_object_ids)
-            )
+            self._object_manager.on_del_objects(graph_info.client, set(graph_info.tasks[argument].result_object_ids))
 
     def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[bytes, bytes, List[bytes]]]):
         new_result_object_ids = []

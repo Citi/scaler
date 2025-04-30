@@ -24,7 +24,7 @@ class TaskStatus(enum.Enum):
 
 
 @dataclasses.dataclass
-class ObjectContent(Message):
+class ObjectMetadata(Message):
     class ObjectContentType(enum.Enum):
         # FIXME: Pycapnp does not support assignment of raw enum values when the enum is itself declared within a list.
         # However, assigning the enum's string value works.
@@ -42,29 +42,23 @@ class ObjectContent(Message):
 
     @property
     def object_types(self) -> Tuple[ObjectContentType, ...]:
-        return tuple(ObjectContent.ObjectContentType(object_type._as_str()) for object_type in self._msg.objectTypes)
+        return tuple(ObjectMetadata.ObjectContentType(object_type._as_str()) for object_type in self._msg.objectTypes)
 
     @property
     def object_names(self) -> Tuple[bytes, ...]:
         return tuple(self._msg.objectNames)
-
-    @property
-    def object_bytes(self) -> Tuple[List[bytes], ...]:
-        return tuple(self._msg.objectBytes)
 
     @staticmethod
     def new_msg(
         object_ids: Tuple[bytes, ...],
         object_types: Tuple[ObjectContentType, ...] = tuple(),
         object_names: Tuple[bytes, ...] = tuple(),
-        object_bytes: Tuple[List[bytes], ...] = tuple(),
-    ) -> "ObjectContent":
-        return ObjectContent(
+    ) -> "ObjectMetadata":
+        return ObjectMetadata(
             _common.ObjectContent(
                 objectIds=list(object_ids),
                 objectTypes=[object_type.value for object_type in object_types],
                 objectNames=list(object_names),
-                objectBytes=tuple(object_bytes),
             )
         )
 
@@ -91,3 +85,6 @@ class ObjectStorageAddress(Message):
 
     def get_message(self):
         return self._msg
+
+    def __repr__(self) -> str:
+        return f"tcp://{self.host}:{self.port}"

@@ -83,7 +83,7 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
             logging.warning("cannot shutdown clusters as scheduler is running in protected mode")
             accepted = False
         else:
-            logging.info(f"shutdown scheduler and all clusters as received signal from {client=!r}")
+            logging.info(f"shutdown scheduler and all clusters as received signal from {client!r}")
             accepted = True
 
         await self._binder.send(client, ClientShutdownResponse.new_msg(accepted=accepted))
