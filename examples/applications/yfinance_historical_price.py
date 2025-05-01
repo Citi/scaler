@@ -9,6 +9,7 @@ Usage:
 """
 
 import datetime
+import os
 from typing import Optional
 
 import pandas as pd
@@ -60,7 +61,7 @@ def get_option_close_prices_with_strike(strike):
     # NOTE: Here, we are mocking data that we will be receiving, and pass them back. This is to avoid creating network
     # traffic to a third party. If you wish to get data from Yahoo, comment out below section, and uncomment everything
     # that's above.
-    df = pd.read_csv("downloaded_data.csv")
+    df = pd.read_csv(os.path.join(os.path.dirname(__file__), "downloaded_data.csv"))
     mock_data = [(row["contractSymbol"], float(row["close"]), pd.to_datetime(row["date"])) for _, row in df.iterrows()]
 
     if strike % 5 != 0:
