@@ -17,7 +17,7 @@ builder.set_source(
     extra_compile_args=(
         ["-std=c++23", "-Wall", "-Wextra", "-pedantic"]
         if os.getenv("CC") == "clang"
-        else ["-xc++", "-lstdc++", "-shared-libgcc", "-std=gnu++23", "-Wall", "-Wextra", "-Werror", "-O3"]
+        else ["-xc++", "-lstdc++", "-shared-libgcc", "-std=gnu++23", "-Wall", "-Wextra", "-Werror", "-O0"]
     ),
     language="c++",
 )

@@ -186,7 +186,7 @@ class Connector:
         self._destroyed = True
 
         check_status(
-            C.connector_destroy(self._obj, True)
+            C.connector_destroy(self._obj)
         )
 
     def __check_destroyed(self) -> None:

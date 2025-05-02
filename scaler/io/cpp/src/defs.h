@@ -5,6 +5,7 @@ struct Bytes
 {
     uint8_t *data;
     size_t len;
+    ...;
 };
 
 struct Message
@@ -47,10 +48,11 @@ enum Code
     AlreadyBound,
     InvalidAddress,
     UnsupportedOperation,
-    NoThreads
+    NoThreads,
+    PeerShutdown
 };
 
-enum ErrorType
+enum StatusType
 {
     Ok,
     Logical,
@@ -60,7 +62,7 @@ enum ErrorType
 
 struct Status
 {
-    enum ErrorType type;
+    enum StatusType type;
     const char *message;
     union
     {
@@ -79,7 +81,7 @@ struct Status session_destroy(struct Session *session, bool destruct);
 void message_destroy(struct Message *message);
 
 struct Status connector_init(struct Session *session, struct Connector *connector, enum Transport transport, enum ConnectorType type, uint8_t *identity, size_t len);
-struct Status connector_destroy(struct Connector *connector, bool destruct);
+struct Status connector_destroy(struct Connector *connector);
 struct Status connector_bind(struct Connector *connector, const char *host, uint16_t port);
 struct Status connector_connect(struct Connector *connector, const char *host, uint16_t port);
 void connector_send_async(void *future, struct Connector *connector, uint8_t *to, size_t to_len, uint8_t *data, size_t data_len);

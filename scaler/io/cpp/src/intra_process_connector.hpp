@@ -26,7 +26,7 @@ struct IntraProcessConnector;
 #include "common.hpp"
 #include "session.hpp"
 
-Status intra_process_init(Session* session, IntraProcessConnector* connector, uint8_t* identity, size_t len);
+Status intra_process_init(Session* session, IntraProcessConnector** connector, uint8_t* identity, size_t len);
 Status intra_process_bind(struct IntraProcessConnector* connector, const char* addr);
 Status intra_process_connect(struct IntraProcessConnector* connector, const char* addr);
 Status intra_process_send_sync(struct IntraProcessConnector* connector, uint8_t* data, size_t len);

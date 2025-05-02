@@ -35,8 +35,8 @@
 void future_set_result(void* future, void* data);
 void future_set_status(void* future, void* status);
 
-#define PROPAGATE(expr)                                     \
-    if (auto status = (expr); status.type != ErrorType::Ok) \
+#define PROPAGATE(expr)                                      \
+    if (auto status = (expr); status.type != StatusType::Ok) \
         return status;
 
 void print_trace(void) {
@@ -73,12 +73,12 @@ void print_trace(void) {
     panic("unreachable", location);
 }
 
-ENUM Code {AlreadyBound, InvalidAddress, UnsupportedOperation, NoThreads};
+ENUM Code {AlreadyBound, InvalidAddress, UnsupportedOperation, NoThreads, PeerShutdown};
 
-ENUM ErrorType {Ok, Logical, Errno, Signal};
+ENUM StatusType {Ok, Logical, Errno, Signal};
 
 struct Status {
-    ErrorType type;
+    StatusType type;
     const char* message;
     union {
         Code code;
@@ -86,13 +86,13 @@ struct Status {
         int signal;
     };
 
-    bool is_ok() const { return type == ErrorType::Ok; }
+    bool is_ok() const { return type == StatusType::Ok; }
 
-    static Status ok() { return {.type = ErrorType::Ok, .message = NULL, .code = (Code)0}; }
+    static Status ok() { return {.type = StatusType::Ok, .message = NULL, .code = (Code)0}; }
 
     static Status from_code(const char* message, Code code) {
         return {
-            .type    = ErrorType::Logical,
+            .type    = StatusType::Logical,
             .message = message,
             .code    = code,
         };
@@ -100,7 +100,7 @@ struct Status {
 
     static Status from_errno(const char* message, int err = errno) {
         return {
-            .type    = ErrorType::Errno,
+            .type    = StatusType::Errno,
             .message = message,
             .no      = err,
         };
@@ -108,7 +108,7 @@ struct Status {
 
     static Status from_signal(const char* message, int signal) {
         return {
-            .type    = ErrorType::Signal,
+            .type    = StatusType::Signal,
             .message = message,
             .signal  = signal,
         };
@@ -135,7 +135,7 @@ struct ControlFlow {
 };
 
 uint8_t* datadup(const uint8_t* data, size_t len) {
-    uint8_t* dup = (uint8_t*)std::malloc(len);
+    uint8_t* dup = new uint8_t[len];
     std::memcpy(dup, data, len);
     return dup;
 }
@@ -144,16 +144,25 @@ struct Bytes {
     uint8_t* data;
     size_t len;
 
+    enum { Owned, Borrowed } tag;
+
     void free() {
+        if (tag != Owned)
+            return;
+
         if (is_empty())
             return;
 
-        std::free(data);
+        delete[] data;
+        this->data = NULL;
     }
 
     bool operator==(const Bytes& other) const {
         if (len != other.len)
             return false;
+
+        if (data == other.data)
+            return true;
 
         return std::memcmp(data, other.data, len) == 0;
     }
@@ -170,42 +179,15 @@ struct Bytes {
         return std::string((char*)data, len);
     }
 
-    std::string to_hex() {
-        char* hex = (char*)std::malloc((len * 3 + 1) * sizeof(char));
-        for (size_t i = 0; i < len; i++)
-            sprintf(hex + i * 3, "%02x ", this->data[i]);
+    Bytes ref() { return {.data = this->data, .len = this->len, .tag = Borrowed}; }
 
-        hex[len * 3] = '\0';
-
-        std::string owned(hex, len * 3);
-        std::free(hex);
-        return owned;
-    }
-
-    // debugging utility
-    std::string hexhash() {
-        uint64_t hash = this->easy_hash();
-        auto bytes    = Bytes {.data = (uint8_t*)&hash, .len = 64 / 8};
-
-        return bytes.to_hex();
-    }
-
-    uint64_t easy_hash() {
-        uint64_t hash = 0;
-        for (size_t i = 0; i < len; i++)
-            hash = (hash << 5) - hash + data[i];
-
-        return hash;
-    }
-
-    Bytes ref() { return {.data = this->data, .len = this->len}; }
-
-    static Bytes alloc(size_t len) { return {.data = (uint8_t*)std::malloc(len), .len = len}; }
+    static Bytes alloc(size_t len) { return {.data = new uint8_t[len], .len = len, .tag = Owned}; }
 
     static Bytes empty() {
         return {
             .data = NULL,
             .len  = 0,
+            .tag  = Owned,
         };
     }
 
@@ -213,6 +195,7 @@ struct Bytes {
         return {
             .data = datadup(data, len),
             .len  = len,
+            .tag  = Owned,
         };
     }
 
@@ -223,6 +206,7 @@ struct Bytes {
         return {
             .data = datadup(bytes.data, bytes.len),
             .len  = bytes.len,
+            .tag  = Owned,
         };
     }
 };
@@ -243,6 +227,7 @@ struct Message {
 
 // free a message's resources
 void message_destroy(Message* msg) {
+    mydebug();
     msg->payload.free();
     msg->address.free();
 }
@@ -263,8 +248,8 @@ typedef uint64_t timerfd_t;
 // timerfd analogue of eventfd_read()
 // 0 -> ok, read the value from the buffer
 // -1 -> error, check errno
-int timerfd_read(int fd, uint8_t* buffer) {
-    auto n = read(fd, buffer, sizeof(timerfd_t));
+int timerfd_read(int fd, timerfd_t* value) {
+    auto n = read(fd, (uint8_t*)value, sizeof(timerfd_t));
 
     if (n > 0) {
         if (n != sizeof(timerfd_t))
@@ -280,7 +265,18 @@ int timerfd_read(int fd, uint8_t* buffer) {
 // return value is the same as timerfd_read()
 int timerfd_read2(int fd) {
     timerfd_t value;
-    return timerfd_read(fd, (uint8_t*)&value);
+    return timerfd_read(fd, &value);
+}
+
+// reset the timerfd to 0
+void timerfd_reset(int fd) {
+    itimerspec spec {
+        .it_interval = {.tv_sec = 0, .tv_nsec = 0},
+        .it_value    = {.tv_sec = 0, .tv_nsec = 0},
+    };
+
+    if (timerfd_settime(fd, 0, &spec, NULL) < 0)
+        panic("failed to reset timerfd: " + std::to_string(errno));
 }
 
 int eventfd_wait(int fd) {

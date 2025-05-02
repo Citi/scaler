@@ -21,8 +21,8 @@ void IntraProcessConnector::remove_from_epoll() {
     this->thread->remove_epoll(this->recv_event_fd);
 }
 
-Status intra_process_init(Session* session, IntraProcessConnector* connector, uint8_t* identity, size_t len) {
-    new (connector) IntraProcessConnector {
+Status intra_process_init(Session* session, IntraProcessConnector** connector, uint8_t* identity, size_t len) {
+    *connector = new IntraProcessConnector {
         .session              = session,
         .thread               = session->next_thread(),
         .queue                = ConcurrentQueue<Message>(),
@@ -39,7 +39,7 @@ Status intra_process_init(Session* session, IntraProcessConnector* connector, ui
 
     // take exclusive lock on the session to add the client
     session->intra_process_mutex.lock();
-    session->inprocs.push_back(connector);
+    session->inprocs.push_back(*connector);
     session->intra_process_mutex.unlock();
 
     return Status::ok();
@@ -189,7 +189,7 @@ wait:
 void intra_process_recv_async(void* future, IntraProcessConnector* connector) {
     // ensure that the client is in the epoll
     // this allows sync-only clients to avoid epoll overhead
-    if (auto status = connector->ensure_epoll(); status.type != ErrorType::Ok)
+    if (auto status = connector->ensure_epoll(); status.type != StatusType::Ok)
         return future_set_status(future, &status);
 
     connector->recv.enqueue(future);
@@ -211,6 +211,8 @@ Status intra_process_destroy(IntraProcessConnector* connector) {
     }
 
     connector->session->intra_process_mutex.unlock();
+
+    mydebug();
     connector->identity.free();
 
     return Status::ok();

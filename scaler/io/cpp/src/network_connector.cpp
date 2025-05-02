@@ -1,5 +1,7 @@
 #include "network_connector.hpp"
 
+#include "session.hpp"
+
 bool NetworkConnector::peer_by_id(Bytes id, RawPeer** peer) {
     auto it = std::find_if(this->peers.begin(), this->peers.end(), [id](RawPeer* p) { return p->identity == id; });
 
@@ -195,22 +197,19 @@ void RawPeer::recv_msg(Bytes payload) {
 ControlFlow epollin_peer(RawPeer* peer) {
     for (;;) {
         if (!peer->read_op)
+            // note: no completer
             peer->read_op = IoOperation::read();
 
         auto result = read_message(peer->fd, &*peer->read_op);
 
         switch (result) {
-            case IoState::Done:
-                peer->read_op->completer.complete_ok();
+            case IoState::Done: {
                 peer->recv_msg(peer->read_op->payload);
                 peer->read_op = std::nullopt;
-                break;
+            } break;
             case IoState::Blocked: return ControlFlow::Continue;
             case IoState::Reset: reconnect_peer(peer); return ControlFlow::Break;
-            case IoState::Closed:
-                remove_peer(peer);
-                delete peer;
-                return ControlFlow::Break;
+            case IoState::Closed: remove_peer(peer); return ControlFlow::Break;
         }
     }
 }
@@ -223,8 +222,8 @@ ControlFlow epollout_peer(RawPeer* peer) {
                 return ControlFlow::Continue;  // queue exhausted
 
             auto send      = peer->queue.front();
-            peer->write_op = IoOperation::write(send.msg.payload, send.completer);
-            peer->queue.pop();
+            peer->write_op = IoOperation::write(send.payload, send.completer);
+            peer->queue.pop_front();
         }
 
         auto result = write_message(peer->fd, &*peer->write_op);
@@ -236,8 +235,6 @@ ControlFlow epollout_peer(RawPeer* peer) {
             } break;
             case IoState::Blocked: return ControlFlow::Continue;
             case IoState::Reset:
-                peer->write_op->completer.complete_ok();
-                peer->write_op = std::nullopt;
                 reconnect_peer(peer);
                 return ControlFlow::Break;  // we need to go back to epoll_wait() after calling reconnect_peer()
             case IoState::Closed:
@@ -250,11 +247,14 @@ ControlFlow epollout_peer(RawPeer* peer) {
 // note: peer may be in reconnecting state after calling this
 // the peer's EpollData may have been freed
 void write_enqueue(RawPeer* peer, SendMessage send) {
-    peer->queue.push(send);
+    // the address is not needed after the message is queued on the peer
+    send.msg.address.free();
+
+    peer->queue.push_back({.completer = send.completer, .payload = send.msg.payload});
 
     // if there's a write op, our send will be picked up when the fd becomes writable
     // otherwise we can write immdiately
-    if (!peer->write_op)
+    if (peer->state == PeerState::Connected && !peer->write_op)
         epollout_peer(peer);
 }
 
@@ -330,43 +330,74 @@ void write_enqueue(RawPeer* peer, SendMessage send) {
     unreachable();
 }
 
+// disconnect peer, remove peer from connector, and delete the peer
+// the peer is freed and the fd is closed after this call
 void remove_peer(RawPeer* peer) {
-    peer->connector->thread->remove_peer(peer);
+    disconnect_peer(peer);
+
+    // remove from the connector's peer list
     peer->connector->remove_peer(peer);
 
+    // we must complete all outstanding sends so that
+    // the caller does not hang
+    while (!peer->queue.empty()) {
+        auto send = peer->queue.front();
+
+        auto status = Status::from_code("peer shutdown", Code::PeerShutdown);
+        send.completer.complete_status(&status);
+
+        mydebug();
+        send.payload.free();
+
+        peer->queue.pop_front();
+    }
+
+    // note: read_op was handled by disconnect_peer()
+    // note: write_op was also handled by disconnect_peer()
+    //       and the send was put back in the queue
+
+    mydebug();
+    peer->identity.free();
+
+    delete peer;
+}
+
+// leaves the peer in the vector for a later reconnect
+void disconnect_peer(RawPeer* peer) {
+    peer->connector->thread->remove_peer(peer);
+
     if (peer->write_op) {
-        // note: write_op's payload is not freed, because it's owned by the Python thread sending the message
-        // peer->write_op->payload.free();
+        // we guarantee writes, so we put the message back in the queue
+        // at the front to maintain ordering
+        peer->queue.push_front({.completer = peer->write_op->completer, .payload = peer->write_op->payload});
         peer->write_op = std::nullopt;
     }
 
+    // reset the read op
+    // if there was a read in progress, the sender will resend the message from the beginning after reconnect
     if (peer->read_op) {
+        mydebug();
         peer->read_op->payload.free();
         peer->read_op = std::nullopt;
     }
 
-    close(peer->fd);
+    if (peer->fd > 0)
+        close(peer->fd);
     peer->fd = -1;
 
     peer->state = PeerState::Disconnected;
 }
 
-// must return to epoll_wait() after calling this
-// this frees the peer's EpollData and deletes the *peer
+// this disconnects a peer and prepares it for a reconnect (server side)
 void reconnect_peer(RawPeer* peer) {
-    remove_peer(peer);
+    disconnect_peer(peer);
 
     // retry the connection if we're the connector
+    // otherwise, leave the peer in the vector and wait for reconnect
     if (peer->type == PeerType::Connector) {
         auto thread = peer->connector->thread;
-
-        peer->identity.free();
-        peer->identity = Bytes::empty();
-
         thread->connecting.push_back(peer);
         thread->ensure_timer_armed();
-    } else {
-        delete peer;
     }
 }
 
@@ -374,7 +405,7 @@ void reconnect_peer(RawPeer* peer) {
 
 Status network_connector_init(
     Session* session,
-    NetworkConnector* connector,
+    NetworkConnector** connector,
     Transport transport,
     ConnectorType type,
     uint8_t* identity,
@@ -382,7 +413,7 @@ Status network_connector_init(
     if (session->threads.empty())
         return Status::from_code("network connectors require a session with threads", Code::NoThreads);
 
-    new (connector) NetworkConnector {
+    *connector = new NetworkConnector {
         .type                 = type,
         .transport            = transport,
         .thread               = session->next_thread(),
@@ -400,7 +431,7 @@ Status network_connector_init(
         .recv_buffer          = ConcurrentQueue<Message>(),
     };
 
-    connector->thread->add_connector(connector);
+    (*connector)->thread->add_connector(*connector);
 
     return Status::ok();
 }
@@ -513,7 +544,7 @@ Status network_connector_connect(NetworkConnector* connector, const char* addr, 
         .addr      = address,
         .type      = PeerType::Connector,
         .fd        = -1,  // a real fd will be assigned later
-        .queue     = std::queue<SendMessage>(),
+        .queue     = std::deque<SendPayload>(),
         .state     = PeerState::Disconnected,
         .read_op   = std::nullopt,
         .write_op  = std::nullopt,
@@ -549,11 +580,13 @@ void network_connector_send_async(
                     {
                         .data = to,
                         .len  = to_len,
+                        .tag  = Bytes::Borrowed,
                     },
                 .payload =
                     {
                         .data = data,
                         .len  = data_len,
+                        .tag  = Bytes::Borrowed,
                     },
             },
     };
@@ -571,6 +604,8 @@ Status network_connector_send_sync(
     if (connector->type == ConnectorType::Sub)
         return Status::from_code("clients of type 'sub' do not support sending messages", Code::UnsupportedOperation);
 
+    // sync operations on network connector are implemented using semaphores
+    // this greatly simplifies the implementation
     sem_t* sem = (sem_t*)std::malloc(sizeof(sem_t));
 
     if (sem_init(sem, 0, 0) < 0)
@@ -579,10 +614,18 @@ Status network_connector_send_sync(
     SendMessage send {
         .completer = Completer::semaphore(sem),
         .msg =
-            {
-                .address = Bytes::copy(to, to_len),
-                .payload = Bytes::copy(data, data_len),
-            },
+            {.address =
+                 {
+                     .data = to,
+                     .len  = to_len,
+                     .tag  = Bytes::Borrowed,
+                 },
+             .payload =
+                 {
+                     .data = data,
+                     .len  = data_len,
+                     .tag  = Bytes::Borrowed,
+                    }},
     };
 
     connector->send_queue.enqueue(send);

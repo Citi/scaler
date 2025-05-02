@@ -21,6 +21,7 @@ class LibType:
     InvalidAddress: int
     UnsupportedOperation: int
     NoThreads: int
+    PeerShutdown: int
 
     Ok: int
     Errno: int

@@ -115,10 +115,32 @@ void set_sock_opts(int fd) {
 
 // complete acceptance of peer
 void complete_peer_connect(RawPeer* peer) {
-    peer->state = PeerState::Connected;
-
     auto was_muted = peer->connector->muted();
+
+    peer->state = PeerState::Connected;
     peer->connector->peers.push_back(peer);
+
+    // it's possible that this is a reconnect
+    // so we check if the identity matches any existing peers
+    RawPeer* other;
+    if (peer->connector->peer_by_id(peer->identity, &other) && other != peer) {
+        if (other->state != PeerState::Disconnected) {
+            panic("peer attempting to reconnect while already connected: " + peer->identity.as_string());
+        }
+
+        // steal the messages from the other peer
+        while (!other->queue.empty()) {
+            auto send = other->queue.front();
+            peer->queue.push_back(send);
+            other->queue.pop_front();
+        }
+
+        // we can delete the other peer now
+        mydebug();
+        other->identity.free();
+        other->connector->remove_peer(other);
+        delete other;
+    }
 
     if (was_muted)
         peer->connector->unmute();
@@ -227,12 +249,17 @@ ControlFlow write_identity(RawPeer* peer) {
     auto result = write_message(peer->fd, &*peer->write_op);
 
     switch (result) {
+        // identity writes have a none completer, so we don't need to complete it
         case IoState::Done:
-            peer->write_op->completer.complete_ok();
+            std::cout << "write_identity: done: " << (void*)peer << std::endl;
             peer->write_op = std::nullopt;
             return ControlFlow::Continue;
         case IoState::Blocked: return ControlFlow::Continue;
-        case IoState::Reset: reconnect_peer(peer); return ControlFlow::Break;
+        case IoState::Reset: {
+            peer->write_op = std::nullopt;
+            reconnect_peer(peer);
+        }
+            return ControlFlow::Break;
         case IoState::Closed: unreachable();  // never returned by write_message()
     }
 
@@ -245,16 +272,13 @@ ControlFlow read_identity(RawPeer* peer) {
 
     switch (result) {
         case IoState::Done:
+            std::cout << "read_identity: done: " << (void*)peer << std::endl;
             peer->identity = peer->read_op->payload;  // set identity
-            peer->read_op->completer.complete_ok();   // complete the op
-            peer->read_op = std::nullopt;             // reset
+            peer->read_op  = std::nullopt;            // reset
             return ControlFlow::Continue;
         case IoState::Blocked: return ControlFlow::Continue;
         case IoState::Reset: reconnect_peer(peer); return ControlFlow::Break;
-        case IoState::Closed:
-            remove_peer(peer);
-            delete peer;
-            return ControlFlow::Break;
+        case IoState::Closed: remove_peer(peer); return ControlFlow::Break;
     }
 
     unreachable();
@@ -271,7 +295,7 @@ void network_connector_listener_event(NetworkConnector* connector) {
             if (errno == EAGAIN || errno == EWOULDBLOCK)
                 break;
 
-            panic("todo: accept() error handling: " + std::to_string(errno));
+            panic("accept(): " + std::to_string(errno));
         }
 
         set_sock_opts(fd);
@@ -286,7 +310,7 @@ void network_connector_listener_event(NetworkConnector* connector) {
             .addr      = addr,
             .type      = PeerType::Connectee,
             .fd        = fd,
-            .queue     = std::queue<SendMessage>(),
+            .queue     = std::deque<SendPayload>(),
             .state     = PeerState::Connecting,
             // read the peer's identity
             .read_op = IoOperation::read(),
@@ -303,15 +327,18 @@ void network_connector_peer_event_connecting(epoll_event* event) {
     auto peer = data->peer;
 
     if (event->events & EPOLLIN && peer->read_op)
-        if (!read_identity(peer))
+        if (read_identity(peer) == ControlFlow::Break)
             return;
 
     if (event->events & EPOLLOUT && peer->write_op)
-        if (!write_identity(peer))
+        if (write_identity(peer) == ControlFlow::Break)
             return;
 
     // check if we're done
     if (!peer->read_op && !peer->write_op) {
+        std::cout << "network_connector_peer_event_connecting: done: " << (void*)peer << " ; "
+                  << peer->identity.as_string() << std::endl;
+
         complete_peer_connect(peer);
 
         // we're edge triggered so it's important that we check this
@@ -337,6 +364,8 @@ void network_connector_peer_event(epoll_event* event) {
     auto edata = (EpollData*)event->data.ptr;
     auto peer  = edata->peer;
 
+    assert(peer != nullptr);
+
     // if (event->events & EPOLLHUP)
     // {
     //     reconnect_peer(peer);
@@ -344,13 +373,20 @@ void network_connector_peer_event(epoll_event* event) {
     // }
 
     if (event->events & EPOLLERR) {
-        int result;
-        socklen_t result_len = sizeof(result);
-        if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
-            panic("failed to getsockopt: " + std::to_string(errno));
+        // this is how we would check the errno if we needed it
+        // a lot of time this will be 111 (ECONNREFUSED)
+        // int result;
+        // socklen_t result_len = sizeof(result);
+        // if (getsockopt(peer->fd, SOL_SOCKET, SO_ERROR, &result, &result_len) < 0)
+        //     panic("failed to getsockopt: " + std::to_string(errno));
 
-        reconnect_peer(peer);
-        return;
+        if (peer->state == PeerState::Connecting) {
+            // this is a connection error
+            peer->write_op = std::nullopt;
+            peer->read_op  = std::nullopt;
+        }
+
+        return reconnect_peer(peer);
     }
 
     if (peer->state == PeerState::Disconnected)
@@ -363,26 +399,20 @@ void network_connector_peer_event(epoll_event* event) {
 }
 
 void connect_timer_event(ThreadContext* ctx) {
-    for (;;) {
-        if (timerfd_read2(ctx->connect_timer_tfd) < 0) {
-            if (errno == EAGAIN)
-                break;
-
-            panic("failed to read from connect timer: " + std::to_string(errno));
-        }
-
-        if (!ctx->connecting.empty()) {
-            auto peer = ctx->connecting.back();
-            ctx->connecting.pop_back();
-
-            network_connector_connect_peer(peer);
-        }
+    if (timerfd_read2(ctx->connect_timer_tfd) < 0) {
+        panic("failed to read from connect timer: " + std::to_string(errno));
     }
 
-    if (!ctx->connecting.empty() && !ctx->timer_armed)
+    if (!ctx->connecting.empty()) {
+        auto peer = ctx->connecting.front();
+        network_connector_connect_peer(peer);
+        ctx->connecting.pop_front();
+    }
+
+    ctx->timer_armed = false;
+
+    if (!ctx->connecting.empty())
         ctx->ensure_timer_armed();
-    else
-        ctx->timer_armed = false;
 }
 
 void control_event(ThreadContext* ctx) {
@@ -405,16 +435,15 @@ void control_event(ThreadContext* ctx) {
                 auto connector = request.connector;
 
                 // make a copy because `connector->peers` will be modified
-                for (RawPeer* peer: std::vector(connector->peers)) {
+                for (RawPeer* peer: std::vector(connector->peers))
                     remove_peer(peer);
-                    delete peer;
-                }
 
                 ctx->remove_connector(connector);
 
                 if (connector->fd > 0)
                     close(connector->fd);
 
+                mydebug();
                 connector->identity.free();
 
                 close(connector->send_event_fd);
@@ -505,7 +534,7 @@ Status session_init(Session* session, size_t num_threads) {
     // exactly size the vector to avoid reallocation
     session->threads.reserve(num_threads);
 
-    for (size_t i = 0; i < num_threads; ++i) {
+    for (size_t i = 0; i < num_threads; i++) {
         session->threads.emplace_back(
             ThreadContext {
                 // note: this does not start the thread
@@ -513,7 +542,7 @@ Status session_init(Session* session, size_t num_threads) {
                 .session         = session,
                 .thread          = std::thread(),
                 .io_cache        = std::vector<EpollData*>(),
-                .connecting      = std::vector<RawPeer*>(),
+                .connecting      = std::deque<RawPeer*>(),
                 .control_queue   = ConcurrentQueue<ControlRequest>(),
                 .control_efd     = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
                 .epoll_fd        = epoll_create1(0),

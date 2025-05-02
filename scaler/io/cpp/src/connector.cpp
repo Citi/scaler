@@ -5,36 +5,29 @@ Status connector_init(
     switch (transport) {
         case Transport::TCP:
         case Transport::InterProcess: {
-            new (connector) Connector {
-                .type = Connector::Socket, .network = (NetworkConnector*)std::malloc(sizeof(NetworkConnector))};
+            new (connector) Connector {.type = Connector::Socket, .network = nullptr};
 
-            return network_connector_init(session, connector->network, transport, type, identity, len);
+            return network_connector_init(session, &connector->network, transport, type, identity, len);
         }
         case Transport::IntraProcess: {
-            new (connector) Connector {
-                .type          = Connector::IntraProcess,
-                .intra_process = (IntraProcessConnector*)std::malloc(sizeof(IntraProcessConnector))};
+            new (connector) Connector {.type = Connector::IntraProcess, .intra_process = nullptr};
 
-            return intra_process_init(session, connector->intra_process, identity, len);
+            return intra_process_init(session, &connector->intra_process, identity, len);
         }
         default: unreachable();
     }
 }
 
-Status connector_destroy(Connector* connector, bool destruct) {
+Status connector_destroy(Connector* connector) {
     switch (connector->type) {
         case Connector::Socket: {
             auto status = network_connector_destroy(connector->network);
-            if (destruct)
-                connector->network->~NetworkConnector();
-            std::free(connector->network);
+            delete connector->network;
             return status;
         }
         case Connector::IntraProcess: {
             auto status = intra_process_destroy(connector->intra_process);
-            if (destruct)
-                connector->intra_process->~IntraProcessConnector();
-            std::free(connector->intra_process);
+            delete connector->intra_process;
             return status;
         }
         default: unreachable();

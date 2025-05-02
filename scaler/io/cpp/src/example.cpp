@@ -1,8 +1,8 @@
 #include "main.hpp"
 
 #define CHECK(expr)                                         \
-    if (auto status = (expr); status.type != ErrorType::Ok) \
-    panic(status.message, std::source_location::current())
+    if (auto status = (expr); status.type != StatusType::Ok) \
+        panic(status.message, std::source_location::current())
 
 struct Future {
     sem_t* sem;
@@ -90,8 +90,8 @@ void example_one() {
 
     message_destroy(&msg);
 
-    CHECK(connector_destroy(&conn_a, false));
-    CHECK(connector_destroy(&conn_b, false));
+    CHECK(connector_destroy(&conn_a));
+    CHECK(connector_destroy(&conn_b));
     CHECK(session_destroy(&session, false));
 }
 
@@ -120,7 +120,7 @@ void example_two() {
         panic("send failed: " + std::string(send.status.message));
     }
 
-    if (send.status.type != ErrorType::Ok) {
+    if (send.status.type != StatusType::Ok) {
         panic("send failed: " + std::string(send.status.message));
     }
 
@@ -132,8 +132,8 @@ void example_two() {
 
     std::cout << "Received message: " << recv.msg->payload.as_string() << std::endl;
 
-    CHECK(connector_destroy(&conn_a, false));
-    CHECK(connector_destroy(&conn_b, false));
+    CHECK(connector_destroy(&conn_a));
+    CHECK(connector_destroy(&conn_b));
     CHECK(session_destroy(&session, false));
 }
 
@@ -163,7 +163,7 @@ void example_three() {
         panic("send failed: " + std::string(send.status.message));
     }
 
-    if (send.status.type != ErrorType::Ok) {
+    if (send.status.type != StatusType::Ok) {
         panic("send failed: " + std::string(send.status.message));
     }
 
@@ -175,8 +175,8 @@ void example_three() {
 
     std::cout << "Received message: " << recv.msg->payload.as_string() << std::endl;
 
-    CHECK(connector_destroy(&conn_a, true));
-    CHECK(connector_destroy(&conn_b, true));
+    CHECK(connector_destroy(&conn_a));
+    CHECK(connector_destroy(&conn_b));
     CHECK(session_destroy(&session, false));
 }
 
