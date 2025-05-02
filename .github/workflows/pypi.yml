@@ -53,6 +53,12 @@ jobs:
           CIBW_SKIP: "pp*"
           CIBW_MANYLINUX_X86_64_IMAGE: "manylinux_2_28"
 
+      - name: Build Sdist
+        run: |
+          python -m build --sdist
+          sudo mv dist/scaler* wheelhouse/.
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@db8f07d3871a0a180efa06b95d467625c19d5d5f # release/v1
-        path: ./wheelhouse/*.whl
+        # path: ./wheelhouse/*.whl
+        path: ./wheelhouse/*
