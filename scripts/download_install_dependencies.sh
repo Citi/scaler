@@ -29,12 +29,12 @@ elif [ "$1" == "capnp" ]; then
 		tar -xzf ${CAPNP_PACKAGE_NAME}
 		mv ${CAPNP_FOLDER_NAME} capnp
 		cd capnp
-		./configure --prefix=/opt/usr/local/
+		./configure --prefix=/usr/local/
 		make -j6 check
 	elif [ "$2" == "install" ]; then
 		cd capnp
 		sudo make install
-		echo "Installed capnp into /opt/usr/local"
+		echo "Installed capnp into /usr/local"
 	else 
 		echo "Argument needs to be either compile or install"
 		exit 1
