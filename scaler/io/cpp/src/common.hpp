@@ -31,6 +31,8 @@
 #include <sys/timerfd.h>
 #include <unistd.h>
 
+#define mydebug() std::cout << __FILE__ << ":" << __LINE__ << ":" << __PRETTY_FUNCTION__ << std::endl
+
 // Python callback
 void future_set_result(void* future, void* data);
 void future_set_status(void* future, void* status);
