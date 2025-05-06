@@ -130,6 +130,9 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
                 ),
             )
 
+        for object_id in deleted_object_ids:
+            await self._connector_storage.send_delete_request(object_id)
+
     def __on_object_create(self, source: bytes, instruction: ObjectInstruction):
         if not self._client_manager.has_client_id(instruction.object_user):
             logging.error(f"received object creation from {source!r} for unknown client {instruction.object_user!r}")

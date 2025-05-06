@@ -216,7 +216,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         else:
             raise ValueError(f"received unexpected task result {result}")
 
-        self.__clean_intermediate_result(graph_task_id, result.task_id)
+        await self.__clean_intermediate_result(graph_task_id, result.task_id)
         graph_info.sorter.done(result.task_id)
 
         if result.task_id in graph_info.running_task_ids:
@@ -304,7 +304,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
         return Task.Argument(Task.Argument.ArgumentType.ObjectID, task_info.result_object_ids[0])
 
-    def __clean_intermediate_result(self, graph_task_id: bytes, task_id: bytes):
+    async def __clean_intermediate_result(self, graph_task_id: bytes, task_id: bytes):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[task_id]
 
@@ -318,7 +318,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 continue
 
             # delete intermediate results as they are not needed anymore
-            self._object_manager.on_del_objects(
+            await self._object_manager.on_del_objects(
                 graph_info.client, set(graph_info.tasks[argument_task_id].result_object_ids)
             )
 
