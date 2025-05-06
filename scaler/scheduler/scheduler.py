@@ -6,6 +6,7 @@ import zmq.asyncio
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
@@ -15,7 +16,6 @@ from scaler.protocol.python.message import (
     GraphTask,
     GraphTaskCancel,
     ObjectInstruction,
-    ObjectRequest,
     Task,
     TaskCancel,
     TaskResult,
@@ -67,8 +67,15 @@ class Scheduler:
             callback=None,
             identity=None,
         )
+        self._connector_storage = AsyncObjectStorageConnector(
+            config.object_storage_config.host,
+            config.object_storage_config.port,
+        )
 
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address.to_address()}")
+        logging.info(
+            f"{self.__class__.__name__}: connect to object storage server {config.object_storage_config.to_string()}"
+        )
         logging.info(
             f"{self.__class__.__name__}: listen to scheduler monitor address {self._address_monitor.to_address()}"
         )
@@ -95,9 +102,16 @@ class Scheduler:
         self._client_manager.register(
             self._binder, self._binder_monitor, self._object_manager, self._task_manager, self._worker_manager
         )
-        self._object_manager.register(self._binder, self._binder_monitor, self._client_manager, self._worker_manager)
+        self._object_manager.register(
+            self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_manager
+        )
         self._graph_manager.register(
-            self._binder, self._binder_monitor, self._client_manager, self._task_manager, self._object_manager
+            self._binder,
+            self._binder_monitor,
+            self._connector_storage,
+            self._client_manager,
+            self._task_manager,
+            self._object_manager,
         )
         self._task_manager.register(
             self._binder,
@@ -112,6 +126,9 @@ class Scheduler:
         self._status_reporter.register_managers(
             self._binder, self._client_manager, self._object_manager, self._task_manager, self._worker_manager
         )
+
+    async def connect_to_storage(self):
+        return self.connect_to_storage()
 
     async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================
@@ -165,15 +182,12 @@ class Scheduler:
             await self._object_manager.on_object_instruction(source, message)
             return
 
-        if isinstance(message, ObjectRequest):
-            await self._object_manager.on_object_request(source, message)
-            return
-
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
     async def get_loops(self):
         loops = [
             create_async_loop_routine(self._binder.routine, 0),
+            create_async_loop_routine(self._connector_storage.routine, 0),
             create_async_loop_routine(self._graph_manager.routine, 0),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._client_manager.routine, CLEANUP_INTERVAL_SECONDS),
@@ -200,4 +214,5 @@ class Scheduler:
 @functools.wraps(Scheduler)
 async def scheduler_main(*args, **kwargs):
     scheduler = Scheduler(*args, **kwargs)
+    await scheduler.connect_to_storage()
     await scheduler.get_loops()

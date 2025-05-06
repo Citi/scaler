@@ -120,7 +120,11 @@ def get_args():
         "number plus 2, e.g.: if scheduler address is tcp://localhost:2345, then monitoring address is "
         "tcp://localhost:2347",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to listen to")
+    parser.add_argument(
+        "address",
+        type=ZMQConfig.from_string,
+        help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
+    )
     return parser.parse_args()
 
 
