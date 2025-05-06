@@ -1,5 +1,6 @@
 import asyncio
-from typing import Awaitable, Callable, Optional, Tuple
+import logging
+from typing import Dict, Optional, Tuple
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
@@ -9,27 +10,16 @@ from scaler.utility.exceptions import ObjectStorageException
 class AsyncObjectStorageConnector:
     """An asyncio connector that uses an raw TCP socket to connect to a Scaler's object storage instance."""
 
-<<<<<<< HEAD
     def __init__(self):
         self._host: Optional[str] = None
         self._port: Optional[int] = None
 
         self._connected_event = asyncio.Event()
-=======
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]],  # TODO: add comment on argument types
-    ):
-        self._host = host
-        self._port = port
->>>>>>> 8b617d4 (Client uses the new object storage process.)
 
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
 
-        self._on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]] = on_object_get_response
+        self._pending_get_requests: Dict[bytes, asyncio.Future] = {}
 
     def __del__(self):
         if not self.is_connected():
@@ -79,21 +69,15 @@ class AsyncObjectStorageConnector:
     async def routine(self):
         await self.wait_until_connected()
 
-        if self._on_object_get_response is None:
-            return
-
         response = await self.__receive_response()
         if response is None:
             return
 
         header, payload = response
 
-        if header.response_type == ObjectResponseHeader.ObjectResponseType.GetOK:
-            await self._on_object_get_response(header.object_id, payload)
+        if header.response_type != ObjectResponseHeader.ObjectResponseType.GetOK:
+            return
 
-<<<<<<< HEAD
-    async def send_set_request(self, object_id: bytes, payload: bytes) -> None:
-=======
         pending_get_future = self._pending_get_requests.get(header.object_id)
 
         if pending_get_future is None:
@@ -103,13 +87,25 @@ class AsyncObjectStorageConnector:
         pending_get_future.set_result(payload)
 
     async def set_object(self, object_id: bytes, payload: bytes) -> None:
->>>>>>> 2222e0c (fixup! Adds a asyncio connector for the Object Storage protocol.)
         await self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
 
-    async def send_get_request(self, object_id: bytes, max_payload_length: int = 2**64 - 1) -> None:
-        await self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject, None)
+    async def get_object(self, object_id: bytes, max_payload_length: int = 2**64 - 1) -> bytes:
+        pending_get_future = self._pending_get_requests.get(object_id)
 
-    async def send_delete_request(self, object_id: bytes) -> None:
+        if pending_get_future is None:
+            pending_get_future = asyncio.Future()
+            self._pending_get_requests[object_id] = pending_get_future
+
+            await self.__send_request(
+                object_id,
+                max_payload_length,
+                ObjectRequestHeader.ObjectRequestType.GetObject,
+                None
+            )
+
+        return await pending_get_future
+
+    async def delete_object(self, object_id: bytes) -> None:
         await self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject, None)
 
     def __ensure_is_connected(self):
@@ -129,7 +125,11 @@ class AsyncObjectStorageConnector:
         self.__ensure_is_connected()
         assert self._writer is not None
 
-        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_type)
+        request_id = self._next_request_id
+        self._next_request_id += 1
+        self._next_request_id %= 2**64 - 1  # UINT64_MAX
+
+        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_id, request_type)
 
         self.__write_request_header(header)
 
