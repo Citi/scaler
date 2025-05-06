@@ -6,7 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.protocol.python.common import ObjectContent, TaskStatus
+from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import GraphTask, GraphTaskCancel, StateGraphTask, Task, TaskCancel, TaskResult
 from scaler.scheduler.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -236,7 +236,6 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 (
                     object_id,
                     self._object_manager.get_object_name(object_id),
-                    self._object_manager.get_object_content(object_id),
                 )
                 for object_id in result.results
             ]
@@ -250,7 +249,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         graph_task_id: bytes,
         result_status: TaskStatus,
         result_metadata: bytes,
-        result_objects: List[Tuple[bytes, bytes, List[bytes]]],
+        result_objects: List[Tuple[bytes, bytes]],
     ):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
 
@@ -269,7 +268,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         graph_task_id: bytes,
         result_status: TaskStatus,
         result_metadata: bytes,
-        result_objects: List[Tuple[bytes, bytes, List[bytes]]],
+        result_objects: List[Tuple[bytes, bytes]],
     ):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
 
@@ -290,14 +289,6 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     def __is_graph_finished(self, graph_task_id: bytes):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         return not graph_info.sorter.is_active() and not graph_info.running_task_ids
-
-    def __get_target_results_ids(self, graph_task_id: bytes) -> List[bytes]:
-        graph_info = self._graph_task_id_to_graph[graph_task_id]
-        return [
-            result_object_id
-            for task_id in graph_info.target_task_ids
-            for result_object_id in graph_info.tasks[task_id].result_object_ids
-        ]
 
     def __get_argument(self, graph_task_id: bytes, argument: Task.Argument) -> Task.Argument:
         if argument.type == Task.Argument.ArgumentType.ObjectID:
@@ -331,12 +322,13 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 graph_info.client, set(graph_info.tasks[argument_task_id].result_object_ids)
             )
 
-    def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[bytes, bytes, List[bytes]]]):
+    def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[bytes, bytes]]) -> List[bytes]:
+        # FIXME: the data should be copied/moved on the object storage server.
         new_result_object_ids = []
-        for object_id, object_name, object_content in result_objects:
+        for object_id, object_name in result_objects:
             new_result_object_id = uuid.uuid4().bytes
             self._object_manager.on_add_object(
-                owner, new_result_object_id, ObjectContent.ObjectContentType.Object, object_name, object_content
+                owner, new_result_object_id, ObjectMetadata.ObjectContentType.Object, object_name
             )
             new_result_object_ids.append(new_result_object_id)
         return new_result_object_ids

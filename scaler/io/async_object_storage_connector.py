@@ -12,7 +12,7 @@ class AsyncObjectStorageConnector:
         self,
         host: str,
         port: int,
-        on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]],  # TODO: add comment on argument types
+        on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]] = None,  # TODO: add comment on argument types
     ):
         self._host = host
         self._port = port
@@ -58,16 +58,17 @@ class AsyncObjectStorageConnector:
     async def routine(self):
         self.__ensure_is_connected()
 
-        if self._on_object_get_response is None:
-            return
-
         response = await self.__receive_response()
         if response is None:
+            return
+
+        if self._on_object_get_response is None:
             return
 
         header, payload = response
 
         if header.response_type == ObjectResponseHeader.ObjectResponseType.GetOK:
+
             await self._on_object_get_response(header.object_id, payload)
 
     async def send_set_request(self, object_id: bytes, payload: bytes) -> None:

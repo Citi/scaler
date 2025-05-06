@@ -15,7 +15,6 @@ from scaler.protocol.python.message import (
     GraphTask,
     GraphTaskCancel,
     ObjectInstruction,
-    ObjectRequest,
     Task,
     TaskCancel,
     TaskResult,
@@ -102,6 +101,9 @@ class Scheduler:
             self._binder, self._client_manager, self._object_manager, self._task_manager, self._worker_manager
         )
 
+    async def connect_to_storage(self):
+        return self.connect_to_storage()
+
     async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================
         # receive from upstream
@@ -154,10 +156,6 @@ class Scheduler:
             await self._object_manager.on_object_instruction(source, message)
             return
 
-        if isinstance(message, ObjectRequest):
-            await self._object_manager.on_object_request(source, message)
-            return
-
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
     async def get_loops(self):
@@ -189,4 +187,5 @@ class Scheduler:
 @functools.wraps(Scheduler)
 async def scheduler_main(*args, **kwargs):
     scheduler = Scheduler(*args, **kwargs)
+    await scheduler.connect_to_storage()
     await scheduler.get_loops()
