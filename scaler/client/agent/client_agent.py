@@ -122,10 +122,6 @@ class ClientAgent(threading.Thread):
             await self._object_manager.on_object_instruction(message)
             return
 
-        if isinstance(message, ObjectRequest):
-            await self._object_manager.on_object_request(message)
-            return
-
         if isinstance(message, Task):
             await self._task_manager.on_new_task(message)
             return

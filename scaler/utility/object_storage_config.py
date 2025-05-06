@@ -1,4 +1,5 @@
 import dataclasses
+import re
 
 
 @dataclasses.dataclass
@@ -7,13 +8,17 @@ class ObjectStorageConfig:
     port: int
 
     def to_string(self) -> str:
-        return f"{self.host}:{self.port}"
+        return f"tcp://{self.host}:{self.port}"
 
     @staticmethod
     def from_string(address: str) -> "ObjectStorageConfig":
-        if ":" not in address:
-            raise ValueError("object storage address has to be <host>:<port>")
+        address_format = r"^tcp://([a-zA-Z0-9\.\-]+):([0-9]{1,5})$"
+        match = re.compile(address_format).match(address)
 
-        host, port = address.split(":", 1)
+        if not match:
+            raise ValueError("object storage address has to be tcp://<host>:<port>")
 
-        return ObjectStorageConfig(host=host, port=int(port))
+        host = match.group(1)
+        port = int(match.group(2))
+
+        return ObjectStorageConfig(host=host, port=port)

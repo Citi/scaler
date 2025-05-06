@@ -14,7 +14,7 @@ import zmq.asyncio
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
-from scaler.client.object_buffer import ObjectBuffer
+from scaler.client.object_buffer import ObjectInstructionBuffer
 from scaler.client.object_reference import ObjectReference
 from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
@@ -110,7 +110,7 @@ class Client:
 
         logging.info(f"ScalerClient: connect to {self._scheduler_address.to_address()}")
 
-        self._object_buffer = ObjectBuffer(self._identity, self._serializer, self._connector)
+        self._object_buffer = ObjectInstructionBuffer(self._identity, self._serializer, self._connector)
         self._future_factory = functools.partial(ScalerFuture, connector=self._connector)
 
         self._agent.wait_until_ready()

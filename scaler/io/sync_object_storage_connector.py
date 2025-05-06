@@ -30,7 +30,7 @@ class SyncObjectStorageConnector:
         """
         Sets the object's payload on the object storage server.
 
-        Returns `True` if the object data got overridden. Otherwise, return `False`.
+        Returns `True` if the object data got overridden. Otherwise, returns `False`.
         """
 
         self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
