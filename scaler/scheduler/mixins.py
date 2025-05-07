@@ -1,5 +1,5 @@
 import abc
-from typing import List, Optional, Set
+from typing import Optional, Set
 
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import (

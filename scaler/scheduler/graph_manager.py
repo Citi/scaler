@@ -6,6 +6,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import GraphTask, GraphTaskCancel, StateGraphTask, Task, TaskCancel, TaskResult
 from scaler.scheduler.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
@@ -69,6 +70,8 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     def __init__(self):
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+
         self._client_manager: Optional[ClientManager] = None
         self._task_manager: Optional[TaskManager] = None
         self._object_manager: Optional[ObjectManager] = None
@@ -82,12 +85,14 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         self,
         binder: AsyncBinder,
         binder_monitor: AsyncConnector,
+        connector_storage: AsyncObjectStorageConnector,
         client_manager: ClientManager,
         task_manager: TaskManager,
         object_manager: ObjectManager,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
+        self._connector_storage = connector_storage
         self._client_manager = client_manager
         self._task_manager = task_manager
         self._object_manager = object_manager
@@ -257,7 +262,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
         # cancel all running tasks
         for task_id in running_task_ids:
-            new_result_object_ids = self.__duplicate_objects(graph_info.client, result_objects)
+            new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
             await self._task_manager.on_task_cancel(graph_info.client, TaskCancel.new_msg(task_id))
             await self.__mark_node_done(
                 TaskResult.new_msg(task_id, result_status, result_metadata, new_result_object_ids)
@@ -276,7 +281,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             ready_task_ids = graph_info.sorter.get_ready()
 
             for task_id in ready_task_ids:
-                new_result_object_ids = self.__duplicate_objects(graph_info.client, result_objects)
+                new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
                 await self.__mark_node_done(
                     TaskResult.new_msg(task_id, result_status, result_metadata, new_result_object_ids)
                 )
@@ -322,11 +327,14 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 graph_info.client, set(graph_info.tasks[argument_task_id].result_object_ids)
             )
 
-    def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[bytes, bytes]]) -> List[bytes]:
-        # FIXME: the data should be copied/moved on the object storage server.
+    async def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[bytes, bytes]]) -> List[bytes]:
         new_result_object_ids = []
         for object_id, object_name in result_objects:
             new_result_object_id = uuid.uuid4().bytes
+
+            object_payload = await self._connector_storage.get_object(object_id)
+            await self._connector_storage.set_object(new_result_object_id, object_payload)
+
             self._object_manager.on_add_object(
                 owner, new_result_object_id, ObjectMetadata.ObjectContentType.Object, object_name
             )

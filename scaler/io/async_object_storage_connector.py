@@ -1,5 +1,6 @@
 import asyncio
-from typing import Awaitable, Callable, Optional, Tuple
+import logging
+from typing import Dict, Optional, Tuple
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
@@ -12,7 +13,6 @@ class AsyncObjectStorageConnector:
         self,
         host: str,
         port: int,
-        on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]] = None,  # TODO: add comment on argument types
     ):
         self._host = host
         self._port = port
@@ -20,7 +20,7 @@ class AsyncObjectStorageConnector:
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
 
-        self._on_object_get_response: Optional[Callable[[bytes, bytes], Awaitable[None]]] = on_object_get_response
+        self._pending_get_requests: Dict[bytes, asyncio.Future] = {}
 
     def __del__(self):
         if self._writer is None:
@@ -62,22 +62,40 @@ class AsyncObjectStorageConnector:
         if response is None:
             return
 
-        if self._on_object_get_response is None:
-            return
-
         header, payload = response
 
-        if header.response_type == ObjectResponseHeader.ObjectResponseType.GetOK:
+        if header.response_type != ObjectResponseHeader.ObjectResponseType.GetOK:
+            return
 
-            await self._on_object_get_response(header.object_id, payload)
+        # TODO: use request ID to identify requests instead of object ID
+        pending_get_future = self._pending_get_requests.get(header.object_id)
 
-    async def send_set_request(self, object_id: bytes, payload: bytes) -> None:
+        if pending_get_future is None:
+            logging.warning(f"unknown get-ok response for unrequested object_id={header.object_id.hex()}.")
+            return
+
+        pending_get_future.set_result(payload)
+
+    async def set_object(self, object_id: bytes, payload: bytes) -> None:
         await self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
 
-    async def send_get_request(self, object_id: bytes, max_payload_length: int = 2**64 - 1) -> None:
-        await self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject, None)
+    async def get_object(self, object_id: bytes, max_payload_length: int = 2**64 - 1) -> bytes:
+        pending_get_future = self._pending_get_requests.get(object_id)
 
-    async def send_delete_request(self, object_id: bytes) -> None:
+        if pending_get_future is None:
+            pending_get_future = asyncio.Future()
+            self._pending_get_requests[object_id] = pending_get_future
+
+            await self.__send_request(
+                object_id,
+                max_payload_length,
+                ObjectRequestHeader.ObjectRequestType.GetObject,
+                None
+            )
+
+        return await pending_get_future
+
+    async def delete_object(self, object_id: bytes) -> None:
         await self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject, None)
 
     def __ensure_is_connected(self):

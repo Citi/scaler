@@ -6,6 +6,7 @@ import zmq.asyncio
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
@@ -46,7 +47,7 @@ class Scheduler:
 
         self._object_storage_address = ObjectStorageAddress.new_msg(
             host=config.object_storage_config.host,
-            port=config.object_storage_config.port
+            port=config.object_storage_config.port,
         )
 
         logging.info(f"{self.__class__.__name__}: monitor address is {self._address_monitor.to_address()}")
@@ -61,6 +62,11 @@ class Scheduler:
             callback=None,
             identity=None,
         )
+        self._connector_storage = AsyncObjectStorageConnector(
+            config.object_storage_config.host,
+            config.object_storage_config.port,
+        )
+
         self._client_manager = VanillaClientManager(
             client_timeout_seconds=config.client_timeout_seconds,
             protected=config.protected,
@@ -83,9 +89,16 @@ class Scheduler:
         self._client_manager.register(
             self._binder, self._binder_monitor, self._object_manager, self._task_manager, self._worker_manager
         )
-        self._object_manager.register(self._binder, self._binder_monitor, self._client_manager, self._worker_manager)
+        self._object_manager.register(
+            self._binder, self._binder_monitor, self._connector_storage, self._client_manager, self._worker_manager
+        )
         self._graph_manager.register(
-            self._binder, self._binder_monitor, self._client_manager, self._task_manager, self._object_manager
+            self._binder,
+            self._binder_monitor,
+            self._connector_storage,
+            self._client_manager,
+            self._task_manager,
+            self._object_manager,
         )
         self._task_manager.register(
             self._binder,
@@ -161,6 +174,7 @@ class Scheduler:
     async def get_loops(self):
         loops = [
             create_async_loop_routine(self._binder.routine, 0),
+            create_async_loop_routine(self._connector_storage.routine, 0),
             create_async_loop_routine(self._graph_manager.routine, 0),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._client_manager.routine, CLEANUP_INTERVAL_SECONDS),

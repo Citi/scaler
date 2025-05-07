@@ -38,25 +38,24 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
+        self._connector_storage: Optional[AsyncObjectStorageConnector] = None
+
         self._client_manager: Optional[ClientManager] = None
         self._worker_manager: Optional[WorkerManager] = None
-
-        self._connector_storage = AsyncObjectStorageConnector(object_storage_config.host, object_storage_config.port)
 
     def register(
         self,
         binder: AsyncBinder,
         binder_monitor: AsyncConnector,
+        connector_storage: AsyncObjectStorageConnector,
         client_manager: ClientManager,
         worker_manager: WorkerManager,
     ):
         self._binder = binder
         self._binder_monitor = binder_monitor
+        self._connector_storage = connector_storage
         self._client_manager = client_manager
         self._worker_manager = worker_manager
-
-    async def connect_to_storage(self):
-        self._connector_storage.connect()
 
     async def on_object_instruction(self, source: bytes, instruction: ObjectInstruction):
         if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Create:
@@ -131,7 +130,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             )
 
         for object_id in deleted_object_ids:
-            await self._connector_storage.send_delete_request(object_id)
+            await self._connector_storage.delete_object(object_id)
 
     def __on_object_create(self, source: bytes, instruction: ObjectInstruction):
         if not self._client_manager.has_client_id(instruction.object_user):
