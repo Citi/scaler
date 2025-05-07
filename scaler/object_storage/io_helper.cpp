@@ -15,6 +15,7 @@
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/system/system_error.hpp>
+#include <iostream>
 
 #include "protocol/object_storage.capnp.h"
 #include "scaler/object_storage/constants.h"
@@ -51,14 +52,15 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
     } catch (boost::system::system_error& e) {
         // TODO: make this a log, since eof is not really an err.
         if (e.code() == boost::asio::error::eof) {
-            printf("Remote end closed, nothing to read.\n");
+            std::cerr << "Remote end closed, nothing to read.\n";
         } else {
-            printf("exception throwned, read error e.what() = %s\n", e.what());
+            std::cerr << "exception throwned, read error e.what() = " << e.what() << '\n';
         }
         throw e;
     } catch (std::exception& e) {
         // TODO: make this a log, capnp header corruption is an err.
-        printf("exception throwned, header not a capnp e.what() = %s\n", e.what());
+        std::cerr << "exception throwned, header not a capnp e.what() = " << e.what() << '\n';
+
         throw e;
     }
 }
@@ -84,7 +86,7 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
     try {
         std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(payload), use_awaitable);
     } catch (boost::system::system_error& e) {
-        printf("payload ends prematurely, e.what() = %s\n", e.what());
+        std::cerr << "payload ends prematurely, e.what() = " << e.what() << '\n';
         throw e;
     }
 }
@@ -95,9 +97,9 @@ boost::asio::awaitable<void> write_response_payload(
         co_await async_write(socket, boost::asio::buffer(payloadView.data(), payloadView.size()), use_awaitable);
     } catch (boost::system::system_error& e) {
         if (e.code() == boost::asio::error::broken_pipe) {
-            printf("Remote end closed, nothing to write.\n");
+            std::cerr << "Remote end closed, nothing to write.\n";
         } else {
-            printf("write error e.what() = %s\n", e.what());
+            std::cerr << "write error e.what() = " << e.what() << '\n';
         }
         throw e;
     }
@@ -122,9 +124,9 @@ boost::asio::awaitable<void> write_response_header(
     } catch (boost::system::system_error& e) {
         // TODO: Log support
         if (e.code() == boost::asio::error::broken_pipe) {
-            printf("Remote end closed, nothing to write.\n");
+            std::cerr << "Remote end closed, nothing to write.\n";
         } else {
-            printf("write error e.what() = %s\n", e.what());
+            std::cerr << "write error e.what() = " << e.what() << '\n';
         }
         throw e;
     }
