@@ -22,15 +22,15 @@ using boost::asio::use_awaitable;
 using boost::asio::ip::tcp;
 
 class ObjectStorageServer {
-    struct meta {
+    struct Meta {
         std::shared_ptr<boost::asio::ip::tcp::socket> socket;
         ObjectRequestHeader requestHeader;
         ObjectResponseHeader responseHeader;
     };
 
-    struct object_with_meta {
+    struct ObjectWithMeta {
         shared_object_t object;
-        std::vector<meta> metaInfo;
+        std::vector<Meta> metaInfo;
     };
 
     using reqType  = ::ObjectRequestHeader::ObjectRequestType;
@@ -85,7 +85,7 @@ public:
     }
 
 private:
-    awaitable<void> write_once(meta meta) {
+    awaitable<void> write_once(Meta meta) {
         if (meta.requestHeader.reqType == reqType::GET_OBJECT) {
             meta.responseHeader.payloadLength =
                 std::min(objectIDToMeta[meta.responseHeader.objectID].object->size(), meta.requestHeader.payloadLength);
@@ -103,7 +103,7 @@ private:
                     co_await write_once(std::move(curr_meta));
                 } catch (boost::system::system_error& e) {}
             }
-            objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<meta>();
+            objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<Meta>();
         }
         co_return;
     }
@@ -111,7 +111,7 @@ private:
 #ifndef NDEBUG
 public:
 #endif
-    std::map<scaler::object_storage::object_id_t, object_with_meta> objectIDToMeta;
+    std::map<scaler::object_storage::object_id_t, ObjectWithMeta> objectIDToMeta;
 
 public:
     awaitable<void> process_request(std::shared_ptr<tcp::socket> socket) {
