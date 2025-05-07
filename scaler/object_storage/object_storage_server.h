@@ -22,7 +22,7 @@ using boost::asio::ip::tcp;
 
 class ObjectStorageServer {
     struct meta {
-        boost::asio::ip::tcp::socket socket;
+        boost::asio::ip::tcp::socket& socket;
         ObjectRequestHeader requestHeader;
         ObjectResponseHeader responseHeader;
     };
@@ -55,7 +55,8 @@ public:
         const scaler::object_storage::ObjectRequestHeader& requestHeader,
         scaler::object_storage::ObjectResponseHeader& responseHeader,
         scaler::object_storage::payload_t payload) {
-        responseHeader.objectID = requestHeader.objectID;
+        responseHeader.objectID   = requestHeader.objectID;
+        responseHeader.responseID = requestHeader.requestID;
         switch (requestHeader.reqType) {
             case reqType::SET_OBJECT:
                 responseHeader.respType =
@@ -92,18 +93,16 @@ private:
         auto payload_view = getMemoryViewForResponsePayload(meta.responseHeader);
         co_await scaler::object_storage::write_response_header(meta.socket, meta.responseHeader, payload_view.size());
         co_await scaler::object_storage::write_response_payload(meta.socket, payload_view);
-
-        co_spawn(meta.socket.get_executor(), process_request(std::move(meta.socket)), detached);
     }
 
-    void optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
+    awaitable<void> optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
         if (requestHeader.reqType == reqType::SET_OBJECT) {
             for (auto& curr_meta: objectIDToMeta[requestHeader.objectID].metaInfo) {
-                auto executor = curr_meta.socket.get_executor();
-                co_spawn(executor, write_once(std::move(curr_meta)), detached);
+                co_await write_once(std::move(curr_meta));
             }
             objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<meta>();
         }
+        co_return;
     }
 
 #ifndef NDEBUG
@@ -122,14 +121,13 @@ public:
                 co_await scaler::object_storage::read_request_payload(socket, requestHeader, payload);
 
                 scaler::object_storage::ObjectResponseHeader responseHeader;
-                bool good_to_send = updateRecord(requestHeader, responseHeader, std::move(payload));
+                bool non_blocking_request = updateRecord(requestHeader, responseHeader, std::move(payload));
 
-                optionally_send_pending_requests(requestHeader);
+                co_await optionally_send_pending_requests(requestHeader);
 
-                if (!good_to_send) {
-                    objectIDToMeta[requestHeader.objectID].metaInfo.emplace_back(
-                        std::move(socket), std::move(requestHeader), std::move(responseHeader));
-                    break;
+                if (!non_blocking_request) {
+                    objectIDToMeta[requestHeader.objectID].metaInfo.emplace_back(socket, requestHeader, responseHeader);
+                    continue;
                 }
 
                 auto payload_view = getMemoryViewForResponsePayload(responseHeader);
@@ -139,6 +137,7 @@ public:
                 co_await scaler::object_storage::write_response_payload(socket, payload_view);
             }
         } catch (std::exception& e) {
+            // TODO: Logging support
             // std::printf("process_request Exception: %s\n", e.what());
         }
     }

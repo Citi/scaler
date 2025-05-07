@@ -11,13 +11,9 @@
 #include <boost/asio/this_coro.hpp>
 #include <boost/system/system_error.hpp>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <string>
 
-#include "constants.h"
 #include "object_storage_server.h"
-#include "version.h"
 
 // Helper macros to stringify the macro value
 #define STRINGIFY_HELPER(x) #x
@@ -46,6 +42,7 @@ awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
 }
 
 // Assuming name_ and port_ is valid name and port
+// TODO: In the future we might need to add expiration date for closing connections
 void run_object_storage_server(const char* name_, const char* port_) {
     std::string name = name_;
     std::string port = port_;

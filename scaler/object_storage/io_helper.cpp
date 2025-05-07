@@ -6,6 +6,7 @@
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
+#include <boost/asio/error.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/read.hpp>
@@ -38,6 +39,7 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
 
         header.reqType       = requestRoot.getRequestType();
         header.payloadLength = requestRoot.getPayloadLength();
+        header.requestID     = requestRoot.getRequestID();
 
         auto objectID   = requestRoot.getObjectID();
         header.objectID = {
@@ -48,7 +50,11 @@ awaitable<void> read_request_header(tcp::socket& socket, ObjectRequestHeader& he
         };
     } catch (boost::system::system_error& e) {
         // TODO: make this a log, since eof is not really an err.
-        printf("exception throwned, read error e.what() = %s\n", e.what());
+        if (e.code() == boost::asio::error::eof) {
+            printf("Remote end closed, nothing to read.\n");
+        } else {
+            printf("exception throwned, read error e.what() = %s\n", e.what());
+        }
         throw e;
     } catch (std::exception& e) {
         // TODO: make this a log, capnp header corruption is an err.
@@ -88,7 +94,11 @@ boost::asio::awaitable<void> write_response_payload(
     try {
         co_await async_write(socket, boost::asio::buffer(payloadView.data(), payloadView.size()), use_awaitable);
     } catch (boost::system::system_error& e) {
-        printf("write error e.what() = %s\n", e.what());
+        if (e.code() == boost::asio::error::broken_pipe) {
+            printf("Remote end closed, nothing to write.\n");
+        } else {
+            printf("write error e.what() = %s\n", e.what());
+        }
         throw e;
     }
 }
@@ -99,6 +109,7 @@ boost::asio::awaitable<void> write_response_header(
     auto respRoot = returnMsg.initRoot<::ObjectResponseHeader>();
     respRoot.setResponseType(header.respType);
     respRoot.setPayloadLength(payloadLength);
+    respRoot.setResponseID(header.responseID);
     auto respRootObjectID = respRoot.initObjectID();
     respRootObjectID.setField0(header.objectID[0]);
     respRootObjectID.setField1(header.objectID[1]);
@@ -109,7 +120,12 @@ boost::asio::awaitable<void> write_response_header(
     try {
         co_await async_write(socket, boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()), use_awaitable);
     } catch (boost::system::system_error& e) {
-        printf("write error e.what() = %s\n", e.what());
+        // TODO: Log support
+        if (e.code() == boost::asio::error::broken_pipe) {
+            printf("Remote end closed, nothing to write.\n");
+        } else {
+            printf("write error e.what() = %s\n", e.what());
+        }
         throw e;
     }
 }
