@@ -9,6 +9,7 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/this_coro.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <boost/system/system_error.hpp>
 #include <cstdio>
 #include <string>
@@ -36,8 +37,9 @@ awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
     auto executor = co_await this_coro::executor;
     tcp::acceptor acceptor(executor, endpoint);
     for (;;) {
-        tcp::socket socket = co_await acceptor.async_accept(use_awaitable);
-        co_spawn(executor, server.process_request(std::move(socket)), detached);
+        auto shared_socket = std::make_shared<tcp::socket>(executor);
+        co_await acceptor.async_accept(*shared_socket, use_awaitable);
+        co_spawn(executor, server.process_request(std::move(shared_socket)), detached);
     }
 }
 

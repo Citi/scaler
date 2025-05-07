@@ -5,6 +5,7 @@
 #include <boost/asio/detached.hpp>
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
+#include <boost/system/system_error.hpp>
 #include <map>
 
 #include "defs.h"
@@ -22,7 +23,7 @@ using boost::asio::ip::tcp;
 
 class ObjectStorageServer {
     struct meta {
-        boost::asio::ip::tcp::socket& socket;
+        std::shared_ptr<boost::asio::ip::tcp::socket> socket;
         ObjectRequestHeader requestHeader;
         ObjectResponseHeader responseHeader;
     };
@@ -91,14 +92,16 @@ private:
         }
 
         auto payload_view = getMemoryViewForResponsePayload(meta.responseHeader);
-        co_await scaler::object_storage::write_response_header(meta.socket, meta.responseHeader, payload_view.size());
-        co_await scaler::object_storage::write_response_payload(meta.socket, payload_view);
+        co_await scaler::object_storage::write_response_header(*meta.socket, meta.responseHeader, payload_view.size());
+        co_await scaler::object_storage::write_response_payload(*meta.socket, payload_view);
     }
 
     awaitable<void> optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
         if (requestHeader.reqType == reqType::SET_OBJECT) {
             for (auto& curr_meta: objectIDToMeta[requestHeader.objectID].metaInfo) {
-                co_await write_once(std::move(curr_meta));
+                try {
+                    co_await write_once(std::move(curr_meta));
+                } catch (boost::system::system_error& e) {}
             }
             objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<meta>();
         }
@@ -111,14 +114,14 @@ public:
     std::map<scaler::object_storage::object_id_t, object_with_meta> objectIDToMeta;
 
 public:
-    awaitable<void> process_request(tcp::socket socket) {
+    awaitable<void> process_request(std::shared_ptr<tcp::socket> socket) {
         try {
             for (;;) {
                 scaler::object_storage::ObjectRequestHeader requestHeader;
-                co_await scaler::object_storage::read_request_header(socket, requestHeader);
+                co_await scaler::object_storage::read_request_header(*socket, requestHeader);
 
                 scaler::object_storage::payload_t payload;
-                co_await scaler::object_storage::read_request_payload(socket, requestHeader, payload);
+                co_await scaler::object_storage::read_request_payload(*socket, requestHeader, payload);
 
                 scaler::object_storage::ObjectResponseHeader responseHeader;
                 bool non_blocking_request = updateRecord(requestHeader, responseHeader, std::move(payload));
@@ -132,9 +135,9 @@ public:
 
                 auto payload_view = getMemoryViewForResponsePayload(responseHeader);
 
-                co_await scaler::object_storage::write_response_header(socket, responseHeader, payload_view.size());
+                co_await scaler::object_storage::write_response_header(*socket, responseHeader, payload_view.size());
 
-                co_await scaler::object_storage::write_response_payload(socket, payload_view);
+                co_await scaler::object_storage::write_response_payload(*socket, payload_view);
             }
         } catch (std::exception& e) {
             // TODO: Logging support
