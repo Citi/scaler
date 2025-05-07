@@ -15,6 +15,7 @@
 #include <boost/asio/use_awaitable.hpp>
 #include <boost/asio/write.hpp>
 #include <boost/system/system_error.hpp>
+#include <exception>
 #include <iostream>
 
 #include "protocol/object_storage.capnp.h"
@@ -87,7 +88,8 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
         std::size_t n = co_await boost::asio::async_read(socket, boost::asio::buffer(payload), use_awaitable);
     } catch (boost::system::system_error& e) {
         std::cerr << "payload ends prematurely, e.what() = " << e.what() << '\n';
-        throw e;
+        std::cerr << "Failing fast. Terminting now...\n";
+        std::terminate();
     }
 }
 
@@ -98,6 +100,10 @@ boost::asio::awaitable<void> write_response_payload(
     } catch (boost::system::system_error& e) {
         if (e.code() == boost::asio::error::broken_pipe) {
             std::cerr << "Remote end closed, nothing to write.\n";
+            std::cerr << "This should never happen as the client is expected "
+                      << "to get every and all response. Terminating now...\n";
+
+            std::terminate();
         } else {
             std::cerr << "write error e.what() = " << e.what() << '\n';
         }
@@ -125,6 +131,9 @@ boost::asio::awaitable<void> write_response_header(
         // TODO: Log support
         if (e.code() == boost::asio::error::broken_pipe) {
             std::cerr << "Remote end closed, nothing to write.\n";
+            std::cerr << "This should never happen as the client is expected "
+                      << "to get every and all response. Terminating now...\n";
+            std::terminate();
         } else {
             std::cerr << "write error e.what() = " << e.what() << '\n';
         }

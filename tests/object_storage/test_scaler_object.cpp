@@ -153,6 +153,7 @@ void write_request_header(
     auto req_root = req_msg.initRoot<::ObjectRequestHeader>();
     req_root.setRequestType(header.reqType);
     req_root.setPayloadLength(payload_length);
+    req_root.setRequestID(header.requestID);
     auto req_root_object_id = req_root.initObjectID();
     req_root_object_id.setField0(header.objectID[0]);
     req_root_object_id.setField1(header.objectID[1]);
@@ -174,6 +175,7 @@ void read_response_header(tcp::socket& socket, scaler::object_storage::ObjectRes
 
         header.respType      = request_root.getResponseType();
         header.payloadLength = request_root.getPayloadLength();
+        header.responseID    = request_root.getResponseID();
 
         auto object_id  = request_root.getObjectID();
         header.objectID = {
@@ -387,6 +389,7 @@ TEST_F(ServerClientTest, TestRequestBlocking) {
     read_response_header(socket, responseHeader);
 
     char buf[sizeof(payload)] {};
+
     if (responseHeader.responseID == 42) {
         boost::asio::read(socket, buffer(buf));
         EXPECT_EQ(responseHeader.objectID, requestHeader.objectID);

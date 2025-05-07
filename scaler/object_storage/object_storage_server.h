@@ -6,6 +6,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/system/system_error.hpp>
+#include <iostream>
 #include <map>
 
 #include "defs.h"
@@ -101,7 +102,9 @@ private:
             for (auto& curr_meta: objectIDToMeta[requestHeader.objectID].metaInfo) {
                 try {
                     co_await write_once(std::move(curr_meta));
-                } catch (boost::system::system_error& e) {}
+                } catch (boost::system::system_error& e) {
+                    std::cerr << "Mostly because some connections disconnected accidentally.\n";
+                }
             }
             objectIDToMeta[requestHeader.objectID].metaInfo = std::vector<Meta>();
         }

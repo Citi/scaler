@@ -60,5 +60,8 @@ void run_object_storage_server(const char* name_, const char* port_) {
         co_spawn(io_context, listener(res.begin()->endpoint()), detached);
 
         io_context.run();
-    } catch (std::exception& e) { std::printf("Exception: %s\n", e.what()); }
+    } catch (std::exception& e) {
+        std::printf("Exception: %s\n", e.what());
+        std::printf("Mostly something serious happen, inspect capnp header correuption\n");
+    }
 }
