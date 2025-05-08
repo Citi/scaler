@@ -21,10 +21,10 @@ void IntraProcessConnector::remove_from_epoll() {
     this->thread->remove_epoll(this->recv_event_fd);
 }
 
-Status intra_process_init(Session* session, IntraProcessConnector** connector, uint8_t* identity, size_t len) {
+Status intra_process_init(IoContext* ioctx, IntraProcessConnector** connector, uint8_t* identity, size_t len) {
     *connector = new IntraProcessConnector {
-        .session              = session,
-        .thread               = session->next_thread(),
+        .ioctx                = ioctx,
+        .thread               = ioctx->next_thread(),
         .queue                = ConcurrentQueue<Message>(),
         .recv                 = ConcurrentQueue<void*>(),
         .recv_buffer_event_fd = eventfd(0, EFD_NONBLOCK | EFD_SEMAPHORE),
@@ -38,9 +38,9 @@ Status intra_process_init(Session* session, IntraProcessConnector** connector, u
     };
 
     // take exclusive lock on the session to add the client
-    session->intra_process_mutex.lock();
-    session->inprocs.push_back(*connector);
-    session->intra_process_mutex.unlock();
+    ioctx->intra_process_mutex.lock();
+    ioctx->inprocs.push_back(*connector);
+    ioctx->intra_process_mutex.unlock();
 
     return Status::ok();
 }
@@ -51,10 +51,10 @@ Status intra_process_bind(IntraProcessConnector* connector, const char* addr) {
 
     std::string bind(addr);
 
-    connector->session->intra_process_mutex.lock();
+    connector->ioctx->intra_process_mutex.lock();
 
     // check for conflicts
-    for (auto other : connector->session->inprocs) {
+    for (auto other: connector->ioctx->inprocs) {
         if (other == connector)
             continue;
 
@@ -66,7 +66,7 @@ Status intra_process_bind(IntraProcessConnector* connector, const char* addr) {
     connector->bind = bind;
 
     // check for any pending connections
-    for (auto other : connector->session->inprocs) {
+    for (auto other: connector->ioctx->inprocs) {
         if (other == connector)
             continue;
 
@@ -80,7 +80,7 @@ Status intra_process_bind(IntraProcessConnector* connector, const char* addr) {
         }
     }
 
-    connector->session->intra_process_mutex.unlock();
+    connector->ioctx->intra_process_mutex.unlock();
 
     return Status::ok();
 }
@@ -88,9 +88,9 @@ Status intra_process_bind(IntraProcessConnector* connector, const char* addr) {
 Status intra_process_connect(IntraProcessConnector* connector, const char* addr) {
     std::string connecting(addr);
 
-    connector->session->intra_process_mutex.lock();
+    connector->ioctx->intra_process_mutex.lock();
 
-    for (auto other : connector->session->inprocs) {
+    for (auto other: connector->ioctx->inprocs) {
         if (other == connector)
             continue;
 
@@ -102,21 +102,21 @@ Status intra_process_connect(IntraProcessConnector* connector, const char* addr)
             if (eventfd_signal(other->unmuted_event_fd) < 0)
                 return Status::from_errno("failed to signal unmuted_event_fd");
 
-            connector->session->intra_process_mutex.unlock();
+            connector->ioctx->intra_process_mutex.unlock();
             return Status::ok();
         }
     }
 
     // the connection is pending
     connector->connecting = connecting;
-    connector->session->intra_process_mutex.unlock();
+    connector->ioctx->intra_process_mutex.unlock();
 
     return Status::ok();
 }
 
 Status intra_process_send_sync(IntraProcessConnector* connector, uint8_t* data, size_t len) {
     for (;;) {
-        connector->session->intra_process_mutex.lock_shared();
+        connector->ioctx->intra_process_mutex.lock_shared();
 
         if (connector->peer) {
             Message msg {
@@ -135,11 +135,11 @@ Status intra_process_send_sync(IntraProcessConnector* connector, uint8_t* data, 
             if (eventfd_signal(peer->recv_buffer_event_fd) < 0)
                 return Status::from_errno("failed to signal recv_buffer_event_fd");
 
-            connector->session->intra_process_mutex.unlock_shared();
+            connector->ioctx->intra_process_mutex.unlock_shared();
             return Status::ok();
         }
 
-        connector->session->intra_process_mutex.unlock_shared();
+        connector->ioctx->intra_process_mutex.unlock_shared();
 
     // wait for a connection
     wait:
@@ -202,15 +202,15 @@ void intra_process_recv_async(void* future, IntraProcessConnector* connector) {
 
 Status intra_process_destroy(IntraProcessConnector* connector) {
     connector->remove_from_epoll();
-    connector->session->intra_process_mutex.lock();
-    std::erase(connector->session->inprocs, connector);
+    connector->ioctx->intra_process_mutex.lock();
+    std::erase(connector->ioctx->inprocs, connector);
 
     if (connector->peer) {
         auto peer  = *connector->peer;
         peer->peer = std::nullopt;
     }
 
-    connector->session->intra_process_mutex.unlock();
+    connector->ioctx->intra_process_mutex.unlock();
 
     mydebug();
     connector->identity.free();

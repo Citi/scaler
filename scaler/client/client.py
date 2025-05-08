@@ -25,7 +25,7 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
 from scaler.worker.agent.processor.processor import Processor
 
-from scaler.io.model import Session, ConnectorType, Address, IntraProcessAddress
+from scaler.io.model import IoContext, ConnectorType, Address, IntraProcessAddress
 
 
 @dataclasses.dataclass
@@ -87,7 +87,7 @@ class Client:
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._session = Session(io_threads=1)
+        self._session = IoContext(io_threads=1)
         self._connector = SyncConnector(
             session=self._session, type_=ConnectorType.Pair, address=self._client_agent_address, identity=self._identity
         )

@@ -19,7 +19,7 @@
 
 // First-party
 #include "common.hpp"
-#include "session.hpp"
+#include "io_context.hpp"
 
 using moodycamel::ConcurrentQueue;
 
@@ -54,7 +54,7 @@ Status network_connector_bind_unix(NetworkConnector* connector, const char* path
 // -- interface --
 
 Status network_connector_init(
-    Session* session,
+    IoContext* ioctx,
     NetworkConnector* connector,
     Transport transport,
     ConnectorType type,
@@ -97,7 +97,7 @@ struct NetworkConnector {
     Transport transport;
 
     ThreadContext* thread;  // the thread that this client is bound to
-    Session* session;       // backreference to session
+    IoContext* ioctx;       // backreference to session
     Bytes identity;         // the identity of this client
 
     size_t rr;  // round robin for dealer

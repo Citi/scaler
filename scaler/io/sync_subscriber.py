@@ -6,7 +6,7 @@ from typing import Callable, Optional
 from scaler.io.utility import deserialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import Connector, Address, Session, ConnectorType
+from scaler.io.model import Connector, Address, IoContext, ConnectorType
 
 class SyncSubscriber(threading.Thread):
     def __init__(
@@ -29,7 +29,7 @@ class SyncSubscriber(threading.Thread):
         self.daemon = bool(daemonic)
         self._timeout_seconds = timeout_seconds
 
-        self._session: Session | None = None
+        self._session: IoContext | None = None
         self._client: Connector | None = None
 
     def __close(self):
@@ -53,7 +53,7 @@ class SyncSubscriber(threading.Thread):
         self.__close()
 
     def __initialize(self):
-        self._session = Session(io_threads=1)
+        self._session = IoContext(io_threads=1)
         self._connector = Connector(self._session, "sync_subscriber".encode(), ConnectorType.Sub, self._address.protocol)
         self._connector.connect(self._address)
 

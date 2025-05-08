@@ -26,7 +26,7 @@ from scaler.worker.agent.profiling_manager import VanillaProfilingManager
 from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
-from scaler.io.model import Session, TCPAddress, ConnectorType
+from scaler.io.model import IoContext, TCPAddress, ConnectorType
 
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
@@ -62,7 +62,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        self._session: Optional[Session] = None
+        self._session: Optional[IoContext] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._task_manager: Optional[VanillaTaskManager] = None
         self._heartbeat_manager: Optional[VanillaHeartbeatManager] = None
@@ -81,7 +81,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger()
         register_event_loop(self._event_loop)
 
-        self._session = Session(self._io_threads)
+        self._session = IoContext(self._io_threads)
         self._connector_external = AsyncConnector(
             session=self._session,
             name=self.name,

@@ -7,7 +7,7 @@ from typing import Literal
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import Connector, ConnectorType, Session, Address
+from scaler.io.model import Connector, ConnectorType, IoContext, Address
 
 
 
@@ -24,7 +24,7 @@ class AsyncConnector:
 
     def __init__(
         self,
-        session: Session,
+        session: IoContext,
         name: str,
         type_: ConnectorType,
         address: Address,

@@ -1,8 +1,8 @@
 #include "main.hpp"
 
-#define CHECK(expr)                                         \
+#define CHECK(expr)                                          \
     if (auto status = (expr); status.type != StatusType::Ok) \
-        panic(status.message, std::source_location::current())
+    panic(status.message, std::source_location::current())
 
 struct Future {
     sem_t* sem;
@@ -69,12 +69,12 @@ void future_set_status(void* future, void* status) {
 }
 
 void example_one() {
-    Session session;
-    CHECK(session_init(&session, 0));
+    IoContext ioctx;
+    CHECK(io_context_init(&ioctx, 0));
 
     Connector conn_a, conn_b;
-    CHECK(connector_init(&session, &conn_a, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_a", 6));
-    CHECK(connector_init(&session, &conn_b, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_b", 6));
+    CHECK(connector_init(&ioctx, &conn_a, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_a", 6));
+    CHECK(connector_init(&ioctx, &conn_b, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_b", 6));
 
     CHECK(connector_bind(&conn_a, "conn_a", 0));
     CHECK(connector_connect(&conn_b, "conn_a", 0));
@@ -86,22 +86,20 @@ void example_one() {
     Message msg;
     CHECK(connector_recv_sync(&conn_b, &msg));
 
-    std::cout << "Received message: " << msg.payload.as_string() << std::endl;
-
     message_destroy(&msg);
 
     CHECK(connector_destroy(&conn_a));
     CHECK(connector_destroy(&conn_b));
-    CHECK(session_destroy(&session, false));
+    CHECK(io_context_destroy(&ioctx, false));
 }
 
 void example_two() {
-    Session session;
-    CHECK(session_init(&session, 1));
+    IoContext ioctx;
+    CHECK(io_context_init(&ioctx, 1));
 
     Connector conn_a, conn_b;
-    CHECK(connector_init(&session, &conn_a, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_a", 6));
-    CHECK(connector_init(&session, &conn_b, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_b", 6));
+    CHECK(connector_init(&ioctx, &conn_a, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_a", 6));
+    CHECK(connector_init(&ioctx, &conn_b, Transport::IntraProcess, ConnectorType::Pair, (uint8_t*)"conn_b", 6));
 
     std::string addr = "/tmp/conn_a";
 
@@ -130,20 +128,18 @@ void example_two() {
         panic("recv failed: " + std::string(recv.status.message));
     }
 
-    std::cout << "Received message: " << recv.msg->payload.as_string() << std::endl;
-
     CHECK(connector_destroy(&conn_a));
     CHECK(connector_destroy(&conn_b));
-    CHECK(session_destroy(&session, false));
+    CHECK(io_context_destroy(&ioctx, false));
 }
 
 void example_three() {
-    Session session;
-    CHECK(session_init(&session, 1));
+    IoContext ioctx;
+    CHECK(io_context_init(&ioctx, 1));
 
     Connector conn_a, conn_b;
-    CHECK(connector_init(&session, &conn_a, Transport::TCP, ConnectorType::Pair, (uint8_t*)"conn_a", 6));
-    CHECK(connector_init(&session, &conn_b, Transport::TCP, ConnectorType::Pair, (uint8_t*)"conn_b", 6));
+    CHECK(connector_init(&ioctx, &conn_a, Transport::TCP, ConnectorType::Pair, (uint8_t*)"conn_a", 6));
+    CHECK(connector_init(&ioctx, &conn_b, Transport::TCP, ConnectorType::Pair, (uint8_t*)"conn_b", 6));
 
     std::string addr = "127.0.0.1";
     uint16_t port    = 12345;
@@ -173,11 +169,9 @@ void example_three() {
         panic("recv failed: " + std::string(recv.status.message));
     }
 
-    std::cout << "Received message: " << recv.msg->payload.as_string() << std::endl;
-
     CHECK(connector_destroy(&conn_a));
     CHECK(connector_destroy(&conn_b));
-    CHECK(session_destroy(&session, false));
+    CHECK(io_context_destroy(&ioctx, false));
 }
 
 int main() {

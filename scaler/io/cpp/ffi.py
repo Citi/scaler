@@ -28,17 +28,17 @@ class LibType:
     Logical: int
     Signal: int
 
-    def session_init(session: "FFITypes.CData", num_threads: int) -> None:
-        (session, num_threads)
+    def io_context_init(ioctx: "FFITypes.CData", num_threads: int) -> None:
+        (ioctx, num_threads)
 
-    def session_destroy(session: "FFITypes.CData") -> None:
-        (session,)
+    def io_context_destroy(ioctx: "FFITypes.CData") -> None:
+        (ioctx,)
 
     def message_destroy(recv: "FFITypes.CData") -> None:
         (recv,)
 
-    def connector_init(session: "FFITypes.CData", connector: "FFITypes.CData", transport: int, type_: int, identity: bytes, len: int) -> None:
-        (session, connector, transport, type_, identity, len)
+    def connector_init(ioctx: "FFITypes.CData", connector: "FFITypes.CData", transport: int, type_: int, identity: bytes, len: int) -> None:
+        (ioctx, connector, transport, type_, identity, len)
 
     def connector_bind(connector: "FFITypes.CData", host: bytes, port: int) -> "FFITypes.CData":
         (connector, host, port)

@@ -29,7 +29,7 @@ from scaler.utility.object_utility import generate_object_id, generate_serialize
 from scaler.worker.agent.processor.object_cache import ObjectCache
 
 
-from scaler.io.model import Session, ConnectorType, TCPAddress
+from scaler.io.model import IoContext, ConnectorType, TCPAddress
 
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
@@ -90,7 +90,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         tblib.pickling_support.install()
 
-        self._session = Session(1)
+        self._session = IoContext(1)
         self._connector = SyncConnector(
             session=self._session, type_=ConnectorType.Dealer, address=self._address, identity=None)
 

@@ -8,14 +8,14 @@ from typing import Optional
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
 
-from scaler.io.model import ConnectorType, Session, Address, TCPAddress, IntraProcessAddress, InterProcessAddress, Connector, TCPAddress, IntraProcessAddress
+from scaler.io.model import ConnectorType, IoContext, Address, TCPAddress, IntraProcessAddress, InterProcessAddress, Connector, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
     _connector: Connector
 
     def __init__(self,
-                 session: Session,
+                 session: IoContext,
                  type_: ConnectorType,
                  address: Address,
                     identity: bytes | None):

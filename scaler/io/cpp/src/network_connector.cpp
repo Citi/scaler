@@ -1,6 +1,6 @@
 #include "network_connector.hpp"
 
-#include "session.hpp"
+#include "io_context.hpp"
 
 bool NetworkConnector::peer_by_id(Bytes id, RawPeer** peer) {
     auto it = std::find_if(this->peers.begin(), this->peers.end(), [id](RawPeer* p) { return p->identity == id; });
@@ -404,20 +404,20 @@ void reconnect_peer(RawPeer* peer) {
 // --- public api ---
 
 Status network_connector_init(
-    Session* session,
+    IoContext* ioctx,
     NetworkConnector** connector,
     Transport transport,
     ConnectorType type,
     uint8_t* identity,
     size_t len) {
-    if (session->threads.empty())
+    if (ioctx->threads.empty())
         return Status::from_code("network connectors require a session with threads", Code::NoThreads);
 
     *connector = new NetworkConnector {
         .type                 = type,
         .transport            = transport,
-        .thread               = session->next_thread(),
-        .session              = session,
+        .thread               = ioctx->next_thread(),
+        .ioctx                = ioctx,
         .identity             = Bytes::copy(identity, len),
         .rr                   = 0,
         .fd                   = -1,
@@ -625,7 +625,7 @@ Status network_connector_send_sync(
                      .data = data,
                      .len  = data_len,
                      .tag  = Bytes::Borrowed,
-                    }},
+                 }},
     };
 
     connector->send_queue.enqueue(send);

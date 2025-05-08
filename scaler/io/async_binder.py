@@ -8,7 +8,7 @@ from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import BinderStatus
 from scaler.utility.mixins import Looper, Reporter
 
-from scaler.io.model import ConnectorType, Session, Address, Connector
+from scaler.io.model import ConnectorType, IoContext, Address, Connector
 
 from typing import TypeAlias, Callable, Awaitable
 
@@ -21,7 +21,7 @@ class AsyncBinder(Looper, Reporter):
     _received: dict[str, int]
     _sent: dict[str, int]
 
-    def __init__(self, session: Session, name: str, address: Address, identity: bytes | None = None) -> None:
+    def __init__(self, session: IoContext, name: str, address: Address, identity: bytes | None = None) -> None:
         if identity is None:
             identity = f"{os.getpid()}|{name}|{uuid.uuid4()}".encode()
         self._identity = identity

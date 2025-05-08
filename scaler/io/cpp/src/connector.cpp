@@ -1,18 +1,18 @@
 #include "connector.hpp"
 
 Status connector_init(
-    Session* session, Connector* connector, Transport transport, ConnectorType type, uint8_t* identity, size_t len) {
+    IoContext* ioctx, Connector* connector, Transport transport, ConnectorType type, uint8_t* identity, size_t len) {
     switch (transport) {
         case Transport::TCP:
         case Transport::InterProcess: {
             new (connector) Connector {.type = Connector::Socket, .network = nullptr};
 
-            return network_connector_init(session, &connector->network, transport, type, identity, len);
+            return network_connector_init(ioctx, &connector->network, transport, type, identity, len);
         }
         case Transport::IntraProcess: {
             new (connector) Connector {.type = Connector::IntraProcess, .intra_process = nullptr};
 
-            return intra_process_init(session, &connector->intra_process, identity, len);
+            return intra_process_init(ioctx, &connector->intra_process, identity, len);
         }
         default: unreachable();
     }

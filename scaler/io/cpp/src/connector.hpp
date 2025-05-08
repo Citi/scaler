@@ -19,7 +19,7 @@ struct Connector
 };
 
 extern "C" {
-Status connector_init(Session *session, Connector *connector, Transport transport, ConnectorType type, uint8_t *identity, size_t len);
+Status connector_init(IoContext* ioctx, Connector *connector, Transport transport, ConnectorType type, uint8_t *identity, size_t len);
 Status connector_destroy(Connector *connector);
 Status connector_bind(Connector *connector, const char *host, uint16_t port);
 Status connector_connect(Connector *connector, const char *host, uint16_t port);

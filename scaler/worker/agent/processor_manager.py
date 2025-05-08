@@ -28,12 +28,12 @@ from scaler.utility.object_utility import generate_object_id, serialize_failure
 from scaler.worker.agent.mixins import HeartbeatManager, ObjectTracker, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
-from scaler.io.model import Session, InterProcessAddress
+from scaler.io.model import IoContext, InterProcessAddress
 
 class VanillaProcessorManager(Looper, ProcessorManager):
     def __init__(
         self,
-        session: Session,
+        session: IoContext,
         event_loop: str,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,

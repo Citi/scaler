@@ -16,15 +16,15 @@ from enum import IntEnum, unique
 from abc import ABC, abstractmethod
 
 
-class Session:
+class IoContext:
     _obj: "FFITypes.CData"
     _clients: list
     _destroyed: bool = False
 
     def __init__(self, io_threads: int) -> None:
-        self._obj = ffi.new("struct Session *")
+        self._obj = ffi.new("struct IoContext *")
         check_status(
-            C.session_init(self._obj, io_threads)
+            C.io_context_init(self._obj, io_threads)
         )
 
         self._clients = []
@@ -38,7 +38,7 @@ class Session:
             client.destroy()
 
         check_status(
-            C.session_destroy(self._obj, True)
+            C.io_context_destroy(self._obj, True)
         )
 
     @property
@@ -48,7 +48,7 @@ class Session:
     def register_client(self, client) -> None:
         self._clients.append(client)
 
-    def __enter__(self) -> "Session":
+    def __enter__(self) -> "IoContext":
         return self
 
     def __exit__(self, _exc_type, _exc_value, _traceback) -> None:
@@ -166,18 +166,18 @@ class InterProcessAddress(Address):
 class Connector:
     _obj: "FFITypes.CData"
     _destroyed: bool = False
-    _session: Session
+    _session: IoContext
 
-    def __init__(self, session: Session, identity: bytes, type_: ConnectorType, protocol: Protocol):
-        if session.destroyed:
-            raise RuntimeError("session is destroyed")
+    def __init__(self, ioctx: IoContext, identity: bytes, type_: ConnectorType, protocol: Protocol):
+        if ioctx.destroyed:
+            raise RuntimeError("io context is destroyed")
 
         self._obj = ffi.new("struct Connector *")
         check_status(
-            C.connector_init(session._obj, self._obj, protocol.value, type_.value, identity, len(identity))
+            C.connector_init(ioctx._obj, self._obj, protocol.value, type_.value, identity, len(identity))
         )
 
-        self._session = session
+        self._session = ioctx
         self._session.register_client(self)
 
     def destroy(self) -> None:

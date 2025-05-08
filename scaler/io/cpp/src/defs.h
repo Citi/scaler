@@ -30,7 +30,7 @@ enum Transport
     InterProcess
 };
 
-struct Session
+struct IoContext
 {
     // this means that Python doesn't know about the internals of the struct
     // the compiler will figure out the size of the struct for us
@@ -76,11 +76,11 @@ struct Status
 extern "Python+C" void future_set_result(void *future, void *data);
 extern "Python+C" void future_set_status(void *future, void *status);
 
-struct Status session_init(struct Session *session, size_t num_threads);
-struct Status session_destroy(struct Session *session, bool destruct);
+struct Status io_context_init(struct IoContext *ioctx, size_t num_threads);
+struct Status io_context_destroy(struct IoContext *ioctx, bool destruct);
 void message_destroy(struct Message *message);
 
-struct Status connector_init(struct Session *session, struct Connector *connector, enum Transport transport, enum ConnectorType type, uint8_t *identity, size_t len);
+struct Status connector_init(struct IoContext *ioctx, struct Connector *connector, enum Transport transport, enum ConnectorType type, uint8_t *identity, size_t len);
 struct Status connector_destroy(struct Connector *connector);
 struct Status connector_bind(struct Connector *connector, const char *host, uint16_t port);
 struct Status connector_connect(struct Connector *connector, const char *host, uint16_t port);

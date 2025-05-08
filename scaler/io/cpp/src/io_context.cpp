@@ -1,4 +1,4 @@
-#include "session.hpp"
+#include "io_context.hpp"
 
 std::string EpollType::as_string() const {
     switch (value) {
@@ -251,7 +251,6 @@ ControlFlow write_identity(RawPeer* peer) {
     switch (result) {
         // identity writes have a none completer, so we don't need to complete it
         case IoState::Done:
-            std::cout << "write_identity: done: " << (void*)peer << std::endl;
             peer->write_op = std::nullopt;
             return ControlFlow::Continue;
         case IoState::Blocked: return ControlFlow::Continue;
@@ -272,7 +271,6 @@ ControlFlow read_identity(RawPeer* peer) {
 
     switch (result) {
         case IoState::Done:
-            std::cout << "read_identity: done: " << (void*)peer << std::endl;
             peer->identity = peer->read_op->payload;  // set identity
             peer->read_op  = std::nullopt;            // reset
             return ControlFlow::Continue;
@@ -336,9 +334,6 @@ void network_connector_peer_event_connecting(epoll_event* event) {
 
     // check if we're done
     if (!peer->read_op && !peer->write_op) {
-        std::cout << "network_connector_peer_event_connecting: done: " << (void*)peer << " ; "
-                  << peer->identity.as_string() << std::endl;
-
         complete_peer_connect(peer);
 
         // we're edge triggered so it's important that we check this
@@ -524,22 +519,22 @@ void io_thread_main(ThreadContext* ctx) {
 
 // --- public api ---
 
-Status session_init(Session* session, size_t num_threads) {
-    new (session) Session {
+Status io_context_init(IoContext* ioctx, size_t num_threads) {
+    new (ioctx) IoContext {
         .threads             = std::vector<ThreadContext>(),
         .inprocs             = std::vector<IntraProcessConnector*>(),
         .intra_process_mutex = std::shared_mutex(),
         .thread_rr           = 0};
 
     // exactly size the vector to avoid reallocation
-    session->threads.reserve(num_threads);
+    ioctx->threads.reserve(num_threads);
 
     for (size_t i = 0; i < num_threads; i++) {
-        session->threads.emplace_back(
+        ioctx->threads.emplace_back(
             ThreadContext {
                 // note: this does not start the thread
                 .id              = i,
-                .session         = session,
+                .ioctx           = ioctx,
                 .thread          = std::thread(),
                 .io_cache        = std::vector<EpollData*>(),
                 .connecting      = std::deque<RawPeer*>(),
@@ -552,7 +547,7 @@ Status session_init(Session* session, size_t num_threads) {
                 .timer_armed       = false,
             });
 
-        auto ctx = &session->threads.back();
+        auto ctx = &ioctx->threads.back();
 
         ctx->add_epoll(ctx->epoll_close_efd, EPOLLIN, EpollType::Closed, nullptr);
         ctx->add_epoll(ctx->control_efd, EPOLLIN, EpollType::Control, nullptr);
@@ -565,8 +560,8 @@ Status session_init(Session* session, size_t num_threads) {
 }
 
 // this must be called after all registered clients have been destroyed
-Status session_destroy(Session* session, bool destruct) {
-    for (auto& ctx: session->threads) {
+Status io_context_destroy(IoContext* ioctx, bool destruct) {
+    for (auto& ctx: ioctx->threads) {
         if (eventfd_signal(ctx.epoll_close_efd) < 0)
             return Status::from_errno("failed to write to epoll_close_efd");
 
@@ -575,7 +570,7 @@ Status session_destroy(Session* session, bool destruct) {
 
     // run destructor in-place without freeing memory (it's owned by Python)
     if (destruct)
-        session->~Session();
+        ioctx->~IoContext();
 
     return Status::ok();
 }

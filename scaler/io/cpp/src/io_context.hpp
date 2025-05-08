@@ -21,7 +21,7 @@ struct EpollData;
 ENUM ControlOperation: uint8_t;
 struct ControlRequest;
 struct ThreadContext;
-struct Session;
+struct IoContext;
 
 // First-party
 #include "intra_process_connector.hpp"
@@ -46,8 +46,8 @@ void intra_process_recv_event(IntraProcessConnector* connector);
 void io_thread_main(ThreadContext* ctx);
 
 extern "C" {
-Status session_init(Session* session, size_t num_threads);
-Status session_destroy(Session* session, bool destruct);
+Status io_context_init(IoContext* ioctx, size_t num_threads);
+Status io_context_destroy(IoContext* ioctx, bool destruct);
 }
 
 // --- structs ---
@@ -107,7 +107,7 @@ struct ControlRequest {
 
 struct ThreadContext {
     size_t id;
-    Session* session;
+    IoContext* ioctx;
     std::thread thread;
     std::vector<EpollData*> io_cache;
     std::deque<RawPeer*> connecting;
@@ -137,7 +137,7 @@ struct ThreadContext {
     void start();
 };
 
-struct Session {
+struct IoContext {
     // the io threads
     std::vector<ThreadContext> threads;
     std::vector<IntraProcessConnector*> inprocs;

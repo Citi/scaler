@@ -24,9 +24,9 @@ struct IntraProcessConnector;
 
 // First-party
 #include "common.hpp"
-#include "session.hpp"
+#include "io_context.hpp"
 
-Status intra_process_init(Session* session, IntraProcessConnector** connector, uint8_t* identity, size_t len);
+Status intra_process_init(IoContext* ioctx, IntraProcessConnector** connector, uint8_t* identity, size_t len);
 Status intra_process_bind(struct IntraProcessConnector* connector, const char* addr);
 Status intra_process_connect(struct IntraProcessConnector* connector, const char* addr);
 Status intra_process_send_sync(struct IntraProcessConnector* connector, uint8_t* data, size_t len);
@@ -38,7 +38,7 @@ Status intra_process_destroy(struct IntraProcessConnector* connector);
 
 // inproc sockets are always pair sockets
 struct IntraProcessConnector {
-    Session* session;
+    IoContext* ioctx;
     ThreadContext* thread;
 
     ConcurrentQueue<Message> queue;

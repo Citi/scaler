@@ -29,7 +29,7 @@ from scaler.scheduler.worker_manager import VanillaWorkerManager
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
 
-from scaler.io.model import Session, ConnectorType, TCPAddress
+from scaler.io.model import IoContext, ConnectorType, TCPAddress
 
 
 class Scheduler:
@@ -42,7 +42,7 @@ class Scheduler:
         self._address_monitor = config.address.copywith(port=config.address.port + 2)
 
         logging.info(f"{self.__class__.__name__}: monitor address is {self._address_monitor}")
-        self._session = Session(config.io_threads)
+        self._session = IoContext(config.io_threads)
         self._binder = AsyncBinder(session=self._session, name="scheduler", address=config.address)
         self._binder_monitor = AsyncConnector(
             session=self._session,
