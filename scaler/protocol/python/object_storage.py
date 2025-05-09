@@ -39,12 +39,14 @@ class ObjectRequestHeader(Message):
     def new_msg(
         object_id: bytes,
         payload_length: int,
+        request_id: int,
         request_type: ObjectRequestType,
     ) -> "ObjectRequestHeader":
         return ObjectRequestHeader(
             _object_storage.ObjectRequestHeader(
                 objectID=_to_capnp_object_id(object_id),
                 payloadLength=payload_length,
+                requestID=request_id,
                 requestType=request_type.value,
             )
         )
@@ -55,7 +57,7 @@ class ObjectRequestHeader(Message):
 
 @dataclasses.dataclass
 class ObjectResponseHeader(Message):
-    MESSAGE_LENGTH = 72  # there does not seem to be a way to statically know the size of a pycapnp message
+    MESSAGE_LENGTH = 80  # there does not seem to be a way to statically know the size of a pycapnp message
 
     class ObjectResponseType(enum.Enum):
         SetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.setOK
@@ -76,6 +78,10 @@ class ObjectResponseHeader(Message):
         return self._msg.payloadLength
 
     @property
+    def response_id(self) -> int:
+        return self._msg.responseID
+
+    @property
     def response_type(self) -> ObjectResponseType:
         return ObjectResponseHeader.ObjectResponseType(self._msg.responseType.raw)
 
@@ -83,12 +89,14 @@ class ObjectResponseHeader(Message):
     def new_msg(
         object_id: bytes,
         payload_length: int,
+        response_id: int,
         response_type: ObjectResponseType,
     ) -> "ObjectResponseHeader":
         return ObjectResponseHeader(
             _object_storage.ObjectResponseHeader(
                 objectID=_to_capnp_object_id(object_id),
                 payloadLength=payload_length,
+                responseID=response_id,
                 responseType=response_type.value,
             )
         )
