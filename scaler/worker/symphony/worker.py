@@ -12,7 +12,6 @@ from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
     ObjectInstruction,
-    ObjectResponse,
     Task,
     TaskCancel,
     WorkerHeartbeatEcho,
@@ -97,7 +96,10 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             worker_task_manager=self._task_manager,
             timeout_manager=self._timeout_manager,
         )
-        self._task_manager.register(connector=self._connector_external)
+        self._task_manager.register(
+            connector_external=self._connector_external,
+            heartbeat_manager=self._heartbeat_manager,
+        )
 
         self._loop = asyncio.get_event_loop()
         self.__register_signal()
@@ -120,10 +122,6 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
             await self._task_manager.on_object_instruction(message)
             return
 
-        if isinstance(message, ObjectResponse):
-            await self._task_manager.on_object_response(message)
-            return
-
         if isinstance(message, ClientDisconnect):
             if message.disconnect_type == ClientDisconnect.DisconnectType.Shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
@@ -138,6 +136,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
                 create_async_loop_routine(self._connector_external.routine, 0),
                 create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
                 create_async_loop_routine(self._timeout_manager.routine, 1),
+                create_async_loop_routine(self._task_manager.routine, 0),
                 create_async_loop_routine(self._task_manager.process_task, 0),
                 create_async_loop_routine(self._task_manager.resolve_tasks, 0),
             )
