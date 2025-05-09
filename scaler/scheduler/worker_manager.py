@@ -32,12 +32,12 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         timeout_seconds: int,
         load_balance_seconds: int,
         load_balance_trigger_times: int,
-        object_storage_address: ObjectStorageAddress,
+        storage_address: ObjectStorageAddress,
     ):
         self._timeout_seconds = timeout_seconds
         self._load_balance_seconds = load_balance_seconds
         self._load_balance_trigger_times = load_balance_trigger_times
-        self._object_storage_address = object_storage_address
+        self._storage_address = storage_address
 
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
@@ -101,7 +101,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         self._worker_alive_since[worker] = (time.time(), info)
         await self._binder.send(
             worker,
-            WorkerHeartbeatEcho.new_msg(object_storage_address=self._object_storage_address)
+            WorkerHeartbeatEcho.new_msg(object_storage_address=self._storage_address)
         )
 
     async def on_client_shutdown(self, client: bytes):

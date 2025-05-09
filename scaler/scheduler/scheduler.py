@@ -45,7 +45,7 @@ class Scheduler:
             type=ZMQType.ipc, host=f"/tmp/{config.address.host}_{config.address.port}_monitor"
         )
 
-        self._object_storage_address = ObjectStorageAddress.new_msg(
+        self._storage_address = ObjectStorageAddress.new_msg(
             host=config.object_storage_config.host,
             port=config.object_storage_config.port,
         )
@@ -70,7 +70,7 @@ class Scheduler:
         self._client_manager = VanillaClientManager(
             client_timeout_seconds=config.client_timeout_seconds,
             protected=config.protected,
-            object_storage_address=self._object_storage_address
+            storage_address=self._storage_address
         )
         self._object_manager = VanillaObjectManager(object_storage_config=config.object_storage_config)
         self._graph_manager = VanillaGraphTaskManager()
@@ -80,7 +80,7 @@ class Scheduler:
             timeout_seconds=config.worker_timeout_seconds,
             load_balance_seconds=config.load_balance_seconds,
             load_balance_trigger_times=config.load_balance_trigger_times,
-            object_storage_address=self._object_storage_address,
+            storage_address=self._storage_address,
         )
         self._status_reporter = StatusReporter(self._binder_monitor)
 

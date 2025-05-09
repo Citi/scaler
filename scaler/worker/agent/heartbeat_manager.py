@@ -1,9 +1,11 @@
+import asyncio
 import time
 from typing import Optional
 
 import psutil
 
 from scaler.io.async_connector import AsyncConnector
+from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.protocol.python.status import ProcessorStatus
 from scaler.utility.mixins import Looper
@@ -22,6 +24,8 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
 
         self._start_timestamp_ns = 0
         self._latency_us = 0
+
+        self._storage_address: asyncio.Future[ObjectStorageAddress] = asyncio.Future()
 
     def register(
         self,
@@ -43,6 +47,11 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
         self._latency_us = int(((time.time_ns() - self._start_timestamp_ns) / 2) // 1_000)
         self._start_timestamp_ns = 0
         self._timeout_manager.update_last_seen_time()
+
+        if self._storage_address.done():
+            return
+
+        self._storage_address.set_result(heartbeat.object_storage_address())
 
     async def routine(self):
         processors = self._processor_manager.processors()
@@ -73,6 +82,10 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             )
         )
         self._start_timestamp_ns = time.time_ns()
+
+    async def get_storage_address(self) -> ObjectStorageAddress:
+        """Returns the object storage configuration, or block until it receives it."""
+        return await self._storage_address
 
     @staticmethod
     def __get_processor_status_from_holder(processor: ProcessorHolder) -> ProcessorStatus:

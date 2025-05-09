@@ -20,10 +20,10 @@ from scaler.utility.one_to_many_dict import OneToManyDict
 
 
 class VanillaClientManager(ClientManager, Looper, Reporter):
-    def __init__(self, client_timeout_seconds: int, protected: bool, object_storage_address: ObjectStorageAddress):
+    def __init__(self, client_timeout_seconds: int, protected: bool, storage_address: ObjectStorageAddress):
         self._client_timeout_seconds = client_timeout_seconds
         self._protected = protected
-        self._object_storage_address = object_storage_address
+        self._object_storage_address = storage_address
 
         self._client_to_task_ids: OneToManyDict[bytes, bytes] = OneToManyDict()
 
