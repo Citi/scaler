@@ -1,10 +1,10 @@
 import abc
-from typing import Dict, List, Optional, Set
+from typing import List, Optional
 
+from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ObjectInstruction,
-    ObjectRequest,
-    ObjectResponse,
+    ProcessorInitialized,
     Task,
     TaskCancel,
     TaskResult,
@@ -17,6 +17,10 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 class HeartbeatManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
     async def on_heartbeat_echo(self, heartbeat: WorkerHeartbeatEcho):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def get_storage_address(self) -> ObjectStorageAddress:
         raise NotImplementedError()
 
 
@@ -46,19 +50,15 @@ class TaskManager(metaclass=abc.ABCMeta):
 
 class ProcessorManager(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    async def on_object_instruction(self, instruction: ObjectInstruction):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def on_object_response(self, request: ObjectResponse):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
     def can_accept_task(self) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
     async def wait_until_can_accept_task(self):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_processor_initialized(self, processor_id: bytes, processor_initialized: ProcessorInitialized):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -82,11 +82,23 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
+    async def on_task_result(self, processor_id: bytes, task_result: TaskResult):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_external_object_instruction(self, instruction: ObjectInstruction):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    async def on_internal_object_instruction(self, processor_id: bytes, instruction: ObjectInstruction):
+        raise NotImplementedError()
+
+    @abc.abstractmethod
     def destroy(self, reason: str):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def initialized(self) -> bool:
+    def current_processor_is_initialized(self) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -121,22 +133,4 @@ class ProfilingManager(metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def on_task_end(self, pid: int, task_id: bytes) -> ProfileResult:
-        raise NotImplementedError()
-
-
-class ObjectTracker(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def on_object_request(self, processor_id: bytes, object_request: ObjectRequest) -> None:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def on_object_response(self, object_response: ObjectResponse) -> Set[bytes]:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def on_object_instruction(self, object_instruction: ObjectInstruction) -> Dict[bytes, ObjectInstruction]:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def on_processor_end(self, processor_id: bytes) -> None:
         raise NotImplementedError()
