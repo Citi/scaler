@@ -115,7 +115,7 @@ class Scheduler:
         )
 
     async def connect_to_storage(self):
-        return self.connect_to_storage()
+        await self._connector_storage.connect()
 
     async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================

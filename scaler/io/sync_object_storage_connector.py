@@ -14,6 +14,8 @@ class SyncObjectStorageConnector:
 
         self._socket: Optional[socket.socket] = socket.create_connection((self._host, self._port))
 
+        self._next_request_id = 0
+
     def __del__(self):
         self.destroy()
 
@@ -51,7 +53,7 @@ class SyncObjectStorageConnector:
         Will block until the object is available.
         """
 
-        # FIXME: do we need to lock the socket for these GET calls?
+        # FIXME: probably need to lock the socket for these GET calls
 
         self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject)
         response_header, response_payload = self.__receive_response()
@@ -104,7 +106,10 @@ class SyncObjectStorageConnector:
         self.__ensure_is_connected()
         assert self._socket is not None
 
-        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_type)
+        request_id = self._next_request_id
+        self._next_request_id += 1
+
+        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_id, request_type)
         header_bytes = header.get_message().to_bytes()
 
         if payload is not None:

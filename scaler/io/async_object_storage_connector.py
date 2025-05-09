@@ -20,6 +20,7 @@ class AsyncObjectStorageConnector:
         self._reader: Optional[asyncio.StreamReader] = None
         self._writer: Optional[asyncio.StreamWriter] = None
 
+        self._next_request_id = 0
         self._pending_get_requests: Dict[bytes, asyncio.Future] = {}
 
     def __del__(self):
@@ -67,8 +68,7 @@ class AsyncObjectStorageConnector:
         if header.response_type != ObjectResponseHeader.ObjectResponseType.GetOK:
             return
 
-        # TODO: use request ID to identify requests instead of object ID
-        pending_get_future = self._pending_get_requests.get(header.object_id)
+        pending_get_future = self._pending_get_requests.get(header.response_id)
 
         if pending_get_future is None:
             logging.warning(f"unknown get-ok response for unrequested object_id={header.object_id.hex()}.")
@@ -115,7 +115,10 @@ class AsyncObjectStorageConnector:
         self.__ensure_is_connected()
         assert self._writer is not None
 
-        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_type)
+        request_id = self._next_request_id
+        self._next_request_id += 1
+
+        header = ObjectRequestHeader.new_msg(object_id, payload_length, request_id, request_type)
 
         self.__write_request_header(header)
 

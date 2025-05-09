@@ -25,7 +25,7 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.mixins import Looper
 from scaler.utility.object_utility import generate_object_id, serialize_failure
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
-from scaler.worker.agent.mixins import HeartbeatManager, ObjectTracker, ProcessorManager, ProfilingManager, TaskManager
+from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
