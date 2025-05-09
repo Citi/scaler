@@ -3,8 +3,6 @@ import logging
 import threading
 from typing import Optional
 
-import zmq.asyncio
-
 from scaler.client.agent.disconnect_manager import ClientDisconnectManager
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.agent.heartbeat_manager import ClientHeartbeatManager
@@ -28,16 +26,16 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientCancelledException, ClientQuitException, ClientShutdownException
-from scaler.utility.zmq_config import ZMQConfig
 
+from scaler.io.model import IoContext, ConnectorType, Address
 
 class ClientAgent(threading.Thread):
     def __init__(
         self,
         identity: bytes,
-        client_agent_address: ZMQConfig,
-        scheduler_address: ZMQConfig,
-        context: zmq.Context,
+        client_agent_address: Address,
+        scheduler_address: Address,
+        session: IoContext,
         future_manager: ClientFutureManager,
         stop_event: threading.Event,
         timeout_seconds: int,
@@ -54,25 +52,26 @@ class ClientAgent(threading.Thread):
         self._identity = identity
         self._client_agent_address = client_agent_address
         self._scheduler_address = scheduler_address
-        self._context = context
+        self._session = session
 
         self._future_manager = future_manager
 
         self._connector_internal = AsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
+            session=self._session,
             name="client_agent_internal",
-            socket_type=zmq.PAIR,
+            type_=ConnectorType.Pair,
             bind_or_connect="bind",
             address=self._client_agent_address,
             callback=self.__on_receive_from_client,
             identity=None,
         )
+
         self._connector_external = AsyncConnector(
-            context=zmq.asyncio.Context.shadow(self._context),
+            session=self._session,
             name="client_agent_external",
-            socket_type=zmq.DEALER,
-            address=self._scheduler_address,
+            type_=ConnectorType.Dealer,
             bind_or_connect="connect",
+            address=self._scheduler_address,
             callback=self.__on_receive_from_scheduler,
             identity=self._identity,
         )
@@ -191,7 +190,7 @@ class ClientAgent(threading.Thread):
             logging.info("ClientAgent: client quitting")
             self._future_manager.set_all_futures_with_exception(exception)
         elif isinstance(exception, TimeoutError):
-            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address.to_address()}")
+            logging.error(f"ClientAgent: client timeout when connecting to {self._scheduler_address}")
             self._future_manager.set_all_futures_with_exception(exception)
         else:
             raise exception

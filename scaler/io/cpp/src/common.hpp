@@ -1,0 +1,508 @@
+#pragma once
+
+// cffi generates C code, which doesn't like C++'s enum class
+// so we use plain enums during compilation
+// you can set the TYPECK define in your IDE for safer enum typing
+#ifdef TYPECK
+#define ENUM enum class
+#else
+#define ENUM enum
+#endif
+
+#include <execinfo.h>
+
+// C
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
+// #include "backtrace.h"
+
+// C++
+#include <iostream>
+#include <source_location>
+#include <string>
+
+// System
+#include <poll.h>
+#include <semaphore.h>
+#include <signal.h>
+#include <sys/eventfd.h>
+#include <sys/signalfd.h>
+#include <sys/timerfd.h>
+#include <unistd.h>
+
+// #define mydebug() std::cout << __FILE__ << ":" << __LINE__ << ":" << __PRETTY_FUNCTION__ << std::endl
+
+#define mydebug() ;
+
+// Python callback
+void future_set_result(void* future, void* data);
+void future_set_status(void* future, void* status);
+
+#define PROPAGATE(expr)                                      \
+    if (auto status = (expr); status.type != StatusType::Ok) \
+        return status;
+
+void print_trace(void) {
+    void* array[10];
+    char** strings;
+    int size, i;
+
+    size    = backtrace(array, 10);
+    strings = backtrace_symbols(array, size);
+    if (strings != NULL) {
+        printf("Obtained %d stack frames.\n", size);
+        for (i = 0; i < size; i++)
+            printf("%s\n", strings[i]);
+    }
+
+    free(strings);
+}
+
+// this is an unrecoverable error that exits the program
+// prints a message plus the source location
+[[noreturn]] void panic(std::string message, const std::source_location& location = std::source_location::current()) {
+    auto file_name = std::string(location.file_name());
+    file_name      = file_name.substr(file_name.find_last_of("/") + 1);
+
+    std::cout << "panic at " << file_name << ":" << location.line() << ":" << location.column() << " in function ["
+              << location.function_name() << "]: " << message << std::endl;
+
+    print_trace();
+
+    std::abort();
+}
+
+[[noreturn]] void unreachable(const std::source_location& location = std::source_location::current()) {
+    panic("unreachable", location);
+}
+
+ENUM Code {AlreadyBound, InvalidAddress, UnsupportedOperation, NoThreads, PeerShutdown};
+
+ENUM StatusType {Ok, Logical, Errno, Signal};
+
+struct Status {
+    StatusType type;
+    const char* message;
+    union {
+        Code code;
+        int no;
+        int signal;
+    };
+
+    bool is_ok() const { return type == StatusType::Ok; }
+
+    static Status ok() { return {.type = StatusType::Ok, .message = NULL, .code = (Code)0}; }
+
+    static Status from_code(const char* message, Code code) {
+        return {
+            .type    = StatusType::Logical,
+            .message = message,
+            .code    = code,
+        };
+    }
+
+    static Status from_errno(const char* message, int err = errno) {
+        return {
+            .type    = StatusType::Errno,
+            .message = message,
+            .no      = err,
+        };
+    }
+
+    static Status from_signal(const char* message, int signal) {
+        return {
+            .type    = StatusType::Signal,
+            .message = message,
+            .signal  = signal,
+        };
+    }
+};
+
+// how to control flow
+// continue is truthy
+// break is falsy
+struct ControlFlow {
+    enum Value { Continue, Break } value;
+
+    constexpr ControlFlow(Value value): value(value) {}
+    constexpr operator Value() const { return value; }
+
+    operator bool() const {
+        switch (this->value) {
+            case Continue: return true;
+            case Break: return false;
+        }
+
+        unreachable();
+    }
+};
+
+uint8_t* datadup(const uint8_t* data, size_t len) {
+    uint8_t* dup = new uint8_t[len];
+    std::memcpy(dup, data, len);
+    return dup;
+}
+
+struct Bytes {
+    uint8_t* data;
+    size_t len;
+
+    enum { Owned, Borrowed } tag;
+
+    void free() {
+        if (tag != Owned)
+            return;
+
+        if (is_empty())
+            return;
+
+        delete[] data;
+        this->data = NULL;
+    }
+
+    bool operator==(const Bytes& other) const {
+        if (len != other.len)
+            return false;
+
+        if (data == other.data)
+            return true;
+
+        return std::memcmp(data, other.data, len) == 0;
+    }
+
+    bool operator!() const { return is_empty(); }
+
+    bool is_empty() const { return this->data == NULL; }
+
+    // debugging utility
+    std::string as_string() const {
+        if (is_empty())
+            return "[EMPTY]";
+
+        return std::string((char*)data, len);
+    }
+
+    Bytes ref() { return {.data = this->data, .len = this->len, .tag = Borrowed}; }
+
+    static Bytes alloc(size_t len) { return {.data = new uint8_t[len], .len = len, .tag = Owned}; }
+
+    static Bytes empty() {
+        return {
+            .data = NULL,
+            .len  = 0,
+            .tag  = Owned,
+        };
+    }
+
+    static Bytes copy(const uint8_t* data, size_t len) {
+        return {
+            .data = datadup(data, len),
+            .len  = len,
+            .tag  = Owned,
+        };
+    }
+
+    static Bytes clone(const Bytes& bytes) {
+        if (bytes.is_empty())
+            panic("tried to clone empty bytes");
+
+        return {
+            .data = datadup(bytes.data, bytes.len),
+            .len  = bytes.len,
+            .tag  = Owned,
+        };
+    }
+};
+
+struct Message {
+    // the address the message was received from, or to send to
+    //
+    // for received messages, the address data is
+    // owned by the peer it was received from
+    Bytes address;
+
+    // the payload of the message
+    //
+    // for received messages, the payload data is owned
+    // and must be freed when the message is destroyed
+    Bytes payload;
+};
+
+// free a message's resources
+void message_destroy(Message* msg) {
+    mydebug();
+    msg->payload.free();
+    msg->address.free();
+}
+
+void serialize_u32(uint32_t x, uint8_t buffer[4]) {
+    buffer[0] = x & 0xFF;
+    buffer[1] = (x >> 8) & 0xFF;
+    buffer[2] = (x >> 16) & 0xFF;
+    buffer[3] = (x >> 24) & 0xFF;
+}
+
+void deserialize_u32(const uint8_t buffer[4], uint32_t* x) {
+    *x = buffer[0] | buffer[1] << 8 | buffer[2] << 16 | buffer[3] << 24;
+}
+
+typedef uint64_t timerfd_t;
+
+// timerfd analogue of eventfd_read()
+// 0 -> ok, read the value from the buffer
+// -1 -> error, check errno
+int timerfd_read(int fd, timerfd_t* value) {
+    auto n = read(fd, (uint8_t*)value, sizeof(timerfd_t));
+
+    if (n > 0) {
+        if (n != sizeof(timerfd_t))
+            panic("failed to read timerfd: " + std::to_string(errno));
+
+        return 0;
+    }
+
+    return -1;
+}
+
+// read a timerfd value and discard it
+// return value is the same as timerfd_read()
+int timerfd_read2(int fd) {
+    timerfd_t value;
+    return timerfd_read(fd, &value);
+}
+
+// reset the timerfd to 0
+void timerfd_reset(int fd) {
+    itimerspec spec {
+        .it_interval = {.tv_sec = 0, .tv_nsec = 0},
+        .it_value    = {.tv_sec = 0, .tv_nsec = 0},
+    };
+
+    if (timerfd_settime(fd, 0, &spec, NULL) < 0)
+        panic("failed to reset timerfd: " + std::to_string(errno));
+}
+
+int eventfd_wait(int fd) {
+    eventfd_t value;
+    return eventfd_read(fd, &value);
+}
+
+int eventfd_signal(int fd) {
+    return eventfd_write(fd, 1);
+}
+
+int eventfd_reset(int fd) {
+    for (;;) {
+        if (eventfd_wait(fd) < 0) {
+            if (errno == EAGAIN)
+                return 0;
+
+            return -1;
+        }
+    }
+}
+
+enum FdWait : int8_t {
+    Ready   = 0,
+    Timeout = -1,
+    Other   = -2,
+};
+
+// wait for an event on a file descriptor, or for a signal to arrive, possibly with a timeout
+//
+// fd: the file descriptor to wait on
+// timeout: te number of milliseconds to wait, or -1 to wait indefinitely
+// events: the events to wait for, e.g. POLLIN, POLLOUT -- passed directly to poll()
+//
+// return value:
+//  - Fdwait::Ready (0): the file descriptor is ready
+//  - Fdwait::Timeout (-1): the timeout expired
+//  - Fdwait::Other (-2): fd_wait failed for some other reason; check errno
+//  - (>0): a signal was received, the value is the signal number
+int8_t fd_wait(int fd, int timeout, short int events) {
+    pollfd fds[2];
+
+    fds[0] = {
+        .fd      = fd,
+        .events  = events,
+        .revents = 0,
+    };
+
+    sigset_t sigs;
+    sigemptyset(&sigs);
+    sigaddset(&sigs, SIGINT);
+    sigaddset(&sigs, SIGQUIT);
+    sigaddset(&sigs, SIGTERM);
+
+    auto signal_fd = signalfd(-1, &sigs, 0);
+
+    fds[1] = {
+        .fd      = signal_fd,
+        .events  = POLLIN,
+        .revents = 0,
+    };
+
+    auto n = poll(fds, 2, timeout);
+
+    if (n == 0) {
+        close(signal_fd);
+        return (int8_t)FdWait::Timeout;
+    }
+
+    if (n < 0) {
+        close(signal_fd);
+        return (int8_t)FdWait::Other;
+    }
+
+    if (fds[1].revents & POLLIN) {
+        signalfd_siginfo info;
+
+        if (read(signal_fd, &info, sizeof(info)) != sizeof(info))
+            return FdWait::Other;
+
+        close(signal_fd);
+        return info.ssi_signo;
+    }
+
+    close(signal_fd);
+    return 0;
+}
+
+// not thread safe, but can be copied safely
+struct Completer {
+    ENUM Type {None, Future, Semaphore} type;
+
+    // owned by the caller
+    union {
+        void* future_ptr;
+        sem_t* sem;
+    };
+
+    // must be allocated with `new`
+    // this is why the completer is not thread safe
+    // but can be copied and shared within the same thread
+    uint8_t* counter;
+
+    bool completed() const { return counter == NULL; }
+
+    void set_counter(uint8_t counter) {
+        if (this->completed())
+            panic("counter already completed");
+
+        if (counter <= 0)
+            panic("counter must be > 0");
+
+        *this->counter = counter;
+    }
+
+    // complete with a result
+    // may be NULL
+    // not thread safe
+    void complete(void* result = NULL) {
+        if (this->completed())
+            panic("counter already completed");
+
+        (*this->counter)--;
+
+        if (*this->counter > 0)
+            return;
+
+        delete this->counter;
+        this->counter = NULL;
+
+        switch (this->type) {
+            case Completer::Type::None: break;
+            case Completer::Type::Future: future_set_result(this->future_ptr, result); break;
+            case Completer::Type::Semaphore:
+                if (sem_post(this->sem) < 0)
+                    panic("failed to post semaphore: " + std::to_string(errno));
+                break;
+        }
+    }
+
+    void complete_status(Status* status) {
+        if (this->completed())
+            panic("counter already completed");
+
+        (*this->counter)--;
+
+        if (*this->counter > 0)
+            return;
+
+        delete this->counter;
+        this->counter = NULL;
+
+        switch (this->type) {
+            case Completer::Type::None: break;
+            case Completer::Type::Future: future_set_status(this->future_ptr, status); break;
+            case Completer::Type::Semaphore:
+                if (sem_post(this->sem) < 0)
+                    panic("failed to post semaphore: " + std::to_string(errno));
+                break;
+        }
+    }
+
+    void complete_ok() {
+        auto status = Status::ok();
+        this->complete_status(&status);
+    }
+
+    static constexpr Completer none(uint8_t counter = 1) {
+        return {
+            .type       = Type::None,
+            .future_ptr = nullptr,
+            .counter    = new uint8_t(counter),
+        };
+    }
+
+    static Completer future(void* future, uint8_t counter = 1) {
+        return {
+            .type       = Type::Future,
+            .future_ptr = future,
+            .counter    = new uint8_t(counter),
+        };
+    }
+
+    static Completer semaphore(sem_t* sem, uint8_t counter = 1) {
+        return {
+            .type    = Type::Semaphore,
+            .sem     = sem,
+            .counter = new uint8_t(counter),
+        };
+    }
+};
+
+ENUM IoProgress: uint8_t {Header, Payload};
+
+// an in-progress io operation
+struct IoOperation {
+    IoProgress progress;
+    Completer completer;
+    size_t cursor;
+
+    uint8_t buffer[4];
+    Bytes payload;
+
+    bool completed() const { return progress == IoProgress::Payload && cursor == payload.len; }
+
+    static IoOperation read(Completer completer = Completer::none()) {
+        return {
+            .progress  = IoProgress::Header,
+            .completer = completer,
+            .cursor    = 0,
+            .buffer    = {0},
+            .payload   = Bytes::empty()};
+    }
+
+    // the payload must live at least as long as the operation does
+    static IoOperation write(Bytes payload, Completer completer = Completer::none()) {
+        return {
+            .progress  = IoProgress::Header,
+            .completer = completer,
+            .cursor    = 0,
+            .buffer    = {0},
+            .payload   = payload,
+        };
+    }
+};

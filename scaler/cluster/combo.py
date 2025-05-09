@@ -23,6 +23,7 @@ from scaler.io.config import (
 from scaler.utility.network_util import get_available_tcp_port
 from scaler.utility.zmq_config import ZMQConfig
 
+from scaler.io.model import Address, TCPAddress
 
 class SchedulerClusterCombo:
     def __init__(
@@ -51,9 +52,9 @@ class SchedulerClusterCombo:
         logging_config_file: Optional[str] = None,
     ):
         if address is None:
-            self._address = ZMQConfig.from_string(f"tcp://127.0.0.1:{get_available_tcp_port()}")
+            self._address = TCPAddress.localhost(get_available_tcp_port())
         else:
-            self._address = ZMQConfig.from_string(address)
+            self._address = Address.from_string(address)
 
         self._cluster = Cluster(
             address=self._address,
@@ -101,7 +102,7 @@ class SchedulerClusterCombo:
         self._scheduler.join()
 
     def get_address(self) -> str:
-        return self._address.to_address()
+        return f"{self._address}"
 
     def __get_prefix(self):
         return f"{self.__class__.__name__}:"

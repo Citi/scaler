@@ -8,9 +8,6 @@ from collections import Counter
 from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
-import zmq
-import zmq.asyncio
-
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
 from scaler.client.future import ScalerFuture
@@ -26,8 +23,9 @@ from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.processor.processor import Processor
+
+from scaler.io.model import IoContext, ConnectorType, Address, IntraProcessAddress
 
 
 @dataclasses.dataclass
@@ -83,23 +81,23 @@ class Client:
         self._profiling = profiling
         self._identity = f"{os.getpid()}|Client|{uuid.uuid4().bytes.hex()}".encode()
 
-        self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
-        self._scheduler_address = ZMQConfig.from_string(address)
+        self._client_agent_address = IntraProcessAddress(f"scaler_client_{uuid.uuid4().hex}")
+        self._scheduler_address = Address.from_str(address)
         self._timeout_seconds = timeout_seconds
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
 
         self._stop_event = threading.Event()
-        self._context = zmq.Context()
+        self._session = IoContext(io_threads=1)
         self._connector = SyncConnector(
-            context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
+            session=self._session, type_=ConnectorType.Pair, address=self._client_agent_address, identity=self._identity
         )
 
         self._future_manager = ClientFutureManager(self._serializer)
         self._agent = ClientAgent(
             identity=self._identity,
             client_agent_address=self._client_agent_address,
-            scheduler_address=ZMQConfig.from_string(address),
-            context=self._context,
+            scheduler_address=self._scheduler_address,
+            session=self._session,
             future_manager=self._future_manager,
             stop_event=self._stop_event,
             timeout_seconds=self._timeout_seconds,
@@ -108,7 +106,7 @@ class Client:
         )
         self._agent.start()
 
-        logging.info(f"ScalerClient: connect to {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: connect to {self._scheduler_address}")
 
         self._object_buffer = ObjectBuffer(self._identity, self._serializer, self._connector)
         self._future_factory = functools.partial(ScalerFuture, connector=self._connector)
@@ -158,7 +156,7 @@ class Client:
         """
 
         return {
-            "address": self._scheduler_address.to_address(),
+            "address": str(self._scheduler_address),
             "profiling": self._profiling,
             "timeout_seconds": self._timeout_seconds,
             "heartbeat_interval_seconds": self._heartbeat_interval_seconds,
@@ -326,7 +324,7 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: disconnect from {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: disconnect from {self._scheduler_address}")
 
         self._future_manager.cancel_all_futures()
 
@@ -353,7 +351,7 @@ class Client:
             self.__destroy()
             return
 
-        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: request shutdown for {self._scheduler_address}")
 
         self._future_manager.cancel_all_futures()
 
@@ -545,7 +543,7 @@ class Client:
 
     def __destroy(self):
         self._agent.join()
-        self._context.destroy(linger=1)
+        self._session.destroy()
 
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:

@@ -9,7 +9,6 @@ from multiprocessing.synchronize import Event as EventType
 from typing import Callable, List, Optional, Tuple
 
 import tblib.pickling_support
-import zmq
 
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
@@ -27,8 +26,11 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.exceptions import MissingObjects
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id, serialize_failure
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
+
+
+from scaler.io.model import IoContext, ConnectorType, TCPAddress
+
 
 SUSPEND_SIGNAL = "SIGUSR1"  # use str instead of a signal.Signal to not trigger an import error on unsupported systems.
 
@@ -39,7 +41,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
         self,
         event_loop: str,
-        address: ZMQConfig,
+        address: TCPAddress,
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
         garbage_collect_interval_seconds: int,
@@ -85,11 +87,12 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             logging_paths.append("/dev/stdout")
 
         setup_logger(log_paths=tuple(logging_paths), logging_level=self._logging_level)
+
         tblib.pickling_support.install()
 
+        self._session = IoContext(1)
         self._connector = SyncConnector(
-            context=zmq.Context(), socket_type=zmq.DEALER, address=self._address, identity=None
-        )
+            session=self._session, type_=ConnectorType.Dealer, address=self._address, identity=None)
 
         self._object_cache = ObjectCache(
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
@@ -127,10 +130,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                     continue
 
                 self.__on_connector_receive(message)
-
-        except zmq.error.ZMQError as e:
-            if e.errno != zmq.ENOTSOCK:  # ignore if socket got closed
-                raise
 
         except (KeyboardInterrupt, InterruptedError):
             pass

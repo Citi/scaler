@@ -5,40 +5,45 @@ import threading
 import uuid
 from typing import Optional
 
-import zmq
-
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.python.mixins import Message
-from scaler.utility.zmq_config import ZMQConfig
+
+from scaler.io.model import ConnectorType, IoContext, Address, TCPAddress, IntraProcessAddress, InterProcessAddress, Connector, TCPAddress, IntraProcessAddress
 
 
 class SyncConnector:
-    def __init__(self, context: zmq.Context, socket_type: int, address: ZMQConfig, identity: Optional[bytes]):
+    _connector: Connector
+
+    def __init__(self,
+                 session: IoContext,
+                 type_: ConnectorType,
+                 address: Address,
+                    identity: bytes | None):
         self._address = address
 
-        self._context = context
-        self._socket = self._context.socket(socket_type)
+        match address:
+            case TCPAddress():    
+                host = address.host
+            case IntraProcessAddress():
+                host = address.name
+            case InterProcessAddress():
+                host = address.path
 
         self._identity: bytes = (
-            f"{os.getpid()}|{socket.gethostname().split('.')[0]}|{uuid.uuid4()}".encode()
+            f"{os.getpid()}|{host}|{uuid.uuid4()}".encode()
             if identity is None
             else identity
         )
 
-        # set socket option
-        self._socket.setsockopt(zmq.IDENTITY, self._identity)
-        self._socket.setsockopt(zmq.SNDHWM, 0)
-        self._socket.setsockopt(zmq.RCVHWM, 0)
-
-        self._socket.connect(self._address.to_address())
-
+        self._connector = Connector(session, self._identity, type_, address.protocol)
+        self._connector.connect(self._address)
         self._lock = threading.Lock()
 
     def close(self):
-        self._socket.close()
+        self._connector.destroy()
 
     @property
-    def address(self) -> ZMQConfig:
+    def address(self) -> Address:
         return self._address
 
     @property
@@ -47,13 +52,13 @@ class SyncConnector:
 
     def send(self, message: Message):
         with self._lock:
-            self._socket.send(serialize(message), copy=False)
+            self._connector.send_sync(data=serialize(message))
 
     def receive(self) -> Optional[Message]:
         with self._lock:
-            payload = self._socket.recv(copy=False)
+            msg = self._connector.recv_sync()
 
-        return self.__compose_message(payload.bytes)
+        return self.__compose_message(msg.payload)
 
     def __compose_message(self, payload: bytes) -> Optional[Message]:
         result: Optional[Message] = deserialize(payload)

@@ -2,8 +2,6 @@ import asyncio
 import functools
 import logging
 
-import zmq.asyncio
-
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS, STATUS_REPORT_INTERVAL_SECONDS
@@ -30,27 +28,26 @@ from scaler.scheduler.task_manager import VanillaTaskManager
 from scaler.scheduler.worker_manager import VanillaWorkerManager
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
-from scaler.utility.zmq_config import ZMQConfig, ZMQType
+
+from scaler.io.model import IoContext, ConnectorType, TCPAddress
 
 
 class Scheduler:
     def __init__(self, config: SchedulerConfig):
-        if config.address.type != ZMQType.tcp:
+        if not isinstance(config.address, TCPAddress):
             raise TypeError(
-                f"{self.__class__.__name__}: scheduler address must be tcp type: {config.address.to_address()}"
+                f"{self.__class__.__name__}: scheduler address must be tcp type: {config.address}"
             )
 
-        self._address_monitor = ZMQConfig(
-            type=ZMQType.ipc, host=f"/tmp/{config.address.host}_{config.address.port}_monitor"
-        )
+        self._address_monitor = config.address.copywith(port=config.address.port + 2)
 
-        logging.info(f"{self.__class__.__name__}: monitor address is {self._address_monitor.to_address()}")
-        self._context = zmq.asyncio.Context(io_threads=config.io_threads)
-        self._binder = AsyncBinder(context=self._context, name="scheduler", address=config.address)
+        logging.info(f"{self.__class__.__name__}: monitor address is {self._address_monitor}")
+        self._session = IoContext(config.io_threads)
+        self._binder = AsyncBinder(session=self._session, name="scheduler", address=config.address)
         self._binder_monitor = AsyncConnector(
-            context=self._context,
+            session=self._session,
             name="scheduler_monitor",
-            socket_type=zmq.PUB,
+            type_=ConnectorType.Pub,
             address=self._address_monitor,
             bind_or_connect="bind",
             callback=None,
@@ -175,6 +172,7 @@ class Scheduler:
 
         self._binder.destroy()
         self._binder_monitor.destroy()
+        self._session.destroy()
 
 
 @functools.wraps(Scheduler)

@@ -4,8 +4,6 @@ import multiprocessing
 import signal
 from typing import Optional, Tuple
 
-import zmq.asyncio
-
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.config import PROFILING_INTERVAL_SECONDS
 from scaler.protocol.python.message import (
@@ -21,7 +19,6 @@ from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.object_tracker import VanillaObjectTracker
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
@@ -29,13 +26,15 @@ from scaler.worker.agent.profiling_manager import VanillaProfilingManager
 from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
+from scaler.io.model import IoContext, TCPAddress, ConnectorType
+
 
 class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __init__(
         self,
         event_loop: str,
         name: str,
-        address: ZMQConfig,
+        address: TCPAddress,
         io_threads: int,
         heartbeat_interval_seconds: int,
         garbage_collect_interval_seconds: int,
@@ -63,7 +62,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
 
-        self._context: Optional[zmq.asyncio.Context] = None
+        self._session: Optional[IoContext] = None
         self._connector_external: Optional[AsyncConnector] = None
         self._task_manager: Optional[VanillaTaskManager] = None
         self._heartbeat_manager: Optional[VanillaHeartbeatManager] = None
@@ -82,11 +81,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         setup_logger()
         register_event_loop(self._event_loop)
 
-        self._context = zmq.asyncio.Context()
+        self._session = IoContext(self._io_threads)
         self._connector_external = AsyncConnector(
-            context=self._context,
+            session=self._session,
             name=self.name,
-            socket_type=zmq.DEALER,
+            type_=ConnectorType.Dealer,
             address=self._address,
             bind_or_connect="connect",
             callback=self.__on_receive_external,
@@ -98,7 +97,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_manager = VanillaTaskManager(task_timeout_seconds=self._task_timeout_seconds)
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
         self._processor_manager = VanillaProcessorManager(
-            context=self._context,
+            session=self._session,
             event_loop=self._event_loop,
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
             trim_memory_threshold_bytes=self._trim_memory_threshold_bytes,
@@ -172,15 +171,15 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except asyncio.CancelledError:
             pass
         except (ClientShutdownException, TimeoutError) as e:
-            logging.info(f"Worker[{self.pid}]: {str(e)}")
+            logging.info(f"Worker[{self.pid}]: {e}")
         except Exception as e:
             logging.exception(f"Worker[{self.pid}]: failed with unhandled exception:\n{(e)}")
 
         await self._connector_external.send(DisconnectRequest.new_msg(self._connector_external.identity))
 
-        self._connector_external.destroy()
-        self._processor_manager.destroy("quited")
-        logging.info(f"Worker[{self.pid}]: quited")
+        self._processor_manager.destroy("quitted")
+        self._session.destroy()
+        logging.info(f"Worker[{self.pid}]: quitted")
 
     def __run_forever(self):
         self._loop.run_until_complete(self._task)

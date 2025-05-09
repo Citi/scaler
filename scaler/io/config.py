@@ -21,7 +21,7 @@ CAPNP_MESSAGE_SIZE_LIMIT = 2**64 - 1
 # ==========================
 # SCHEDULER SPECIFIC OPTIONS
 
-# number of threads for zmq socket to handle
+# number of io threads
 DEFAULT_IO_THREADS = 1
 
 # if all workers are full and busy working, this option determine how many additional tasks scheduler can receive and
