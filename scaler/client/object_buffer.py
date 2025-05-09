@@ -17,9 +17,10 @@ class ObjectCache:
     object_id: bytes
     object_type: ObjectMetadata.ObjectContentType
     object_name: bytes
+    object_size: int
 
 
-class ObjectInstructionBuffer:
+class ObjectBuffer:
     def __init__(
         self,
         identity: bytes,
@@ -118,7 +119,12 @@ class ObjectInstructionBuffer:
     def __construct_serializer(self) -> Tuple[ObjectCache, bytes]:
         serializer_payload = cloudpickle.dumps(self._serializer, protocol=pickle.HIGHEST_PROTOCOL)
         object_id = generate_serializer_object_id(self._identity)
-        serializer_cache = ObjectCache(object_id, ObjectMetadata.ObjectContentType.Serializer, b"serializer")
+        serializer_cache = ObjectCache(
+            object_id,
+            ObjectMetadata.ObjectContentType.Serializer,
+            b"serializer",
+            len(serializer_payload)
+        )
 
         return serializer_cache, serializer_payload
 
@@ -129,6 +135,7 @@ class ObjectInstructionBuffer:
             object_id,
             ObjectMetadata.ObjectContentType.Object,
             getattr(fn, "__name__", f"<func {object_id.hex()[:6]}>").encode(),
+            len(function_payload),
         )
 
         return function_cache, function_payload
@@ -137,6 +144,6 @@ class ObjectInstructionBuffer:
         object_payload = self._serializer.serialize(obj)
         object_id = generate_object_id(self._identity, object_payload)
         name_bytes = name.encode() if name else f"<obj {object_id.hex()[-6:]}>".encode()
-        object_cache = ObjectCache(object_id, ObjectMetadata.ObjectContentType.Object, name_bytes)
+        object_cache = ObjectCache(object_id, ObjectMetadata.ObjectContentType.Object, name_bytes, len(object_payload))
 
         return object_cache, object_payload

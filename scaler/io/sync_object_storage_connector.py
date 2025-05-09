@@ -51,6 +51,8 @@ class SyncObjectStorageConnector:
         Will block until the object is available.
         """
 
+        # FIXME: do we need to lock the socket for these GET calls?
+
         self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject)
         response_header, response_payload = self.__receive_response()
 

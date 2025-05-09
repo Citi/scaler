@@ -60,7 +60,9 @@ class ClientObjectManager(ObjectManager):
             if self._sent_serializer_id is not None:
                 raise ValueError("trying to send multiple serializers.")
 
-            serializer_index = instruction.object_metadata.object_types.index(ObjectMetadata.ObjectContentType.Serializer)
+            serializer_index = instruction.object_metadata.object_types.index(
+                ObjectMetadata.ObjectContentType.Serializer
+            )
             self._sent_serializer_id = instruction.object_metadata.object_ids[serializer_index]
 
         new_object_content = ObjectMetadata.new_msg(

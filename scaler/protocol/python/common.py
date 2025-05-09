@@ -85,3 +85,6 @@ class ObjectStorageAddress(Message):
 
     def get_message(self):
         return self._msg
+
+    def __repr__(self) -> str:
+        return f"tcp://{self.host}:{self.port}"

@@ -584,8 +584,6 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "graphTask": GraphTask,
         "graphTaskCancel": GraphTaskCancel,
         "objectInstruction": ObjectInstruction,
-        "objectRequest": ObjectRequest,
-        "objectResponse": ObjectResponse,
         "clientHeartbeat": ClientHeartbeat,
         "clientHeartbeatEcho": ClientHeartbeatEcho,
         "workerHeartbeat": WorkerHeartbeat,
