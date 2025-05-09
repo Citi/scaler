@@ -5,16 +5,13 @@ import multiprocessing
 import platform
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import cloudpickle
 import psutil
 
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS
-from scaler.io.utility import concat_list_of_bytes
-from scaler.protocol.python.common import ObjectContent
-from scaler.protocol.python.message import Task
 from scaler.utility.exceptions import DeserializeObjectError
 from scaler.utility.object_utility import generate_serializer_object_id, is_object_id_serializer
 
@@ -52,26 +49,20 @@ class ObjectCache(threading.Thread):
     def serialize(self, client: bytes, obj: Any) -> bytes:
         return self.get_serializer(client).serialize(obj)
 
-    def deserialize(self, client: bytes, payload: List[bytes]) -> Any:
-        return self.get_serializer(client).deserialize(concat_list_of_bytes(payload))
+    def deserialize(self, client: bytes, payload: bytes) -> Any:
+        return self.get_serializer(client).deserialize(payload)
 
-    def add_objects(self, object_content: ObjectContent, task: Task):
-        zipped = list(zip(object_content.object_ids, object_content.object_names, object_content.object_bytes))
-        serializers = filter(lambda o: is_object_id_serializer(o[0]), zipped)
-        others = filter(lambda o: not is_object_id_serializer(o[0]), zipped)
-
-        for object_id, object_name, object_bytes in serializers:
-            self.add_serializer(object_id, cloudpickle.loads(concat_list_of_bytes(object_bytes)))
-
-        for object_id, object_name, object_bytes in others:
+    def add_object(self, client: bytes, object_id: bytes, object_bytes: bytes) -> None:
+        if is_object_id_serializer(object_id):
+            self.add_serializer(object_id, cloudpickle.loads(object_bytes))
+        else:
             try:
-                deserialized = self.deserialize(task.source, object_bytes)
+                deserialized = self.deserialize(client, object_bytes)
             except Exception:  # noqa
                 logging.exception(
-                    f"failed to deserialize received {object_name=}, object_id={object_id.hex()}, "
+                    f"failed to deserialize received object_id={object_id.hex()}, "
                     f"length={len(object_bytes)}"
                 )
-                continue
 
             self._cached_objects[object_id] = deserialized
             self._cached_objects_alive_since[object_id] = time.time()

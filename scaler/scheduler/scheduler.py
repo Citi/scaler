@@ -67,10 +67,7 @@ class Scheduler:
             callback=None,
             identity=None,
         )
-        self._connector_storage = AsyncObjectStorageConnector(
-            config.object_storage_config.host,
-            config.object_storage_config.port,
-        )
+        self._connector_storage = AsyncObjectStorageConnector()
 
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address.to_address()}")
         logging.info(
@@ -83,7 +80,7 @@ class Scheduler:
         self._client_manager = VanillaClientManager(
             client_timeout_seconds=config.client_timeout_seconds,
             protected=config.protected,
-            object_storage_address=self._object_storage_address
+            storage_address=self._object_storage_address,
         )
         self._object_manager = VanillaObjectManager(object_storage_config=config.object_storage_config)
         self._graph_manager = VanillaGraphTaskManager()
@@ -93,7 +90,7 @@ class Scheduler:
             timeout_seconds=config.worker_timeout_seconds,
             load_balance_seconds=config.load_balance_seconds,
             load_balance_trigger_times=config.load_balance_trigger_times,
-            object_storage_address=self._object_storage_address,
+            storage_address=self._object_storage_address,
         )
         self._status_reporter = StatusReporter(self._binder_monitor)
 
@@ -128,7 +125,7 @@ class Scheduler:
         )
 
     async def connect_to_storage(self):
-        return self.connect_to_storage()
+        await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
 
     async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================
@@ -185,6 +182,8 @@ class Scheduler:
         logging.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
     async def get_loops(self):
+        await self.connect_to_storage()
+
         loops = [
             create_async_loop_routine(self._binder.routine, 0),
             create_async_loop_routine(self._connector_storage.routine, 0),
@@ -214,5 +213,4 @@ class Scheduler:
 @functools.wraps(Scheduler)
 async def scheduler_main(*args, **kwargs):
     scheduler = Scheduler(*args, **kwargs)
-    await scheduler.connect_to_storage()
     await scheduler.get_loops()
