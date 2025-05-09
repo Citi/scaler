@@ -1,3 +1,5 @@
+#include "server.h"
+
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
@@ -7,16 +9,12 @@
 #include <boost/asio/read.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <boost/asio/this_coro.hpp>
+#include <boost/asio/use_awaitable.hpp>
 #include <boost/system/system_error.hpp>
 #include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <string>
 
-#include "argparse/argparse.hpp"
-#include "constants.h"
 #include "object_storage_server.h"
-#include "version.h"
 
 // Helper macros to stringify the macro value
 #define STRINGIFY_HELPER(x) #x
@@ -39,28 +37,17 @@ awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
     auto executor = co_await this_coro::executor;
     tcp::acceptor acceptor(executor, endpoint);
     for (;;) {
-        tcp::socket socket = co_await acceptor.async_accept(use_awaitable);
-        co_spawn(executor, server.process_request(std::move(socket)), detached);
+        auto shared_socket = std::make_shared<tcp::socket>(executor);
+        co_await acceptor.async_accept(*shared_socket, use_awaitable);
+        co_spawn(executor, server.process_request(std::move(shared_socket)), detached);
     }
 }
 
-int main(int argc, char* argv[]) {
-    std::string name = scaler::object_storage::DEFAULT_ADDR;
-    std::string port = scaler::object_storage::DEFAULT_PORT;
-
-    argparse::ArgumentParser argParser("server", STRINGIFY(VERSION));
-    argParser.add_argument("-n", "--name").default_value(name).help("Name to resolve, e.g., localhost, 127.0.0.1");
-    argParser.add_argument("-p", "--port").default_value(port).help("Specify port to listen on");
-    try {
-        argParser.parse_args(argc, argv);
-    } catch (const std::exception& err) {
-        std::cerr << err.what() << std::endl;
-        std::cerr << argParser;
-        std::exit(1);
-    }
-
-    name = argParser.get<std::string>("--name");
-    port = argParser.get<std::string>("--port");
+// Assuming name_ and port_ is valid name and port
+// TODO: In the future we might need to add expiration date for closing connections
+void run_object_storage_server(const char* name_, const char* port_) {
+    std::string name = name_;
+    std::string port = port_;
 
     try {
         boost::asio::io_context io_context(1);
@@ -73,5 +60,8 @@ int main(int argc, char* argv[]) {
         co_spawn(io_context, listener(res.begin()->endpoint()), detached);
 
         io_context.run();
-    } catch (std::exception& e) { std::printf("Exception: %s\n", e.what()); }
+    } catch (std::exception& e) {
+        std::printf("Exception: %s\n", e.what());
+        std::printf("Mostly something serious happen, inspect capnp header correuption\n");
+    }
 }

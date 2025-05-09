@@ -1,4 +1,4 @@
-yfinance
+yfinance==0.2.56
 scipy
 numpy
 nest-asyncio
@@ -7,3 +7,4 @@ grequests
 quart
 prophet
 pillow
+pandas
