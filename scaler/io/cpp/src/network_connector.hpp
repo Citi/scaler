@@ -96,9 +96,9 @@ struct NetworkConnector {
     ConnectorType type;
     Transport transport;
 
-    ThreadContext* thread;  // the thread that this client is bound to
+    ThreadContext* thread;  // the thread that this connector is bound to
     IoContext* ioctx;       // backreference to session
-    Bytes identity;         // the identity of this client
+    Bytes identity;         // the identity of this connector
 
     size_t rr;  // round robin for dealer
 
@@ -110,7 +110,7 @@ struct NetworkConnector {
     ConcurrentQueue<SendMessage> send_queue;  // the send queue for Python thread -> io thread communication
     int recv_event_fd;                        // event fd for recv queue
     ConcurrentQueue<void*> recv_queue;        // the recv queue for io thread -> Python thread communication
-    int recv_buffer_event_fd;                 // event fd for recv buffer, only needed for sync clients
+    int recv_buffer_event_fd;                 // event fd for recv buffer, only needed for sync connectors
     ConcurrentQueue<Message> recv_buffer;     // these are messages that have been received
 
     // must hold mutex
@@ -140,6 +140,9 @@ enum class PeerState {
     Disconnected,
 };
 
+// created in two scenarios:
+// - connecting to a remote
+// - accepting a connection from a remote
 struct RawPeer {
     NetworkConnector* connector;  // the binder that this peer belongs to
     Bytes identity;               // the peer's address, i.e. identity

@@ -120,32 +120,41 @@ struct ThreadContext {
 
     void ensure_timer_armed();
     void add_connector(NetworkConnector* connector);
-    void add_peer(RawPeer* peer);
     void remove_connector(NetworkConnector* connector);
+    void add_peer(RawPeer* peer);
     void remove_peer(RawPeer* peer);
 
     // must be called on io-thread
     void add_epoll(int fd, uint32_t flags, EpollType type, void* data);
-
     // must be called on io-thread
     void remove_epoll(int fd);
-
     EpollData* epoll_by_fd(int fd);
-
     void control(ControlRequest request);
-
     void start();
 };
 
+// rationale:
+// - we need a context to manage the io threads
+// - intraprocess connectors need a context to discover and communicate with each other
+//
+// lifetime:
+// - the context is the longest lived object in the library
+// - you should normally only have one context per program
+// - the lifetime begins when you call `io_context_init()` and ends when you call `io_context_destroy()`
+//
+// usage:
+// - the main usage of io context is to be passed to connector initialization
+// - use `io_context_*()` functions to operate on the context
+//
+// assumptions:
+// - the user is not going to access the internal state of the io context directly
 struct IoContext {
     // the io threads
     std::vector<ThreadContext> threads;
     std::vector<IntraProcessConnector*> inprocs;
-
     std::shared_mutex intra_process_mutex;
-
     std::atomic_uint8_t thread_rr;
-
+    
     inline size_t num_threads() { return threads.size(); };
 
     // round-robin the threads

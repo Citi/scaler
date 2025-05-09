@@ -41,11 +41,15 @@ struct IntraProcessConnector {
     IoContext* ioctx;
     ThreadContext* thread;
 
+    // at any time at least one of these will be empty
     ConcurrentQueue<Message> queue;
     ConcurrentQueue<void*> recv;
 
+    // semaphore: counts number of messages in .queue
     int recv_buffer_event_fd;
+    // semaphore: counts number of pending receive futures in .recv
     int recv_event_fd;
+    // signals that the connector is unmuted
     int unmuted_event_fd;
 
     Bytes identity;

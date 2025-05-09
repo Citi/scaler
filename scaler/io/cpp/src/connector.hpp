@@ -3,6 +3,22 @@
 #include "intra_process_connector.hpp"
 #include "network_connector.hpp"
 
+// rationale:
+// - the interface for intraprocess and socket-based connectors needs to be unified
+//
+// lifetime:
+// - the connector lives within the scope of the io context and thread context
+//   - all connectors MUST be destroyed before the io context is destroyed
+// - its lifetime begins when you call `connector_init()` and ends when you call `connector_destroy()`
+// - its lifetime is flexible and determined by the library user
+//
+// usage:
+// - the connector is the primary interface of the library
+// - the connector is used to send and receive messages
+// - use `connector_*()` functions to operate on the connector
+//
+// assumptions:
+// - the user is not going to access the internal state of the connector directly
 struct Connector
 {
     enum Type
