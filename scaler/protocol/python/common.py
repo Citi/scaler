@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import List, Tuple
+from typing import Tuple
 
 from scaler.protocol.capnp._python import _common  # noqa
 from scaler.protocol.python.mixins import Message
@@ -55,7 +55,7 @@ class ObjectMetadata(Message):
         object_names: Tuple[bytes, ...] = tuple(),
     ) -> "ObjectMetadata":
         return ObjectMetadata(
-            _common.ObjectContent(
+            _common.ObjectMetadata(
                 objectIds=list(object_ids),
                 objectTypes=[object_type.value for object_type in object_types],
                 objectNames=list(object_names),
