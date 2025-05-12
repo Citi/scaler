@@ -2,7 +2,6 @@
 
 // C++
 #include <atomic>
-#include <queue>
 #include <shared_mutex>
 #include <thread>
 #include <vector>
@@ -154,7 +153,7 @@ struct IoContext {
     std::vector<IntraProcessConnector*> inprocs;
     std::shared_mutex intra_process_mutex;
     std::atomic_uint8_t thread_rr;
-    
+
     inline size_t num_threads() { return threads.size(); };
 
     // round-robin the threads
