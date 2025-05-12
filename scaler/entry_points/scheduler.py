@@ -13,7 +13,7 @@ from scaler.io.config import (
     DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.scheduler.config import SchedulerConfig
+from scaler.scheduler.config import SchedulerConfig, ObjectStorageConfig
 from scaler.scheduler.scheduler import scheduler_main
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
@@ -23,6 +23,14 @@ from scaler.utility.zmq_config import ZMQConfig
 def get_args():
     parser = argparse.ArgumentParser("scaler scheduler", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--io-threads", type=int, default=DEFAULT_IO_THREADS, help="number of io threads for zmq")
+    parser.add_argument(
+        "--object-storage-address",
+        "-osa",
+        type=str,
+        default=None,
+        help="specify object storage address, the object storage address will be send to client and workers so they "
+        "can talk to object storage server directly, e.g.: `tcp://localhost:6379`",
+    )
     parser.add_argument(
         "--max-number-of-tasks-waiting",
         "-mt",
@@ -102,7 +110,11 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-path",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument(
+        "address",
+        type=ZMQConfig.from_string,
+        help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
+    )
     return parser.parse_args()
 
 
@@ -110,9 +122,15 @@ def main():
     args = get_args()
     setup_logger(args.logging_paths, args.logging_config_file, args.logging_level)
 
+    if args.object_storage_address is None:
+        raise NotImplementedError("default object storage address not implemented yet")
+    object_storage_config = ObjectStorageConfig.from_string(args.object_storage_address)
+
+
     scheduler_config = SchedulerConfig(
         event_loop=args.event_loop,
         address=args.address,
+        object_storage_config=object_storage_config,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,
         per_worker_queue_size=args.per_worker_queue_size,

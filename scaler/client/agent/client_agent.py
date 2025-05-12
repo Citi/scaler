@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import threading
+from concurrent.futures import Future
 from typing import Optional
 
 import zmq.asyncio
@@ -12,6 +13,7 @@ from scaler.client.agent.object_manager import ClientObjectManager
 from scaler.client.agent.task_manager import ClientTaskManager
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.async_connector import AsyncConnector
+from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeatEcho,
@@ -19,8 +21,6 @@ from scaler.protocol.python.message import (
     GraphTask,
     GraphTaskCancel,
     ObjectInstruction,
-    ObjectRequest,
-    ObjectResponse,
     Task,
     TaskCancel,
     TaskResult,
@@ -35,7 +35,7 @@ class ClientAgent(threading.Thread):
     def __init__(
         self,
         identity: bytes,
-        client_agent_address: ZMQConfig,
+        agent_address: ZMQConfig,
         scheduler_address: ZMQConfig,
         context: zmq.Context,
         future_manager: ClientFutureManager,
@@ -52,9 +52,10 @@ class ClientAgent(threading.Thread):
         self._serializer = serializer
 
         self._identity = identity
-        self._client_agent_address = client_agent_address
+        self._agent_address = agent_address
         self._scheduler_address = scheduler_address
         self._context = context
+        self._storage_address: Future[ObjectStorageAddress] = Future()
 
         self._future_manager = future_manager
 
@@ -63,7 +64,7 @@ class ClientAgent(threading.Thread):
             name="client_agent_internal",
             socket_type=zmq.PAIR,
             bind_or_connect="bind",
-            address=self._client_agent_address,
+            address=self._agent_address,
             callback=self.__on_receive_from_client,
             identity=None,
         )
@@ -111,6 +112,10 @@ class ClientAgent(threading.Thread):
         self.__initialize()
         self.__run_loop()
 
+    def get_storage_address(self) -> ObjectStorageAddress:
+        """Returns the object storage configuration, or block until it receives it."""
+        return self._heartbeat_manager.get_storage_address()
+
     async def __on_receive_from_client(self, message: Message):
         if isinstance(message, ClientDisconnect):
             await self._disconnect_manager.on_client_disconnect(message)
@@ -118,10 +123,6 @@ class ClientAgent(threading.Thread):
 
         if isinstance(message, ObjectInstruction):
             await self._object_manager.on_object_instruction(message)
-            return
-
-        if isinstance(message, ObjectRequest):
-            await self._object_manager.on_object_request(message)
             return
 
         if isinstance(message, Task):
@@ -155,10 +156,6 @@ class ClientAgent(threading.Thread):
             await self._task_manager.on_task_result(message)
             return
 
-        if isinstance(message, ObjectResponse):
-            self._future_manager.on_object_response(message)
-            return
-
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
@@ -183,6 +180,9 @@ class ClientAgent(threading.Thread):
 
         if exception is None:
             return
+
+        if not self._storage_address.done():
+            self._storage_address.set_exception(exception)
 
         if isinstance(exception, asyncio.CancelledError):
             logging.error("ClientAgent: async. loop cancelled")

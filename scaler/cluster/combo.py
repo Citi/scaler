@@ -21,6 +21,7 @@ from scaler.io.config import (
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
 from scaler.utility.network_util import get_available_tcp_port
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -29,6 +30,7 @@ class SchedulerClusterCombo:
         self,
         n_workers: int,
         address: Optional[str] = None,
+        object_storage_address: Optional[str] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
         max_number_of_tasks_waiting: int = DEFAULT_MAX_NUMBER_OF_TASKS_WAITING,
@@ -55,6 +57,11 @@ class SchedulerClusterCombo:
         else:
             self._address = ZMQConfig.from_string(address)
 
+        if object_storage_address is None:
+            self._object_storage_config = ObjectStorageConfig("127.0.0.1", get_available_tcp_port())
+        else:
+            self._object_storage_config = ObjectStorageConfig.from_string(object_storage_address)
+
         self._cluster = Cluster(
             address=self._address,
             worker_io_threads=worker_io_threads,
@@ -72,6 +79,7 @@ class SchedulerClusterCombo:
         )
         self._scheduler = SchedulerProcess(
             address=self._address,
+            object_storage_config=self._object_storage_config,
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,
             per_worker_queue_size=per_worker_queue_size,

@@ -119,12 +119,20 @@ public:
 public:
     awaitable<void> process_request(std::shared_ptr<tcp::socket> socket) {
         try {
+            std::cerr << "New connection" << std::endl;
+
             for (;;) {
                 scaler::object_storage::ObjectRequestHeader requestHeader;
                 co_await scaler::object_storage::read_request_header(*socket, requestHeader);
 
                 scaler::object_storage::payload_t payload;
                 co_await scaler::object_storage::read_request_payload(*socket, requestHeader, payload);
+
+                std::cerr << "Received request:" << std::endl
+                    << "\tObject ID: " << requestHeader.objectID[0] << requestHeader.objectID[1] << requestHeader.objectID[2] << requestHeader.objectID[3] << std::endl
+                    << "\tHeader payload length: " << requestHeader.payloadLength << std::endl
+                    << "\tRequest type: " << static_cast<uint16_t>(requestHeader.reqType) << std::endl
+                    << "\tActual payload length: " << payload.size() << std::endl;
 
                 scaler::object_storage::ObjectResponseHeader responseHeader;
                 bool non_blocking_request = updateRecord(requestHeader, responseHeader, std::move(payload));
@@ -137,6 +145,12 @@ public:
                 }
 
                 auto payload_view = getMemoryViewForResponsePayload(responseHeader);
+
+                std::cerr << "Sending response:" << std::endl
+                    << "\tObject ID: " << requestHeader.objectID[0] << requestHeader.objectID[1] << requestHeader.objectID[2] << requestHeader.objectID[3] << std::endl
+                    << "\tHeader payload length: " << responseHeader.payloadLength << std::endl
+                    << "\tResponse type: " << static_cast<uint16_t>(responseHeader.respType) << std::endl
+                    << "\tActual payload length: " << payload.size() << std::endl;
 
                 co_await scaler::object_storage::write_response_header(*socket, responseHeader, payload_view.size());
 

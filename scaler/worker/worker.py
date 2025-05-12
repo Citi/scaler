@@ -12,7 +12,6 @@ from scaler.protocol.python.message import (
     ClientDisconnect,
     DisconnectRequest,
     ObjectInstruction,
-    ObjectResponse,
     Task,
     TaskCancel,
     WorkerHeartbeatEcho,
@@ -23,7 +22,6 @@ from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
-from scaler.worker.agent.object_tracker import VanillaObjectTracker
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
 from scaler.worker.agent.profiling_manager import VanillaProfilingManager
 from scaler.worker.agent.task_manager import VanillaTaskManager
@@ -106,7 +104,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             logging_paths=self._logging_paths,
             logging_level=self._logging_level,
         )
-        self._object_tracker = VanillaObjectTracker()
 
         # register
         self._task_manager.register(connector=self._connector_external, processor_manager=self._processor_manager)
@@ -117,10 +114,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             processor_manager=self._processor_manager,
         )
         self._processor_manager.register(
-            heartbeat=self._heartbeat_manager,
+            heartbeat_manager=self._heartbeat_manager,
             task_manager=self._task_manager,
             profiling_manager=self._profiling_manager,
-            object_tracker=self._object_tracker,
             connector_external=self._connector_external,
         )
 
@@ -145,10 +141,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self._processor_manager.on_object_instruction(message)
             return
 
-        if isinstance(message, ObjectResponse):
-            await self._processor_manager.on_object_response(message)
-            return
-
         if isinstance(message, ClientDisconnect):
             if message.disconnect_type == ClientDisconnect.DisconnectType.Shutdown:
                 raise ClientShutdownException("received client shutdown, quitting")
@@ -158,8 +150,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown {message=}")
 
     async def __get_loops(self):
-        await self._processor_manager.initialize()
-
         try:
             await asyncio.gather(
                 create_async_loop_routine(self._connector_external.routine, 0),

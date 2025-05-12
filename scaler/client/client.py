@@ -9,7 +9,6 @@ from inspect import signature
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import zmq
-import zmq.asyncio
 
 from scaler.client.agent.client_agent import ClientAgent
 from scaler.client.agent.future_manager import ClientFutureManager
@@ -20,7 +19,9 @@ from scaler.client.serializer.default import DefaultSerializer
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_INTERVAL_SECONDS
 from scaler.io.sync_connector import SyncConnector
-from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
+from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
+from scaler.protocol.python.common import TaskStatus
+from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task, TaskStatus
 from scaler.utility.exceptions import ClientQuitException
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
@@ -90,14 +91,14 @@ class Client:
 
         self._stop_event = threading.Event()
         self._context = zmq.Context()
-        self._connector = SyncConnector(
+        self._connector_agent = SyncConnector(
             context=self._context, socket_type=zmq.PAIR, address=self._client_agent_address, identity=self._identity
         )
 
         self._future_manager = ClientFutureManager(self._serializer)
         self._agent = ClientAgent(
             identity=self._identity,
-            client_agent_address=self._client_agent_address,
+            agent_address=self._client_agent_address,
             scheduler_address=ZMQConfig.from_string(address),
             context=self._context,
             future_manager=self._future_manager,
@@ -108,10 +109,26 @@ class Client:
         )
         self._agent.start()
 
-        logging.info(f"ScalerClient: connect to {self._scheduler_address.to_address()}")
+        logging.info(f"ScalerClient: connect to scheduler at {self._scheduler_address}")
 
-        self._object_buffer = ObjectBuffer(self._identity, self._serializer, self._connector)
-        self._future_factory = functools.partial(ScalerFuture, connector=self._connector)
+        # Blocks until the agent receives the object storage address
+        self._storage_address = self._agent.get_storage_address()
+
+        logging.info(f"ScalerClient: connect to object storage at {self._storage_address}")
+        self._connector_storage = SyncObjectStorageConnector(self._storage_address.host, self._storage_address.port)
+
+        self._object_buffer = ObjectBuffer(
+            self._identity,
+            self._serializer,
+            self._connector_agent,
+            self._connector_storage,
+        )
+        self._future_factory = functools.partial(
+            ScalerFuture,
+            serializer=self._serializer,
+            connector_agent=self._connector_agent,
+            connector_storage=self._connector_storage
+        )
 
         self._object_buffer.buffer_send_serializer()
         self._object_buffer.commit_send_objects()
@@ -192,7 +209,7 @@ class Client:
         task, future = self.__submit(function_object_id, all_args, delayed=True)
 
         self._object_buffer.commit_send_objects()
-        self._connector.send(task)
+        self._connector_agent.send(task)
         return future
 
     def map(self, fn: Callable, iterable: Iterable[Tuple[Any, ...]]) -> List[Any]:
@@ -206,7 +223,7 @@ class Client:
 
         self._object_buffer.commit_send_objects()
         for task in tasks:
-            self._connector.send(task)
+            self._connector_agent.send(task)
 
         try:
             results = [fut.result() for fut in futures]
@@ -251,7 +268,7 @@ class Client:
             node_name_to_argument, call_graph, keys, block
         )
         self._object_buffer.commit_send_objects()
-        self._connector.send(graph_task)
+        self._connector_agent.send(graph_task)
 
         self._future_manager.add_future(
             self._future_factory(
@@ -306,7 +323,7 @@ class Client:
         self.__assert_client_not_stopped()
 
         cache = self._object_buffer.buffer_send_object(obj, name)
-        return ObjectReference(cache.object_name, cache.object_id, sum(map(len, cache.object_bytes)))
+        return ObjectReference(cache.object_name, cache.object_id, cache.object_size)
 
     def clear(self):
         """
@@ -330,14 +347,14 @@ class Client:
 
         self._future_manager.cancel_all_futures()
 
-        self._connector.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Disconnect))
+        self._connector_agent.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Disconnect))
 
         self.__destroy()
 
     def __receive_shutdown_response(self):
         message: Optional[ClientShutdownResponse] = None
         while not isinstance(message, ClientShutdownResponse):
-            message = self._connector.receive()
+            message = self._connector_agent.receive()
 
         if not message.accepted:
             raise ValueError("Scheduler is in protected mode. Can't shutdown")
@@ -357,7 +374,7 @@ class Client:
 
         self._future_manager.cancel_all_futures()
 
-        self._connector.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
+        self._connector_agent.send(ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
         try:
             self.__receive_shutdown_response()
         finally:
@@ -520,7 +537,7 @@ class Client:
                     is_delayed=False,
                     group_task_id=graph_task_id,
                 )
-                future.set_result_ready(argument.data, ProfileResult())
+                future.set_result_ready(argument.data, TaskStatus.Success, ProfileResult())
                 future.set_result(data)
                 ready_futures[key] = future
 

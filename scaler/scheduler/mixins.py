@@ -1,7 +1,7 @@
 import abc
-from typing import List, Optional, Set
+from typing import Optional, Set
 
-from scaler.protocol.python.common import ObjectContent
+from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import (
     ClientDisconnect,
     ClientHeartbeat,
@@ -9,7 +9,6 @@ from scaler.protocol.python.message import (
     GraphTask,
     GraphTaskCancel,
     ObjectInstruction,
-    ObjectRequest,
     Task,
     TaskCancel,
     TaskResult,
@@ -24,17 +23,12 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_object_request(self, source: bytes, request: ObjectRequest):
-        raise NotImplementedError()
-
-    @abc.abstractmethod
     def on_add_object(
         self,
         object_user: bytes,
         object_id: bytes,
-        object_type: ObjectContent.ObjectContentType,
+        object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
-        object_bytes: List[bytes],
     ):
         raise NotImplementedError()
 
@@ -52,10 +46,6 @@ class ObjectManager(Reporter):
 
     @abc.abstractmethod
     def get_object_name(self, object_id: bytes) -> bytes:
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def get_object_content(self, object_id: bytes) -> List[bytes]:
         raise NotImplementedError()
 
 

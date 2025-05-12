@@ -1,12 +1,12 @@
 import dataclasses
 import enum
 import os
-from typing import List, Optional, Set, Tuple, Type
+from typing import List, Optional, Set, Type
 
 import bidict
 
 from scaler.protocol.capnp._python import _message  # noqa
-from scaler.protocol.python.common import ObjectContent, TaskStatus
+from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.mixins import Message
 from scaler.protocol.python.status import (
     BinderStatus,
@@ -223,9 +223,14 @@ class ClientHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
+    def object_storage_address(self) -> ObjectStorageAddress:
+        return ObjectStorageAddress(self._msg.objectStorageAddress)
+
     @staticmethod
-    def new_msg() -> "ClientHeartbeatEcho":
-        return ClientHeartbeatEcho(_message.ClientHeartbeatEcho())
+    def new_msg(object_storage_address: ObjectStorageAddress) -> "ClientHeartbeatEcho":
+        return ClientHeartbeatEcho(
+            _message.ClientHeartbeatEcho(objectStorageAddress=object_storage_address.get_message())
+        )
 
 
 class WorkerHeartbeat(Message):
@@ -281,9 +286,14 @@ class WorkerHeartbeatEcho(Message):
     def __init__(self, msg):
         super().__init__(msg)
 
+    def object_storage_address(self) -> ObjectStorageAddress:
+        return ObjectStorageAddress(self._msg.objectStorageAddress)
+
     @staticmethod
-    def new_msg() -> "WorkerHeartbeatEcho":
-        return WorkerHeartbeatEcho(_message.WorkerHeartbeatEcho())
+    def new_msg(object_storage_address: ObjectStorageAddress) -> "WorkerHeartbeatEcho":
+        return WorkerHeartbeatEcho(
+            _message.WorkerHeartbeatEcho(objectStorageAddress=object_storage_address.get_message())
+        )
 
 
 class ObjectInstruction(Message):
@@ -304,68 +314,19 @@ class ObjectInstruction(Message):
         return self._msg.objectUser
 
     @property
-    def object_content(self) -> ObjectContent:
-        return ObjectContent(self._msg.objectContent)
+    def object_metadata(self) -> ObjectMetadata:
+        return ObjectMetadata(self._msg.objectMetadata)
 
     @staticmethod
     def new_msg(
-        instruction_type: ObjectInstructionType, object_user: bytes, object_content: ObjectContent
+        instruction_type: ObjectInstructionType, object_user: bytes, object_metadata: ObjectMetadata
     ) -> "ObjectInstruction":
         return ObjectInstruction(
             _message.ObjectInstruction(
                 instructionType=instruction_type.value,
                 objectUser=object_user,
-                objectContent=object_content.get_message(),
+                objectMetadata=object_metadata.get_message(),
             )
-        )
-
-
-class ObjectRequest(Message):
-    class ObjectRequestType(enum.Enum):
-        Get = _message.ObjectRequest.ObjectRequestType.get
-
-    def __init__(self, msg):
-        super().__init__(msg)
-
-    def __repr__(self):
-        return (
-            f"ObjectRequest(type={self.request_type}, "
-            f"object_ids={tuple(object_id.hex() for object_id in self.object_ids)})"
-        )
-
-    @property
-    def request_type(self) -> ObjectRequestType:
-        return ObjectRequest.ObjectRequestType(self._msg.requestType.raw)
-
-    @property
-    def object_ids(self) -> Tuple[bytes]:
-        return tuple(self._msg.objectIds)
-
-    @staticmethod
-    def new_msg(request_type: ObjectRequestType, object_ids: Tuple[bytes, ...]) -> "ObjectRequest":
-        return ObjectRequest(_message.ObjectRequest(requestType=request_type.value, objectIds=list(object_ids)))
-
-
-class ObjectResponse(Message):
-    class ObjectResponseType(enum.Enum):
-        Content = _message.ObjectResponse.ObjectResponseType.content
-        ObjectNotExist = _message.ObjectResponse.ObjectResponseType.objectNotExist
-
-    def __init__(self, msg):
-        super().__init__(msg)
-
-    @property
-    def response_type(self) -> ObjectResponseType:
-        return ObjectResponse.ObjectResponseType(self._msg.responseType.raw)
-
-    @property
-    def object_content(self) -> ObjectContent:
-        return ObjectContent(self._msg.objectContent)
-
-    @staticmethod
-    def new_msg(response_type: ObjectResponseType, object_content: ObjectContent) -> "ObjectResponse":
-        return ObjectResponse(
-            _message.ObjectResponse(responseType=response_type.value, objectContent=object_content.get_message())
         )
 
 
@@ -623,8 +584,6 @@ PROTOCOL: bidict.bidict[str, Type[Message]] = bidict.bidict(
         "graphTask": GraphTask,
         "graphTaskCancel": GraphTaskCancel,
         "objectInstruction": ObjectInstruction,
-        "objectRequest": ObjectRequest,
-        "objectResponse": ObjectResponse,
         "clientHeartbeat": ClientHeartbeat,
         "clientHeartbeatEcho": ClientHeartbeatEcho,
         "workerHeartbeat": WorkerHeartbeat,

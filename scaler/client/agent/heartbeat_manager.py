@@ -1,10 +1,12 @@
 import time
+from concurrent.futures import Future
 from typing import Optional
 
 import psutil
 
-from scaler.client.agent.mixins import HeartbeatManager
+from scaler.client.agent.mixins import HeartbeatManager, ObjectManager
 from scaler.io.async_connector import AsyncConnector
+from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import ClientHeartbeat, ClientHeartbeatEcho
 from scaler.protocol.python.status import Resource
 from scaler.utility.mixins import Looper
@@ -22,6 +24,9 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._connected = False
 
         self._connector_external: Optional[AsyncConnector] = None
+        self._object_manager: Optional[ObjectManager] = None
+
+        self._storage_address: Future[ObjectStorageAddress] = Future()
 
     def register(self, connector_external: AsyncConnector):
         self._connector_external = connector_external
@@ -46,6 +51,11 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
         self._latency_us = int(((time.time_ns() - self._start_timestamp_ns) / 2) // 1_000)
         self._start_timestamp_ns = 0
 
+        if self._storage_address.done():
+            return
+
+        self._storage_address.set_result(heartbeat.object_storage_address())
+
     async def routine(self):
         if time.time() - self._last_scheduler_contact > self._death_timeout_seconds:
             raise TimeoutError(
@@ -59,3 +69,7 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
 
         await self.send_heartbeat()
         self._start_timestamp_ns = time.time_ns()
+
+    def get_storage_address(self) -> ObjectStorageAddress:
+        """Returns the object storage configuration, or block until it receives it."""
+        return self._storage_address.result()

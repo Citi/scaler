@@ -11,12 +11,10 @@ import zmq.asyncio
 # from scaler.utility.logging.utility import setup_logger
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
-from scaler.io.utility import chunk_to_list_of_bytes
-from scaler.protocol.python.common import ObjectContent, TaskStatus
+from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
+from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskStatus
 from scaler.protocol.python.message import (
     ObjectInstruction,
-    ObjectRequest,
-    ObjectResponse,
     ProcessorInitialized,
     Task,
     TaskResult,
@@ -27,7 +25,7 @@ from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.mixins import Looper
 from scaler.utility.object_utility import generate_object_id, serialize_failure
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
-from scaler.worker.agent.mixins import HeartbeatManager, ObjectTracker, ProcessorManager, ProfilingManager, TaskManager
+from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
 
@@ -55,11 +53,12 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._address_path = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
         self._address = ZMQConfig(ZMQType.ipc, host=self._address_path)
 
-        self._heartbeat: Optional[HeartbeatManager] = None
+        self._heartbeat_manager: Optional[HeartbeatManager] = None
         self._task_manager: Optional[TaskManager] = None
         self._profiling_manager: Optional[ProfilingManager] = None
-        self._object_tracker: Optional[ObjectTracker] = None
         self._connector_external: Optional[AsyncConnector] = None
+
+        self._storage_address: Optional[ObjectStorageAddress] = None
 
         self._current_holder: Optional[ProcessorHolder] = None
         self._suspended_holders_by_task_id: Dict[bytes, ProcessorHolder] = {}
@@ -74,40 +73,29 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
     def register(
         self,
-        heartbeat: HeartbeatManager,
+        heartbeat_manager: HeartbeatManager,
         task_manager: TaskManager,
         profiling_manager: ProfilingManager,
-        object_tracker: ObjectTracker,
         connector_external: AsyncConnector,
     ):
-        self._heartbeat = heartbeat
+        self._heartbeat_manager = heartbeat_manager
         self._task_manager = task_manager
         self._profiling_manager = profiling_manager
-        self._object_tracker = object_tracker
         self._connector_external = connector_external
 
-    async def initialize(self):
-        # setup_logger()
-        await self._can_accept_task_lock.acquire()  # prevents processor to accept task until initialized
-        self.__start_new_processor()
-
     async def routine(self):
+        if not self.initialized():
+            await self.__initialize()
+
         await self._binder_internal.routine()
+        await self._connector_storage.routine()
 
     async def on_object_instruction(self, instruction: ObjectInstruction):
-        processor_instructions = self._object_tracker.on_object_instruction(instruction)
-
-        for processor_id, instruction in processor_instructions.items():
+        for processor_id in self._holders_by_processor_id.keys():
             await self._binder_internal.send(processor_id, instruction)
 
-    async def on_object_response(self, response: ObjectResponse):
-        processors_ids = self._object_tracker.on_object_response(response)
-
-        for process_id in processors_ids:
-            await self._binder_internal.send(process_id, response)
-
     def can_accept_task(self) -> bool:
-        return self._can_accept_task_lock.locked()
+        return not self._can_accept_task_lock.locked()
 
     async def wait_until_can_accept_task(self):
         """
@@ -173,16 +161,15 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             source = task.source
             task_id = task.task_id
 
-            result_object_bytes = chunk_to_list_of_bytes(serialize_failure(ProcessorDiedError(f"{process_status=}")))
-
             result_object_id = generate_object_id(source, uuid.uuid4().bytes)
+            result_object_bytes = serialize_failure(ProcessorDiedError(f"{process_status=}"))
+
+            await self._connector_storage.set_object(result_object_id, result_object_bytes)
             await self._connector_external.send(
                 ObjectInstruction.new_msg(
                     ObjectInstruction.ObjectInstructionType.Create,
                     source,
-                    ObjectContent.new_msg(
-                        (result_object_id,), (ObjectContent.ObjectContentType.Object,), (b"",), (result_object_bytes,)
-                    ),
+                    ObjectMetadata.new_msg((result_object_id,), (ObjectMetadata.ObjectContentType.Object,), (b"",)),
                 )
             )
 
@@ -255,10 +242,23 @@ class VanillaProcessorManager(Looper, ProcessorManager):
     def num_suspended_processors(self) -> int:
         return len(self._suspended_holders_by_task_id)
 
+    async def __initialize(self):
+        await self._can_accept_task_lock.acquire()  # prevents processor to accept task until initialized
+
+        self._storage_address = await self._heartbeat_manager.get_storage_address()
+
+        self.__start_new_processor()
+
+        self._connector_storage = AsyncObjectStorageConnector(self._storage_address.host, self._storage_address.port)
+        await self._connector_storage.connect()
+
     def __start_new_processor(self):
+        assert self._storage_address is not None
+
         self._current_holder = ProcessorHolder(
             self._event_loop,
             self._address,
+            self._storage_address,
             self._garbage_collect_interval_seconds,
             self._trim_memory_threshold_bytes,
             self._hard_processor_suspend,
@@ -279,7 +279,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
 
         if holder.initialized():
             self._holders_by_processor_id.pop(holder.processor_id(), None)
-            self._object_tracker.on_processor_end(holder.processor_id())
 
         holder.kill()
 
@@ -313,10 +312,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
             await self.__on_internal_processor_initialized(processor_id)
             return
 
-        if isinstance(message, ObjectRequest):
-            await self.__on_internal_object_request(processor_id, message)
-            return
-
         if isinstance(message, ObjectInstruction):
             await self.__on_internal_object_instruction(processor_id, message)
             return
@@ -337,13 +332,6 @@ class VanillaProcessorManager(Looper, ProcessorManager):
         self._current_holder.initialize(processor_id)
 
         self._can_accept_task_lock.release()
-
-    async def __on_internal_object_request(self, processor_id: bytes, request: ObjectRequest):
-        if not self.__processor_ready_to_process_object(processor_id):
-            return
-
-        self._object_tracker.on_object_request(processor_id, request)
-        await self._connector_external.send(request)
 
     async def __on_internal_object_instruction(self, processor_id: bytes, instruction: ObjectInstruction):
         if not self.__processor_ready_to_process_object(processor_id):

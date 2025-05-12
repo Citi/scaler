@@ -1,5 +1,6 @@
 import dataclasses
 
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -7,6 +8,7 @@ from scaler.utility.zmq_config import ZMQConfig
 class SchedulerConfig:
     event_loop: str
     address: ZMQConfig
+    object_storage_config: ObjectStorageConfig
     io_threads: int
     max_number_of_tasks_waiting: int
     per_worker_queue_size: int
