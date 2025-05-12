@@ -108,6 +108,7 @@ class SyncObjectStorageConnector:
 
         request_id = self._next_request_id
         self._next_request_id += 1
+        self._next_request_id %= 2**64 - 1  # UINT64_MAX
 
         header = ObjectRequestHeader.new_msg(object_id, payload_length, request_id, request_type)
         header_bytes = header.get_message().to_bytes()
