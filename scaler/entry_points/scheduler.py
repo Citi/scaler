@@ -29,7 +29,7 @@ def get_args():
         type=str,
         default=None,
         help="specify object storage address, the object storage address will be send to client and workers so they "
-        "can talk to object storage server directly, e.g.: localhost:6379",
+        "can talk to object storage server directly, e.g.: `tcp://localhost:6379`",
     )
     parser.add_argument(
         "--max-number-of-tasks-waiting",
@@ -110,7 +110,11 @@ def get_args():
         help="use standard python the .conf file the specify python logging file configuration format, this will "
         "bypass --logging-path",
     )
-    parser.add_argument("address", type=ZMQConfig.from_string, help="scheduler address to connect to")
+    parser.add_argument(
+        "address",
+        type=ZMQConfig.from_string,
+        help="scheduler address to connect to, e.g.: `tcp://localhost:6378`"
+    )
     return parser.parse_args()
 
 
