@@ -1,4 +1,5 @@
 import socket
+from threading import Lock
 from typing import Optional, Iterable, Tuple
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
@@ -16,13 +17,16 @@ class SyncObjectStorageConnector:
 
         self._next_request_id = 0
 
+        self._socket_lock = Lock()
+
     def __del__(self):
         self.destroy()
 
     def destroy(self):
-        if self._socket is not None:
-            self._socket.close()
-            self._socket = None
+        with self._socket_lock:
+            if self._socket is not None:
+                self._socket.close()
+                self._socket = None
 
     @property
     def address(self) -> str:
@@ -35,8 +39,9 @@ class SyncObjectStorageConnector:
         Returns `True` if the object data got overridden. Otherwise, returns `False`.
         """
 
-        self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
-        response_header, response_payload = self.__receive_response()
+        with self._socket_lock:
+            self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
+            response_header, response_payload = self.__receive_response()
 
         self.__ensure_response_type(
             response_header,
@@ -53,10 +58,9 @@ class SyncObjectStorageConnector:
         Will block until the object is available.
         """
 
-        # FIXME: probably need to lock the socket for these GET calls
-
-        self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject)
-        response_header, response_payload = self.__receive_response()
+        with self._socket_lock:
+            self.__send_request(object_id, max_payload_length, ObjectRequestHeader.ObjectRequestType.GetObject)
+            response_header, response_payload = self.__receive_response()
 
         self.__ensure_response_type(response_header, [ObjectResponseHeader.ObjectResponseType.GetOK])
 
@@ -69,8 +73,9 @@ class SyncObjectStorageConnector:
         Returns `False` if the object wasn't found in the server. Otherwise returns `True`.
         """
 
-        self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject)
-        response_header, response_payload = self.__receive_response()
+        with self._socket_lock:
+            self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject)
+            response_header, response_payload = self.__receive_response()
 
         self.__ensure_response_type(
             response_header,
