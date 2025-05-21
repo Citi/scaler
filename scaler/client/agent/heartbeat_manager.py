@@ -13,8 +13,9 @@ from scaler.utility.mixins import Looper
 
 
 class ClientHeartbeatManager(Looper, HeartbeatManager):
-    def __init__(self, death_timeout_seconds: int):
+    def __init__(self, death_timeout_seconds: int, storage_address_future: Future[ObjectStorageAddress]):
         self._death_timeout_seconds = death_timeout_seconds
+        self._storage_address = storage_address_future
 
         self._process = psutil.Process()
 
@@ -25,8 +26,6 @@ class ClientHeartbeatManager(Looper, HeartbeatManager):
 
         self._connector_external: Optional[AsyncConnector] = None
         self._object_manager: Optional[ObjectManager] = None
-
-        self._storage_address: Future[ObjectStorageAddress] = Future()
 
     def register(self, connector_external: AsyncConnector):
         self._connector_external = connector_external
