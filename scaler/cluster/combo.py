@@ -61,7 +61,7 @@ class SchedulerClusterCombo:
             self._address = ZMQConfig.from_string(address)
 
         if object_storage_config is None:
-            self._object_storage_config = ObjectStorageConfig(self._address.host, self._address.port + 1)
+            self._object_storage_config = ObjectStorageConfig(self._address.host, get_available_tcp_port())
         else:
             self._object_storage_config = object_storage_config
 
@@ -71,6 +71,8 @@ class SchedulerClusterCombo:
             self._monitor_address = ZMQConfig.from_string(monitor_address)
 
         self._object_storage = ObjectStorageServerProcess(self._object_storage_config)
+        self._object_storage.start()
+        self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
 
         self._cluster = Cluster(
             address=self._address,
@@ -115,12 +117,14 @@ class SchedulerClusterCombo:
 
     def shutdown(self):
         logging.info(f"{self.__get_prefix()} shutdown")
-        self._object_storage.terminate()
         self._cluster.terminate()
         self._scheduler.terminate()
-        self._object_storage.join()
         self._cluster.join()
         self._scheduler.join()
+
+        # object storage should terminate after the cluster and scheduler.
+        self._object_storage.terminate()
+        self._object_storage.join()
 
     def get_address(self) -> str:
         return self._address.to_address()

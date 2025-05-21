@@ -60,6 +60,15 @@ class ObjectStorageServer {
 #ifndef NDEBUG
 public:
 #endif
+    ObjectStorageServer(int on_server_ready_fd = -1)
+    {
+        if (on_server_ready_fd < 0) {
+            this->on_server_ready_fd = createServerReadyEventfd();
+        } else {
+            this->on_server_ready_fd = on_server_ready_fd;
+        }
+    }
+
     bool updateRecord(
         const scaler::object_storage::ObjectRequestHeader& requestHeader,
         scaler::object_storage::ObjectResponseHeader& responseHeader,
@@ -111,8 +120,7 @@ private:
         }
 
         auto payload_view = getMemoryViewForResponsePayload(meta.responseHeader);
-        co_await scaler::object_storage::write_response_header(*meta.socket, meta.responseHeader, payload_view.size());
-        co_await scaler::object_storage::write_response_payload(*meta.socket, payload_view);
+        co_await scaler::object_storage::write_response(*meta.socket, meta.responseHeader, payload_view);
     }
 
     awaitable<void> optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
@@ -132,26 +140,20 @@ private:
 #ifndef NDEBUG
 public:
 #endif
+    int on_server_ready_fd;
+
     std::map<scaler::object_storage::object_id_t, ObjectWithMeta> objectIDToMeta;
     std::map<std::size_t, shared_object_t> objectHashToObject;
 
 public:
     awaitable<void> process_request(std::shared_ptr<tcp::socket> socket) {
         try {
-            std::cerr << "New connection" << std::endl;
-
             for (;;) {
                 scaler::object_storage::ObjectRequestHeader requestHeader;
                 co_await scaler::object_storage::read_request_header(*socket, requestHeader);
 
                 scaler::object_storage::payload_t payload;
                 co_await scaler::object_storage::read_request_payload(*socket, requestHeader, payload);
-
-                std::cerr << "Received request:" << std::endl
-                    << "\tObject ID: " << requestHeader.objectID[0] << requestHeader.objectID[1] << requestHeader.objectID[2] << requestHeader.objectID[3] << std::endl
-                    << "\tHeader payload length: " << requestHeader.payloadLength << std::endl
-                    << "\tRequest type: " << static_cast<uint16_t>(requestHeader.reqType) << std::endl
-                    << "\tActual payload length: " << payload.size() << std::endl;
 
                 scaler::object_storage::ObjectResponseHeader responseHeader;
                 bool non_blocking_request = updateRecord(requestHeader, responseHeader, std::move(payload));
@@ -165,15 +167,7 @@ public:
 
                 auto payload_view = getMemoryViewForResponsePayload(responseHeader);
 
-                std::cerr << "Sending response:" << std::endl
-                    << "\tObject ID: " << requestHeader.objectID[0] << requestHeader.objectID[1] << requestHeader.objectID[2] << requestHeader.objectID[3] << std::endl
-                    << "\tHeader payload length: " << responseHeader.payloadLength << std::endl
-                    << "\tResponse type: " << static_cast<uint16_t>(responseHeader.respType) << std::endl
-                    << "\tActual payload length: " << payload.size() << std::endl;
-
-                co_await scaler::object_storage::write_response_header(*socket, responseHeader, payload_view.size());
-
-                co_await scaler::object_storage::write_response_payload(*socket, payload_view);
+                co_await scaler::object_storage::write_response(*socket, responseHeader, payload_view);
             }
         } catch (std::exception& e) {
             // TODO: Logging support
@@ -182,12 +176,47 @@ public:
     }
 
 private:
+    static int createServerReadyEventfd() {
+        int on_server_ready_fd = eventfd(0, EFD_SEMAPHORE);
+        if (on_server_ready_fd == -1) {
+            std::cerr << "create on_server_ready_fd failed: errno=" << errno << std::endl;
+            std::terminate();
+        }
+
+        return on_server_ready_fd;
+    }
+
+    void setServerReadyEventfd() {
+        uint64_t value = 1;
+        ssize_t ret = write(this->on_server_ready_fd, &value, sizeof (uint64_t));
+
+        if (ret != sizeof (uint64_t)) {
+            std::cerr << "write to on_server_ready_fd failed: errno=" << errno << std::endl;
+            std::terminate();
+        }
+    }
+
+    static void setTcpNoDelay(tcp::socket& socket, bool is_no_delay) {
+        boost::system::error_code ec;
+        socket.set_option(tcp::no_delay(is_no_delay), ec);
+
+        if (ec) {
+            std::cerr << "failed to set TCP_NODELAY on client socket: " << ec.message() << std::endl;
+            std::terminate();
+        }
+    }
+
     awaitable<void> listener(boost::asio::ip::tcp::endpoint endpoint) {
         auto executor = co_await boost::asio::this_coro::executor;
         tcp::acceptor acceptor(executor, endpoint);
+
+        setServerReadyEventfd();
+
         for (;;) {
             auto shared_socket = std::make_shared<tcp::socket>(executor);
             co_await acceptor.async_accept(*shared_socket, use_awaitable);
+            setTcpNoDelay(*shared_socket, true);
+
             co_spawn(executor, process_request(std::move(shared_socket)), detached);
         }
     }
@@ -206,8 +235,18 @@ public:
 
             io_context.run();
         } catch (std::exception& e) {
-            std::printf("Exception: %s\n", e.what());
-            std::printf("Mostly something serious happen, inspect capnp header correuption\n");
+            std::cerr << "Exception: " << e.what() << std::endl;
+            std::cerr << "Mostly something serious happen, inspect capnp header corruption" << std::endl;
+        }
+    }
+
+    void waitUntilReady() {
+        uint64_t value;
+        ssize_t ret = read(this->on_server_ready_fd, &value, sizeof (uint64_t));
+
+        if (ret != sizeof (uint64_t)) {
+            std::cerr << "read from on_server_ready_fd failed: errno=" << errno << std::endl;
+            std::terminate();
         }
     }
 };

@@ -125,7 +125,7 @@ class Scheduler:
         )
 
     async def connect_to_storage(self):
-        await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
+        await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
 
     async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================
