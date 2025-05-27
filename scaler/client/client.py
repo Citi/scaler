@@ -26,6 +26,7 @@ from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
+from scaler.utility.object_id import ObjectID
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.processor.processor import Processor
 
@@ -128,9 +129,6 @@ class Client:
             connector_agent=self._connector_agent,
             connector_storage=self._connector_storage
         )
-
-        self._object_buffer.buffer_send_serializer()
-        self._object_buffer.commit_send_objects()
 
     @property
     def identity(self):
@@ -322,7 +320,7 @@ class Client:
         self.__assert_client_not_stopped()
 
         cache = self._object_buffer.buffer_send_object(obj, name)
-        return ObjectReference(cache.object_name, cache.object_id, cache.object_size)
+        return ObjectReference(cache.object_name, cache.object_id)
 
     def clear(self):
         """
@@ -330,7 +328,10 @@ class Client:
         references
         """
 
+        # It's important to be ensure that all running futures are cancelled/finished before clearing object, or else we
+        # might end up with task indefinitely waiting on no longer existing objects.
         self._future_manager.cancel_all_futures()
+
         self._object_buffer.clear()
 
     def disconnect(self):
@@ -379,19 +380,22 @@ class Client:
         finally:
             self.__destroy()
 
-    def __submit(self, function_object_id: bytes, args: Tuple[Any, ...], delayed: bool) -> Tuple[Task, ScalerFuture]:
+    def __submit(self, function_object_id: ObjectID, args: Tuple[Any, ...], delayed: bool) -> Tuple[Task, ScalerFuture]:
         task_id = uuid.uuid1().bytes
 
         object_ids = []
         for arg in args:
             if isinstance(arg, ObjectReference):
+                if not self._object_buffer.is_valid_object_id(arg.object_id):
+                    raise MissingObjects(f"unknown object: {arg.object_id!r}.")
+
                 object_ids.append(arg.object_id)
             else:
                 object_ids.append(self._object_buffer.buffer_send_object(arg).object_id)
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
-        arguments = [Task.Argument(Task.Argument.ArgumentType.ObjectID, object_id) for object_id in object_ids]
+        arguments: List[Task.Argument] = [Task.ObjectArgument(object_id) for object_id in object_ids]
         task = Task.new_msg(
             task_id=task_id,
             source=self._identity,
@@ -447,7 +451,7 @@ class Client:
             else:
                 object_id = self._object_buffer.buffer_send_object(node, name=node_name).object_id
 
-            node_name_to_argument[node_name] = (Task.Argument(Task.Argument.ArgumentType.ObjectID, object_id), node)
+            node_name_to_argument[node_name] = (Task.ObjectArgument(object_id), node)
 
         return node_name_to_argument, call_graph
 
@@ -477,7 +481,7 @@ class Client:
 
     def __construct_graph(
         self,
-        node_name_to_arguments: Dict[str, Tuple[Task.Argument, Any]],
+        node_name_to_arguments: Dict[str, Tuple[Task.ObjectArgument, Any]],
         call_graph: Dict[str, _CallNode],
         keys: List[str],
         block: bool,
@@ -499,9 +503,7 @@ class Client:
                 assert arg in call_graph or arg in node_name_to_arguments
 
                 if arg in call_graph:
-                    arguments.append(
-                        Task.Argument(type=Task.Argument.ArgumentType.Task, data=node_name_to_task_id[arg])
-                    )
+                    arguments.append(Task.TaskArgument(node_name_to_task_id[arg]))
                 elif arg in node_name_to_arguments:
                     argument, _ = node_name_to_arguments[arg]
                     arguments.append(argument)
@@ -531,7 +533,11 @@ class Client:
                 argument, data = node_name_to_arguments[key]
                 future: ScalerFuture = self._future_factory(
                     task=Task.new_msg(
-                        task_id=argument.data, source=self._identity, metadata=b"", func_object_id=b"", function_args=[]
+                        task_id=uuid.uuid1().bytes,
+                        source=self._identity,
+                        metadata=b"",
+                        func_object_id=None,
+                        function_args=[],
                     ),
                     is_delayed=False,
                     group_task_id=graph_task_id,

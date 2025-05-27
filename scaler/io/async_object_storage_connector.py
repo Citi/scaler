@@ -1,10 +1,12 @@
 import asyncio
 import logging
+import socket
 from typing import Dict, Optional, Tuple
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
 from scaler.utility.exceptions import ObjectStorageException
+from scaler.utility.object_id import ObjectID
 
 
 class AsyncObjectStorageConnector:
@@ -20,7 +22,7 @@ class AsyncObjectStorageConnector:
         self._writer: Optional[asyncio.StreamWriter] = None
 
         self._next_request_id = 0
-        self._pending_get_requests: Dict[bytes, asyncio.Future] = {}
+        self._pending_get_requests: Dict[ObjectID, asyncio.Future] = {}
 
     def __del__(self):
         if not self.is_connected():
@@ -36,6 +38,10 @@ class AsyncObjectStorageConnector:
             raise ObjectStorageException("connector is already connected.")
 
         self._reader, self._writer = await asyncio.open_connection(self._host, self._port)
+
+        # Makes sure the socket is TCP_NODELAY. It seems to be the case by default, but that's not specified in the
+        # asyncio's documentation and might change in the future.
+        self._writer.get_extra_info("socket").setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         self._connected_event.set()
 
@@ -82,15 +88,15 @@ class AsyncObjectStorageConnector:
         pending_get_future = self._pending_get_requests.get(header.response_id)
 
         if pending_get_future is None:
-            logging.warning(f"unknown get-ok response for unrequested object_id={header.object_id.hex()}.")
+            logging.warning(f"unknown get-ok response for unrequested object_id={repr(header.object_id)}.")
             return
 
         pending_get_future.set_result(payload)
 
-    async def set_object(self, object_id: bytes, payload: bytes) -> None:
+    async def set_object(self, object_id: ObjectID, payload: bytes) -> None:
         await self.__send_request(object_id, len(payload), ObjectRequestHeader.ObjectRequestType.SetObject, payload)
 
-    async def get_object(self, object_id: bytes, max_payload_length: int = 2**64 - 1) -> bytes:
+    async def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytes:
         pending_get_future = self._pending_get_requests.get(object_id)
 
         if pending_get_future is None:
@@ -106,7 +112,7 @@ class AsyncObjectStorageConnector:
 
         return await pending_get_future
 
-    async def delete_object(self, object_id: bytes) -> None:
+    async def delete_object(self, object_id: ObjectID) -> None:
         await self.__send_request(object_id, 0, ObjectRequestHeader.ObjectRequestType.DeleteObject, None)
 
     def __ensure_is_connected(self):
@@ -118,7 +124,7 @@ class AsyncObjectStorageConnector:
 
     async def __send_request(
         self,
-        object_id: bytes,
+        object_id: ObjectID,
         payload_length: int,
         request_type: ObjectRequestHeader.ObjectRequestType,
         payload: Optional[bytes],

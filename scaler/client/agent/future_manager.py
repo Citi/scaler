@@ -10,6 +10,7 @@ from scaler.protocol.python.common import TaskStatus
 from scaler.protocol.python.message import TaskCancel, TaskResult
 from scaler.utility.exceptions import DisconnectedError, NoWorkerError, TaskNotFoundError, WorkerDiedError
 from scaler.utility.metadata.profile_result import retrieve_profiling_result_from_task_result
+from scaler.utility.object_id import ObjectID
 
 
 class ClientFutureManager(FutureManager):
@@ -75,15 +76,9 @@ class ClientFutureManager(FutureManager):
                     future.set_exception(DisconnectedError("client disconnected"), profile_result)
                     return
 
-                if result.status == TaskStatus.Success:
+                if result.status in [TaskStatus.Success, TaskStatus.Failed]:
                     assert len(result.results) == 1
-                    result_object_id = result.results[0]
-                    future.set_result_ready(result_object_id, result.status, profile_result)
-                    return
-
-                if result.status == TaskStatus.Failed:
-                    assert len(result.results) == 1
-                    result_object_id = result.results[0]
+                    result_object_id = ObjectID(result.results[0])
                     future.set_result_ready(result_object_id, result.status, profile_result)
                     return
 

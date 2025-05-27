@@ -23,7 +23,7 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
     def __init__(self, client_timeout_seconds: int, protected: bool, storage_address: ObjectStorageAddress):
         self._client_timeout_seconds = client_timeout_seconds
         self._protected = protected
-        self._object_storage_address = storage_address
+        self._storage_address = storage_address
 
         self._client_to_task_ids: OneToManyDict[bytes, bytes] = OneToManyDict()
 
@@ -67,7 +67,7 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
     async def on_heartbeat(self, client: bytes, info: ClientHeartbeat):
         await self._binder.send(
             client,
-            ClientHeartbeatEcho.new_msg(object_storage_address=self._object_storage_address)
+            ClientHeartbeatEcho.new_msg(object_storage_address=self._storage_address)
         )
         if client not in self._client_last_seen:
             logging.info(f"client {client!r} connected")

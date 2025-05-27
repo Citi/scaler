@@ -4,7 +4,7 @@ import struct
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.mixins import Message
-
+from scaler.utility.object_id import ObjectID
 
 OBJECT_ID_FORMAT = "!QQQQ"
 
@@ -20,7 +20,7 @@ class ObjectRequestHeader(Message):
         super().__init__(msg)
 
     @property
-    def object_id(self) -> bytes:
+    def object_id(self) -> ObjectID:
         return _from_capnp_object_id(self._msg.objectID)
 
     @property
@@ -37,7 +37,7 @@ class ObjectRequestHeader(Message):
 
     @staticmethod
     def new_msg(
-        object_id: bytes,
+        object_id: ObjectID,
         payload_length: int,
         request_id: int,
         request_type: ObjectRequestType,
@@ -70,7 +70,7 @@ class ObjectResponseHeader(Message):
         super().__init__(msg)
 
     @property
-    def object_id(self) -> bytes:
+    def object_id(self) -> ObjectID:
         return _from_capnp_object_id(self._msg.objectID)
 
     @property
@@ -87,7 +87,7 @@ class ObjectResponseHeader(Message):
 
     @staticmethod
     def new_msg(
-        object_id: bytes,
+        object_id: ObjectID,
         payload_length: int,
         response_id: int,
         response_type: ObjectResponseType,
@@ -105,20 +105,19 @@ class ObjectResponseHeader(Message):
         return self._msg
 
 
-def _to_capnp_object_id(object_id: bytes) -> _object_storage.ObjectID:
-    if len(object_id) != 32:
-        raise ValueError(f"object ID must be a 32 byte value, got {len(object_id)} byte(s).")
-
-    field0, field1, field2, field3 = struct.unpack(OBJECT_ID_FORMAT, object_id)
+def _to_capnp_object_id(object_id: ObjectID) -> _object_storage.ObjectID:
+    field0, field1, field2, field3 = struct.unpack(OBJECT_ID_FORMAT, object_id.bytes())
 
     return _object_storage.ObjectID(field0=field0, field1=field1, field2=field2, field3=field3)
 
 
-def _from_capnp_object_id(capnp_object_id: _object_storage.ObjectID) -> bytes:
-    return struct.pack(
-        OBJECT_ID_FORMAT,
-        capnp_object_id.field0,
-        capnp_object_id.field1,
-        capnp_object_id.field2,
-        capnp_object_id.field3,
+def _from_capnp_object_id(capnp_object_id: _object_storage.ObjectID) -> ObjectID:
+    return ObjectID(
+        struct.pack(
+            OBJECT_ID_FORMAT,
+            capnp_object_id.field0,
+            capnp_object_id.field1,
+            capnp_object_id.field2,
+            capnp_object_id.field3,
+        )
     )

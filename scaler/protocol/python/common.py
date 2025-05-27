@@ -4,6 +4,7 @@ from typing import Tuple
 
 from scaler.protocol.capnp._python import _common  # noqa
 from scaler.protocol.python.mixins import Message
+from scaler.utility.object_id import ObjectID
 
 
 class TaskStatus(enum.Enum):
@@ -37,8 +38,8 @@ class ObjectMetadata(Message):
         super().__init__(msg)
 
     @property
-    def object_ids(self) -> Tuple[bytes, ...]:
-        return tuple(self._msg.objectIds)
+    def object_ids(self) -> Tuple[ObjectID, ...]:
+        return tuple(ObjectID(object_id_bytes) for object_id_bytes in self._msg.objectIds)
 
     @property
     def object_types(self) -> Tuple[ObjectContentType, ...]:
@@ -50,13 +51,13 @@ class ObjectMetadata(Message):
 
     @staticmethod
     def new_msg(
-        object_ids: Tuple[bytes, ...],
+        object_ids: Tuple[ObjectID, ...],
         object_types: Tuple[ObjectContentType, ...] = tuple(),
         object_names: Tuple[bytes, ...] = tuple(),
     ) -> "ObjectMetadata":
         return ObjectMetadata(
             _common.ObjectMetadata(
-                objectIds=list(object_ids),
+                objectIds=[object_id.bytes() for object_id in object_ids],
                 objectTypes=[object_type.value for object_type in object_types],
                 objectNames=list(object_names),
             )

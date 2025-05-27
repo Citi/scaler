@@ -35,7 +35,7 @@ class ScalerFuture(Future):
         self._connector_agent: SyncConnector = connector_agent
         self._connector_storage: SyncObjectStorageConnector = connector_storage
 
-        self._result_object_id: Optional[bytes] = None
+        self._result_object_id: Optional[ObjectID] = None
         self._result_ready_event = threading.Event()
         self._result_received = False
         self._task_status: Optional[TaskStatus] = None
@@ -55,7 +55,7 @@ class ScalerFuture(Future):
 
     def set_result_ready(
         self,
-        object_id: Optional[bytes],
+        object_id: Optional[ObjectID],
         task_status: TaskStatus,
         profile_result: Optional[ProfileResult] = None,
     ) -> None:
@@ -150,10 +150,12 @@ class ScalerFuture(Future):
             if self.done():
                 return False
 
+            cancel_flags = TaskCancel.TaskCancelFlags(force=True, retrieve_task_object=False)
+
             if self._group_task_id is not None:
-                self._connector_agent.send(TaskCancel.new_msg(self._group_task_id))
+                self._connector_agent.send(TaskCancel.new_msg(self._group_task_id, flags=cancel_flags))
             else:
-                self._connector_agent.send(TaskCancel.new_msg(self._task_id))
+                self._connector_agent.send(TaskCancel.new_msg(self._task_id, flags=cancel_flags))
 
             self._state = "CANCELLED"
             self._result_received = True
@@ -182,7 +184,7 @@ class ScalerFuture(Future):
         return len(self._done_callbacks) > 0 or len(self._waiters) > 0  # type: ignore[attr-defined]
 
     def _get_result_object(self):
-        if self._result_object_id is None or self.cancelled():
+        if self._result_object_id is None or self.cancelled() or self._result_received:
             return
 
         object_bytes = self._connector_storage.get_object(self._result_object_id)

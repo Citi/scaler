@@ -5,6 +5,7 @@ from typing import Optional, Iterable, Tuple
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
 from scaler.utility.exceptions import ObjectStorageException
+from scaler.utility.object_id import ObjectID
 
 
 class SyncObjectStorageConnector:
@@ -15,6 +16,7 @@ class SyncObjectStorageConnector:
         self._port = port
 
         self._socket: Optional[socket.socket] = socket.create_connection((self._host, self._port))
+        self._socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         self._next_request_id = 0
 
@@ -33,7 +35,7 @@ class SyncObjectStorageConnector:
     def address(self) -> str:
         return f"tcp://{self._host}:{self._port}"
 
-    def set_object(self, object_id: bytes, payload: bytes) -> bool:
+    def set_object(self, object_id: ObjectID, payload: bytes) -> bool:
         """
         Sets the object's payload on the object storage server.
 
@@ -52,7 +54,7 @@ class SyncObjectStorageConnector:
 
         return response_header.response_type == ObjectResponseHeader.ObjectResponseType.SetOKOverride
 
-    def get_object(self, object_id: bytes, max_payload_length: int = 2**64 - 1) -> bytearray:
+    def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
         """
         Returns the object's payload from the object storage server.
 
@@ -67,7 +69,7 @@ class SyncObjectStorageConnector:
 
         return response_payload
 
-    def delete_object(self, object_id: bytes) -> bool:
+    def delete_object(self, object_id: ObjectID) -> bool:
         """
         Removes the object from the object storage server.
 
@@ -104,7 +106,7 @@ class SyncObjectStorageConnector:
 
     def __send_request(
         self,
-        object_id: bytes,
+        object_id: ObjectID,
         payload_length: int,
         request_type: ObjectRequestHeader.ObjectRequestType,
         payload: Optional[bytes] = None,

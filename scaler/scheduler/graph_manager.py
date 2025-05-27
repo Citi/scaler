@@ -14,6 +14,7 @@ from scaler.scheduler.mixins import ClientManager, GraphTaskManager, ObjectManag
 from scaler.utility.graph.topological_sorter import TopologicalSorter
 from scaler.utility.many_to_many_dict import ManyToManyDict
 from scaler.utility.mixins import Looper, Reporter
+from scaler.utility.object_id import ObjectID
 
 
 class _NodeTaskState(enum.Enum):
@@ -33,7 +34,7 @@ class _GraphState(enum.Enum):
 class _TaskInfo:
     state: _NodeTaskState
     task: Task
-    result_object_ids: List[bytes] = dataclasses.field(default_factory=list)
+    result_object_ids: List[ObjectID] = dataclasses.field(default_factory=list)
 
 
 @dataclasses.dataclass
@@ -149,7 +150,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             self._task_id_to_graph_task_id[task.task_id] = graph_task.task_id
             tasks[task.task_id] = _TaskInfo(_NodeTaskState.Inactive, task)
 
-            required_task_ids = {arg.data for arg in task.function_args if arg.type == Task.Argument.ArgumentType.Task}
+            required_task_ids = {arg.task_id for arg in task.function_args if isinstance(arg, Task.TaskArgument)}
             for required_task_id in required_task_ids:
                 depended_task_id_to_task_id.add(required_task_id, task.task_id)
 
@@ -196,7 +197,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 source=task_info.task.source,
                 metadata=task_info.task.metadata,
                 func_object_id=task_info.task.func_object_id,
-                function_args=[self.__get_argument(graph_task_id, arg) for arg in task_info.task.function_args],
+                function_args=[self.__get_argument_object(graph_task_id, arg) for arg in task_info.task.function_args],
             )
 
             await self._task_manager.on_task_new(graph_info.client, task)
@@ -208,7 +209,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
         task_info = graph_info.tasks[result.task_id]
 
-        task_info.result_object_ids = result.results
+        task_info.result_object_ids = [ObjectID(object_id_bytes) for object_id_bytes in result.results]
 
         if result.status == TaskStatus.Success:
             task_info.state = _NodeTaskState.Success
@@ -238,12 +239,13 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         if not self.__is_graph_finished(graph_task_id):
             result_status = result.status
             result_metadata = result.metadata
+            result_object_ids = [ObjectID(object_id_bytes) for object_id_bytes in result.results]
             result_objects = [
                 (
                     object_id,
                     self._object_manager.get_object_name(object_id),
                 )
-                for object_id in result.results
+                for object_id in result_object_ids
             ]
             await self.__clean_all_running_nodes(graph_task_id, result_status, result_metadata, result_objects)
             await self.__clean_all_inactive_nodes(graph_task_id, result_status, result_metadata, result_objects)
@@ -255,7 +257,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         graph_task_id: bytes,
         result_status: TaskStatus,
         result_metadata: bytes,
-        result_objects: List[Tuple[bytes, bytes]],
+        result_objects: List[Tuple[ObjectID, bytes]],
     ):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
 
@@ -266,7 +268,12 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
             await self._task_manager.on_task_cancel(graph_info.client, TaskCancel.new_msg(task_id))
             await self.__mark_node_done(
-                TaskResult.new_msg(task_id, result_status, result_metadata, new_result_object_ids)
+                TaskResult.new_msg(
+                    task_id,
+                    result_status,
+                    result_metadata,
+                    [object_id.bytes() for object_id in new_result_object_ids]
+                )
             )
 
     async def __clean_all_inactive_nodes(
@@ -274,7 +281,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         graph_task_id: bytes,
         result_status: TaskStatus,
         result_metadata: bytes,
-        result_objects: List[Tuple[bytes, bytes]],
+        result_objects: List[Tuple[ObjectID, bytes]],
     ):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
 
@@ -284,38 +291,45 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             for task_id in ready_task_ids:
                 new_result_object_ids = await self.__duplicate_objects(graph_info.client, result_objects)
                 await self.__mark_node_done(
-                    TaskResult.new_msg(task_id, result_status, result_metadata, new_result_object_ids)
+                    TaskResult.new_msg(
+                        task_id,
+                        result_status,result_metadata,
+                        [object_id.bytes() for object_id in new_result_object_ids]
+                    )
                 )
 
     async def __finish_one_graph(self, graph_task_id: bytes, result_status: TaskStatus):
         self._client_manager.on_task_finish(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
-        await self._binder.send(info.client, TaskResult.new_msg(graph_task_id, result_status, metadata=b"", results=[]))
+        await self._binder.send(info.client, TaskResult.new_msg(graph_task_id, result_status, metadata=b""))
 
     def __is_graph_finished(self, graph_task_id: bytes):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         return not graph_info.sorter.is_active() and not graph_info.running_task_ids
 
-    def __get_argument(self, graph_task_id: bytes, argument: Task.Argument) -> Task.Argument:
-        if argument.type == Task.Argument.ArgumentType.ObjectID:
+    def __get_argument_object(self, graph_task_id: bytes, argument: Task.Argument) -> Task.ObjectArgument:
+        if isinstance(argument, Task.ObjectArgument):
             return argument
 
-        assert argument.type == Task.Argument.ArgumentType.Task
-        argument_task_id = argument.data
+        assert isinstance(argument, Task.TaskArgument)
+        argument_task_id = argument.task_id
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[argument_task_id]
 
         assert len(task_info.result_object_ids) == 1
 
-        return Task.Argument(Task.Argument.ArgumentType.ObjectID, task_info.result_object_ids[0])
+        return Task.ObjectArgument(task_info.result_object_ids[0])
 
     async def __clean_intermediate_result(self, graph_task_id: bytes, task_id: bytes):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[task_id]
 
-        for argument in filter(lambda arg: arg.type == Task.Argument.ArgumentType.Task, task_info.task.function_args):
-            argument_task_id = argument.data
+        for argument in task_info.task.function_args:
+            if not isinstance(argument, Task.TaskArgument):
+                continue
+
+            argument_task_id = argument.task_id
             graph_info.depended_task_id_to_task_id.remove(argument_task_id, task_id)
             if graph_info.depended_task_id_to_task_id.has_left_key(argument_task_id):
                 continue
@@ -326,8 +340,8 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
             # delete intermediate results as they are not needed anymore
             self._object_manager.on_del_objects(graph_info.client, set(graph_info.tasks[argument].result_object_ids))
 
-    async def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[bytes, bytes]]) -> List[bytes]:
-        new_result_object_ids = [uuid.uuid4().bytes for _ in result_objects]
+    async def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[ObjectID, bytes]]) -> List[ObjectID]:
+        new_result_object_ids = [ObjectID.generate_unique_object_id(owner) for _ in result_objects]
 
         futures = [
             self.__duplicate_object(owner, result_object_id, result_object_name, new_object_id)
@@ -339,7 +353,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
         return new_result_object_ids
 
-    async def __duplicate_object(self, owner: bytes, object_id: bytes, object_name: bytes, new_object_id: bytes):
+    async def __duplicate_object(self, owner: bytes, object_id: ObjectID, object_name: bytes, new_object_id: ObjectID):
         object_payload = await self._connector_storage.get_object(object_id)
         await self._connector_storage.set_object(new_object_id, object_payload)
 
