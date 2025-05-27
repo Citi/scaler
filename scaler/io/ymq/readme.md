@@ -10,9 +10,9 @@ Each person maintains a todo and done list.
 # gxu
 
 ## DONE:
+ - CMake integration, generate C++ stuff in build dir
 
 ## TODO:
- - CMake integration, generate c++ stuff in build dir
  - Basic coroutine API
 
 # PUT NAME HERE 
