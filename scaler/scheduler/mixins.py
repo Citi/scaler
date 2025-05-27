@@ -15,6 +15,7 @@ from scaler.protocol.python.message import (
     WorkerHeartbeat,
 )
 from scaler.utility.mixins import Reporter
+from scaler.utility.object_id import ObjectID
 
 
 class ObjectManager(Reporter):
@@ -26,14 +27,14 @@ class ObjectManager(Reporter):
     def on_add_object(
         self,
         object_user: bytes,
-        object_id: bytes,
+        object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
     ):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_del_objects(self, task_id: bytes, object_ids: Set[bytes]):
+    def on_del_objects(self, task_id: bytes, object_ids: Set[ObjectID]):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -41,11 +42,11 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def has_object(self, object_id: bytes) -> bool:
+    def has_object(self, object_id: ObjectID) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_object_name(self, object_id: bytes) -> bytes:
+    def get_object_name(self, object_id: ObjectID) -> bytes:
         raise NotImplementedError()
 
 

@@ -6,7 +6,7 @@ import signal
 import uuid
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, cast
 
 import tblib.pickling_support
 import zmq
@@ -23,7 +23,8 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.mixins import Message
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.object_utility import generate_object_id, generate_serializer_object_id, serialize_failure
+from scaler.utility.object_id import ObjectID
+from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
 
@@ -179,12 +180,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._object_cache.add_object(task.source, object_id, object_content)
 
     @staticmethod
-    def __get_required_object_ids_for_task(task: Task) -> List[bytes]:
-        serializer_id = generate_serializer_object_id(task.source)
-        object_ids = [serializer_id, task.func_object_id]
-        object_ids.extend(
-            [argument.data for argument in task.function_args if argument.type == Task.Argument.ArgumentType.ObjectID]
-        )
+    def __get_required_object_ids_for_task(task: Task) -> List[ObjectID]:
+        serializer_id = ObjectID.generate_serializer_object_id(task.source)
+        object_ids = [
+            serializer_id,
+            task.func_object_id,
+            *(argument.object_id for argument in task.function_args if isinstance(argument, Task.ObjectArgument))
+        ]
         return object_ids
 
     def __process_task(self, task: Task):
@@ -192,7 +194,10 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             function = self._object_cache.get_object(task.func_object_id)
             function_with_logger = self.__get_object_with_client_logger(DUMMY_CLIENT, function)
 
-            args = [self._object_cache.get_object(arg.data) for arg in task.function_args]
+            args = [
+                self._object_cache.get_object(cast(Task.ObjectArgument, arg).object_id)
+                for arg in task.function_args
+            ]
 
             with self.__processor_context():
                 result = function_with_logger(*args)
@@ -236,9 +241,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __send_result(self, source: bytes, task_id: bytes, status: TaskStatus, result_bytes: bytes):
         self._current_task = None
 
-        # use uuid to avoid object_id collision, each result object_id is unique, even it's the same object across
-        # clients
-        result_object_id = generate_object_id(source, uuid.uuid4().bytes)
+        result_object_id = ObjectID.generate_unique_object_id(source)
 
         self._connector_storage.set_object(result_object_id, result_bytes)
         self._connector_agent.send(
@@ -248,11 +251,13 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
                 ObjectMetadata.new_msg(
                     (result_object_id,),
                     (ObjectMetadata.ObjectContentType.Object,),
-                    (f"<res {result_object_id.hex()[:6]}>".encode(),),
+                    (f"<res {repr(result_object_id)}>".encode(),),
                 ),
             )
         )
-        self._connector_agent.send(TaskResult.new_msg(task_id, status, metadata=b"", results=[result_object_id]))
+        self._connector_agent.send(
+            TaskResult.new_msg(task_id, status, metadata=b"", results=[result_object_id.bytes()])
+        )
 
     @staticmethod
     def __set_current_processor(context: Optional["Processor"]) -> Token:
@@ -273,6 +278,6 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __register_signal(signal_name: str, handler: Callable) -> None:
         signal_instance = getattr(signal, signal_name, None)
         if signal_instance is None:
-            raise RuntimeError(f"unsupported platform, signal not availaible: {signal_name}.")
+            raise RuntimeError(f"unsupported platform, signal not available: {signal_name}.")
 
         signal.signal(signal_instance, handler)

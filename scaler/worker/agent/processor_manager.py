@@ -19,7 +19,8 @@ from scaler.protocol.python.message import (
 )
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.metadata.profile_result import ProfileResult
-from scaler.utility.object_utility import generate_object_id, serialize_failure
+from scaler.utility.object_id import ObjectID
+from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, ProfilingManager, TaskManager
 from scaler.worker.agent.processor_holder import ProcessorHolder
@@ -163,7 +164,7 @@ class VanillaProcessorManager(ProcessorManager):
             source = task.source
             task_id = task.task_id
 
-            result_object_id = generate_object_id(source, uuid.uuid4().bytes)
+            result_object_id = ObjectID.generate_unique_object_id(source)
             result_object_bytes = serialize_failure(ProcessorDiedError(f"{process_status=}"))
 
             await self._connector_storage.set_object(result_object_id, result_object_bytes)
@@ -176,7 +177,7 @@ class VanillaProcessorManager(ProcessorManager):
             )
 
             await self._task_manager.on_task_result(
-                TaskResult.new_msg(task_id, TaskStatus.Failed, profile_result.serialize(), [result_object_id])
+                TaskResult.new_msg(task_id, TaskStatus.Failed, profile_result.serialize(), [result_object_id.bytes()])
             )
 
     async def on_suspend_task(self, task_id: bytes) -> bool:

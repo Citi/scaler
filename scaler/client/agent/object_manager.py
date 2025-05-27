@@ -30,7 +30,7 @@ class ClientObjectManager(ObjectManager):
             await self.clear_all_objects(clear_serializer=False)
 
     def on_task_result(self, task_result: TaskResult):
-        self._sent_object_ids.update(task_result.results)
+        self._sent_object_ids.update((ObjectID(object_id_bytes) for object_id_bytes in task_result.results))
 
     async def clear_all_objects(self, clear_serializer):
         cleared_object_ids = self._sent_object_ids.copy()

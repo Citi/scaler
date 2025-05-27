@@ -13,16 +13,17 @@ from scaler.scheduler.config import ObjectStorageConfig
 from scaler.scheduler.mixins import ClientManager, ObjectManager, WorkerManager
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
 from scaler.utility.mixins import Looper, Reporter
+from scaler.utility.object_id import ObjectID
 
 
 @dataclasses.dataclass
 class _ObjectCreation(ObjectUsage):
-    object_id: bytes
+    object_id: ObjectID
     object_creator: bytes
     object_type: ObjectMetadata.ObjectContentType
     object_name: bytes
 
-    def get_object_key(self) -> bytes:
+    def get_object_key(self) -> ObjectID:
         return self.object_id
 
 
@@ -30,11 +31,11 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
     def __init__(self, object_storage_config: ObjectStorageConfig):
         self._object_storage_config = object_storage_config
 
-        self._object_tracker: ObjectTracker[bytes, _ObjectCreation] = ObjectTracker(
+        self._object_tracker: ObjectTracker[bytes, ObjectID, _ObjectCreation] = ObjectTracker(
             "object_usage", self.__finished_object_storage
         )
 
-        self._queue_deleted_object_ids: Queue[bytes] = Queue()
+        self._queue_deleted_object_ids: Queue[ObjectID] = Queue()
 
         self._binder: Optional[AsyncBinder] = None
         self._binder_monitor: Optional[AsyncConnector] = None
@@ -74,7 +75,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
     def on_add_object(
         self,
         object_user: bytes,
-        object_id: bytes,
+        object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
     ):
@@ -83,13 +84,13 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             f"add object cache "
             f"object_name={creation.object_name!r}, "
             f"object_type={creation.object_type}, "
-            f"object_id={creation.object_id.hex()}"
+            f"object_id={creation.object_id!r}"
         )
 
         self._object_tracker.add_object(creation)
         self._object_tracker.add_blocks_for_one_object(creation.get_object_key(), {creation.object_creator})
 
-    def on_del_objects(self, object_user: bytes, object_ids: Set[bytes]):
+    def on_del_objects(self, object_user: bytes, object_ids: Set[ObjectID]):
         for object_id in object_ids:
             self._object_tracker.remove_one_block_for_objects({object_id}, object_user)
 
@@ -99,10 +100,10 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
     async def routine(self):
         await self.__routine_send_objects_deletions()
 
-    def has_object(self, object_id: bytes) -> bool:
+    def has_object(self, object_id: ObjectID) -> bool:
         return self._object_tracker.has_object(object_id)
 
-    def get_object_name(self, object_id: bytes) -> bytes:
+    def get_object_name(self, object_id: ObjectID) -> bytes:
         if not self.has_object(object_id):
             return b"<Unknown>"
 
@@ -148,6 +149,6 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         logging.debug(
             f"del object cache "
             f"object_name={creation.object_name!r}, "
-            f"object_id={creation.object_id.hex()}, "
+            f"object_id={creation.object_id!r}, "
         )
         self._queue_deleted_object_ids.put_nowait(creation.object_id)

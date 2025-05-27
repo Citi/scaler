@@ -69,7 +69,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
             logging.error(f"cannot find task_id={task_cancel.task_id.hex()} in task workers")
             return
 
-        await self._binder.send(worker, TaskCancel.new_msg(task_cancel.task_id))
+        await self._binder.send(worker, task_cancel)
 
     async def on_task_result(self, task_result: TaskResult):
         worker = self._allocator.remove_task(task_result.task_id)

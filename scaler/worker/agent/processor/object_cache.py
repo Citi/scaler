@@ -13,7 +13,7 @@ import psutil
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS
 from scaler.utility.exceptions import DeserializeObjectError
-from scaler.utility.object_utility import generate_serializer_object_id, is_object_id_serializer
+from scaler.utility.object_id import ObjectID
 
 
 class ObjectCache(threading.Thread):
@@ -26,8 +26,8 @@ class ObjectCache(threading.Thread):
         self._previous_garbage_collect_time = time.time()
         self._trim_memory_threshold_bytes = trim_memory_threshold_bytes
 
-        self._cached_objects: Dict[bytes, Any] = {}
-        self._cached_objects_alive_since: Dict[bytes, float] = dict()
+        self._cached_objects: Dict[ObjectID, Any] = {}
+        self._cached_objects_alive_since: Dict[ObjectID, float] = dict()
         self._process = psutil.Process(multiprocessing.current_process().pid)
         self._libc = ctypes.cdll.LoadLibrary("libc.{}".format("so.6" if platform.uname()[0] != "Darwin" else "dylib"))
 
@@ -52,31 +52,29 @@ class ObjectCache(threading.Thread):
     def deserialize(self, client: bytes, payload: bytes) -> Any:
         return self.get_serializer(client).deserialize(payload)
 
-    def add_object(self, client: bytes, object_id: bytes, object_bytes: bytes) -> None:
-        if is_object_id_serializer(object_id):
-            self.add_serializer(object_id, cloudpickle.loads(object_bytes))
+    def add_object(self, client: bytes, object_id: ObjectID, object_bytes: bytes) -> None:
+
+        if object_id.is_serializer():
+            self.add_serializer(client, cloudpickle.loads(object_bytes))
         else:
             try:
                 deserialized = self.deserialize(client, object_bytes)
             except Exception:  # noqa
-                logging.exception(
-                    f"failed to deserialize received object_id={object_id.hex()}, "
-                    f"length={len(object_bytes)}"
-                )
+                logging.exception(f"failed to deserialize received {object_id!r}, length={len(object_bytes)}")
 
             self._cached_objects[object_id] = deserialized
             self._cached_objects_alive_since[object_id] = time.time()
 
-    def del_object(self, object_id: bytes):
+    def del_object(self, object_id: ObjectID):
         self._cached_objects_alive_since.pop(object_id, None)
         self._cached_objects.pop(object_id, None)
 
-    def has_object(self, object_id: bytes):
+    def has_object(self, object_id: ObjectID):
         return object_id in self._cached_objects or object_id in self._serializers
 
-    def get_object(self, object_id: bytes) -> Optional[Any]:
+    def get_object(self, object_id: ObjectID) -> Optional[Any]:
         if object_id not in self._cached_objects:
-            raise ValueError(f"cannot get object for object_id={object_id.hex()}")
+            raise ValueError(f"cannot get object for {object_id!r}")
 
         obj = self._cached_objects[object_id]
 
@@ -84,11 +82,12 @@ class ObjectCache(threading.Thread):
         return obj
 
     def get_serializer(self, client: bytes) -> Serializer:
-        serializer_id = generate_serializer_object_id(client)
-        if serializer_id not in self._serializers:
+        serializer = self._serializers.get(client)
+
+        if serializer is None:
             raise DeserializeObjectError(f"cannot get serializer for client={client.hex()}")
 
-        return self._serializers[serializer_id]
+        return serializer
 
     def __clean_memory(self):
         if time.time() - self._previous_garbage_collect_time < self._garbage_collect_interval_seconds:

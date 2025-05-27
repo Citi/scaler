@@ -1,3 +1,4 @@
+import abc
 import dataclasses
 import enum
 import os
@@ -17,20 +18,37 @@ from scaler.protocol.python.status import (
     TaskManagerStatus,
     WorkerManagerStatus,
 )
+from scaler.utility.object_id import ObjectID
 
 
 class Task(Message):
-    @dataclasses.dataclass
-    class Argument:
-        type: "ArgumentType"
-        data: bytes
+    class Argument(metaclass=abc.ABCMeta):
+        @abc.abstractmethod
+        def to_capnp(self) -> _message.Task.Argument:
+            raise NotImplementedError()
 
-        def __repr__(self):
-            return f"Argument(type={self.type}, data={self.data.hex()})"
+    @dataclasses.dataclass(frozen=True)
+    class TaskArgument(Argument):
+        task_id: bytes
 
-        class ArgumentType(enum.Enum):
-            Task = _message.Task.Argument.ArgumentType.task
-            ObjectID = _message.Task.Argument.ArgumentType.objectID
+        def to_capnp(self) -> _message.Task.Argument:
+            return _message.Task.Argument(type=_message.Task.Argument.ArgumentType.task, data=self.task_id)
+
+        def __repr__(self) -> str:
+            return f"TaskArgument({self.task_id.hex()})"
+
+    @dataclasses.dataclass(frozen=True)
+    class ObjectArgument(Argument):
+        object_id: ObjectID
+
+        def to_capnp(self) -> _message.Task.Argument:
+            return _message.Task.Argument(
+                type=_message.Task.Argument.ArgumentType.objectID,
+                data=self.object_id.bytes()
+            )
+
+        def __repr__(self) -> str:
+            return f"ObjectArgument({repr(self.object_id)})"
 
     def __init__(self, msg):
         super().__init__(msg)
@@ -38,7 +56,7 @@ class Task(Message):
     def __repr__(self):
         return (
             f"Task(task_id={self.task_id.hex()}, source={self.source.hex()}, metadata={self.metadata.hex()},"
-            f"func_object_id={self.func_object_id.hex()}, function_args={self.function_args})"
+            f"func_object_id={repr(self.func_object_id)}, function_args={self.function_args})"
         )
 
     @property
@@ -54,29 +72,40 @@ class Task(Message):
         return self._msg.metadata
 
     @property
-    def func_object_id(self) -> bytes:
-        return self._msg.funcObjectId
+    def func_object_id(self) -> Optional[ObjectID]:
+        if len(self._msg.funcObjectId) > 0:
+            return ObjectID(self._msg.funcObjectId)
+        else:
+            return None
 
     @property
     def function_args(self) -> List[Argument]:
-        return [
-            Task.Argument(type=Task.Argument.ArgumentType(arg.type.raw), data=arg.data)
-            for arg in self._msg.functionArgs
-        ]
+        return [self._from_capnp_task_argument(arg) for arg in self._msg.functionArgs]
 
     @staticmethod
     def new_msg(
-        task_id: bytes, source: bytes, metadata: bytes, func_object_id: bytes, function_args: List[Argument]
+        task_id: bytes,
+        source: bytes,
+        metadata: bytes,
+        func_object_id: Optional[ObjectID],
+        function_args: List[Argument],
     ) -> "Task":
         return Task(
             _message.Task(
                 taskId=task_id,
                 source=source,
                 metadata=metadata,
-                funcObjectId=func_object_id,
-                functionArgs=[_message.Task.Argument(type=arg.type.value, data=arg.data) for arg in function_args],
+                funcObjectId=func_object_id.bytes() if func_object_id is not None else b"",
+                functionArgs=[arg.to_capnp() for arg in function_args],
             )
         )
+
+    @staticmethod
+    def _from_capnp_task_argument(value: _message.Task.Argument) -> Argument:
+        if value.type.raw ==  _message.Task.Argument.ArgumentType.task:
+            return Task.TaskArgument(value.data)
+        else:
+            return Task.ObjectArgument(ObjectID(value.data))
 
 
 class TaskCancel(Message):
