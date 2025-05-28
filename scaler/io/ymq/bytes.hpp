@@ -35,6 +35,7 @@ class Bytes {
 
 public:
     // move-only
+    // TODO: make copyable
     Bytes(const Bytes&)            = delete;
     Bytes& operator=(const Bytes&) = delete;
     Bytes(Bytes&& other) noexcept: m_data(other.m_data), m_len(other.m_len), tag(other.tag) {
