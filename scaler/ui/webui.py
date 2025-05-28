@@ -54,7 +54,6 @@ def start_webui(address: str, host: str, port: int):
         with ui.tab_panel(tasklog_tab):
             tables.tasklog_section.draw_section()
             ui.timer(0.5, tables.tasklog_section.draw_section.refresh, active=True)
-            pass
 
         with ui.tab_panel(stream_tab):
             tables.task_stream_section.setup_task_stream(tables.settings_section)
@@ -63,8 +62,9 @@ def start_webui(address: str, host: str, port: int):
             tables.memory_usage_section.setup_memory_chart(tables.settings_section)
             ui.timer(0.1, tables.memory_usage_section.update_plot, active=True)
 
-        with ui.tab_panel(worker_processors_tab) as tab_handler:
-            tables.worker_processors.draw_section(tab_handler)
+        with ui.tab_panel(worker_processors_tab):
+            tables.worker_processors.draw_section()
+            ui.timer(2, tables.worker_processors.draw_section.refresh, active=True)
 
         with ui.tab_panel(settings_tab):
             tables.settings_section.draw_section()
@@ -108,6 +108,7 @@ def __update_scheduler_state(data: StateScheduler, tables: Sections):
 
     for died_worker in previous_workers - current_workers:
         tables.workers_section.workers.pop(died_worker)
+        tables.worker_processors.remove_worker(died_worker)
 
     if previous_workers != current_workers:
         tables.workers_section.draw_section.refresh()
