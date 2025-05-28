@@ -24,7 +24,9 @@ class FileDescriptor {
 
 public:
     ~FileDescriptor() {
-        close(fd);
+        if (auto code = close(fd) < 0)
+            throw std::system_error(errno, std::system_category(), "Failed to close file descriptor");
+
         this->fd = -1;
     }
 
@@ -68,8 +70,16 @@ public:
         }
     }
 
-    std::optional<Errno> accept(sockaddr& addr, socklen_t& addrlen) {
-        if (::accept(fd, &addr, &addrlen) < 0) {
+    std::expected<FileDescriptor, Errno> accept(sockaddr& addr, socklen_t& addrlen) {
+        if (auto fd2 = ::accept(fd, &addr, &addrlen) < 0) {
+            return std::unexpected {errno};
+        } else {
+            return FileDescriptor(fd2);
+        }
+    }
+
+    std::optional<Errno> connect(const sockaddr& addr, socklen_t addrlen) {
+        if (::connect(fd, &addr, addrlen) < 0) {
             return errno;
         } else {
             return std::nullopt;
