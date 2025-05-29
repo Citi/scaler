@@ -36,7 +36,7 @@ class ClientAgent(threading.Thread):
     def __init__(
         self,
         identity: ClientID,
-        agent_address: ZMQConfig,
+        client_agent_address: ZMQConfig,
         scheduler_address: ZMQConfig,
         context: zmq.Context,
         future_manager: ClientFutureManager,
@@ -53,7 +53,7 @@ class ClientAgent(threading.Thread):
         self._serializer = serializer
 
         self._identity = identity
-        self._agent_address = agent_address
+        self._client_agent_address = client_agent_address
         self._scheduler_address = scheduler_address
         self._context = context
         self._storage_address: Future[ObjectStorageAddress] = Future()
@@ -65,7 +65,7 @@ class ClientAgent(threading.Thread):
             name="client_agent_internal",
             socket_type=zmq.PAIR,
             bind_or_connect="bind",
-            address=self._agent_address,
+            address=self._client_agent_address,
             callback=self.__on_receive_from_client,
             identity=None,
         )

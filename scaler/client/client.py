@@ -97,7 +97,7 @@ class Client:
         self._future_manager = ClientFutureManager(self._serializer)
         self._agent = ClientAgent(
             identity=self._identity,
-            agent_address=self._client_agent_address,
+            client_agent_address=self._client_agent_address,
             scheduler_address=ZMQConfig.from_string(address),
             context=self._context,
             future_manager=self._future_manager,
@@ -328,7 +328,7 @@ class Client:
         """
 
         # It's important to be ensure that all running futures are cancelled/finished before clearing object, or else we
-        # might end up with task indefinitely waiting on no longer existing objects.
+        # might end up with tasks indefinitely waiting on no longer existing objects.
         self._future_manager.cancel_all_futures()
 
         self._object_buffer.clear()

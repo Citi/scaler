@@ -1,7 +1,6 @@
 import asyncio
 import dataclasses
 import enum
-import uuid
 from asyncio import Queue
 from typing import Dict, List, Optional, Set, Tuple, Union
 
@@ -293,8 +292,9 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                 await self.__mark_node_done(
                     TaskResult.new_msg(
                         task_id,
-                        result_status,result_metadata,
-                        [bytes(object_id) for object_id in new_result_object_ids]
+                        result_status,
+                        result_metadata,
+                        [bytes(object_id) for object_id in new_result_object_ids],
                     )
                 )
 

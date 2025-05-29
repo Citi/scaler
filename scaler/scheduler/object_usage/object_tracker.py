@@ -12,6 +12,7 @@ class ObjectUsage(Generic[ObjectKeyType], metaclass=abc.ABCMeta):
     def get_object_key(self) -> ObjectKeyType:
         raise NotImplementedError()
 
+
 ObjectType = TypeVar("ObjectType", bound=ObjectUsage)
 
 
