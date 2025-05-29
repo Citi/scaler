@@ -25,11 +25,18 @@ struct EventLoop {
     void executeLater(Function func, Identifier identifier);
     void executeAt(TimeStamp, Function, Identifier identifier);
     void cancelExecution(Identifier identifier);
-    void registerCallbackBeforeLoop(EventManager*);
+
+    void registerEventManager(EventManager& em) {
+        backend.registerEventManager(em);
+    }
+
+    void removeEventManager(EventManager& em) {
+        backend.removeEventManager(em);
+    }
 
     InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
     TimedConcurrentQueue<FunctionType> timedExecutionQueue;
     ConcurrentQueue<FunctionType> delayedExecutionQueue;
 
-    EventLoopBackend eventLoopBackend;
+    EventLoopBackend backend;
 };

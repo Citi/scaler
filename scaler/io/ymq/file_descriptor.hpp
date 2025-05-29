@@ -47,6 +47,10 @@ public:
         return *this;
     }
 
+    bool operator==(const FileDescriptor& other) const {
+        return fd == other.fd;
+    }
+
     static std::expected<FileDescriptor, Errno> socket(int domain, int type, int protocol) {
         if (int fd = ::socket(domain, type, protocol) < 0) {
             return std::unexpected {errno};
@@ -164,8 +168,8 @@ public:
         }
     }
 
-    std::optional<Errno> epoll_ctl(int op, FileDescriptor& other, epoll_event& event) {
-        if (::epoll_ctl(fd, op, other.fd, &event) < 0) {
+    std::optional<Errno> epoll_ctl(int op, FileDescriptor& other, epoll_event* event) {
+        if (::epoll_ctl(fd, op, other.fd, event) < 0) {
             return errno;
         } else {
             return std::nullopt;
