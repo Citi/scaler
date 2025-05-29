@@ -30,6 +30,23 @@ public:
         this->fd = -1;
     }
 
+    // move-only
+    FileDescriptor(const FileDescriptor&)            = delete;
+    FileDescriptor& operator=(const FileDescriptor&) = delete;
+    FileDescriptor(FileDescriptor&& other) noexcept: fd(other.fd) {
+        other.fd = -1;  // prevent double close
+    }
+    FileDescriptor& operator=(FileDescriptor&& other) noexcept {
+        if (this != &other) {
+            if (fd >= 0) {
+                close(fd);  // close current fd
+            }
+            fd       = other.fd;
+            other.fd = -1;  // prevent double close
+        }
+        return *this;
+    }
+
     static std::expected<FileDescriptor, Errno> socket(int domain, int type, int protocol) {
         if (int fd = ::socket(domain, type, protocol) < 0) {
             return std::unexpected {errno};
