@@ -1,3 +1,4 @@
+import os
 from cffi import FFI
 
 builder = FFI()
@@ -6,8 +7,6 @@ with open("ymq/defs.h") as f:
     defs = f.read()
 
 builder.cdef(defs)
-
-import os
 
 builder.set_source(
     "cpp",
