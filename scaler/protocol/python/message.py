@@ -72,9 +72,10 @@ class Task(Message):
 
     @staticmethod
     def _from_capnp_task_argument(value: _message.Task.Argument) -> Union[ObjectID, TaskID]:
-        if value.type.raw ==  _message.Task.Argument.ArgumentType.task:
+        if value.type.raw == _message.Task.Argument.ArgumentType.task:
             return TaskID(value.data)
         else:
+            assert value.type.raw == _message.Task.Argument.ArgumentType.objectID
             return ObjectID(value.data)
 
     @staticmethod
@@ -164,7 +165,7 @@ class GraphTask(Message):
             f"GraphTask(\n"
             f"    task_id={self.task_id!r},\n"
             f"    targets=[\n"
-            f"        {',\n        '.join(repr(target) for target in self.targets)}\n"
+            f"        {', '.join(repr(target) for target in self.targets)}\n"
             f"    ]\n"
             f"    graph={self.graph!r}\n"
             f")"

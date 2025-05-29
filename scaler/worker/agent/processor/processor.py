@@ -3,7 +3,6 @@ import logging
 import multiprocessing
 import os
 import signal
-import uuid
 from contextvars import ContextVar, Token
 from multiprocessing.synchronize import Event as EventType
 from typing import Callable, List, Optional, Tuple, cast
