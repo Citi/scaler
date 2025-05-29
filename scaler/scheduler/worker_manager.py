@@ -20,6 +20,7 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.status import ProcessorStatus, Resource, WorkerManagerStatus, WorkerStatus
 from scaler.scheduler.allocators.queued import QueuedAllocator
 from scaler.scheduler.mixins import TaskManager, WorkerManager
+from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 
 UINT8_MAX = 2**8 - 1
@@ -43,10 +44,10 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         self._binder_monitor: Optional[AsyncConnector] = None
         self._task_manager: Optional[TaskManager] = None
 
-        self._worker_alive_since: Dict[bytes, Tuple[float, WorkerHeartbeat]] = dict()
+        self._worker_alive_since: Dict[WorkerID, Tuple[float, WorkerHeartbeat]] = dict()
         self._allocator = QueuedAllocator(per_worker_queue_size)
 
-        self._last_balance_advice: Dict[bytes, List[bytes]] = dict()
+        self._last_balance_advice: Dict[WorkerID, List[TaskID]] = dict()
         self._load_balance_advice_same_count = 0
 
     def register(self, binder: AsyncBinder, binder_monitor: AsyncConnector, task_manager: TaskManager):
@@ -93,9 +94,9 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
         await self._task_manager.on_task_done(task_result)
 
-    async def on_heartbeat(self, worker: bytes, info: WorkerHeartbeat):
+    async def on_heartbeat(self, worker: WorkerID, info: WorkerHeartbeat):
         if await self._allocator.add_worker(worker):
-            logging.info(f"worker {worker!r} connected")
+            logging.info(f"{worker!r} connected")
             await self._binder_monitor.send(StateWorker.new_msg(worker, b"connected"))
 
         self._worker_alive_since[worker] = (time.time(), info)
@@ -104,11 +105,11 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
             WorkerHeartbeatEcho.new_msg(object_storage_address=self._storage_address)
         )
 
-    async def on_client_shutdown(self, client: bytes):
+    async def on_client_shutdown(self, client: ClientID):
         for worker in self._allocator.get_worker_ids():
             await self.__shutdown_worker(worker)
 
-    async def on_disconnect(self, source: bytes, request: DisconnectRequest):
+    async def on_disconnect(self, source: WorkerID, request: DisconnectRequest):
         await self.__disconnect_worker(request.worker)
         await self._binder.send(source, DisconnectResponse.new_msg(request.worker))
 
@@ -127,7 +128,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
     @staticmethod
     def __worker_status_from_heartbeat(
-        worker: bytes, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
+        worker: WorkerID, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
         suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)
@@ -164,10 +165,10 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
     def has_available_worker(self) -> bool:
         return self._allocator.has_available_worker()
 
-    def get_worker_by_task_id(self, task_id: bytes) -> bytes:
+    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
         return self._allocator.get_worker_by_task_id(task_id)
 
-    def get_worker_ids(self) -> Set[bytes]:
+    def get_worker_ids(self) -> Set[WorkerID]:
         return self._allocator.get_worker_ids()
 
     async def __balance_request(self):
@@ -186,7 +187,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
         await self.__do_balance(current_advice)
 
-    async def __do_balance(self, current_advice: Dict[bytes, List[bytes]]):
+    async def __do_balance(self, current_advice: Dict[WorkerID, List[TaskID]]):
         if not current_advice:
             return
 
@@ -212,16 +213,16 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         for dead_worker in dead_workers:
             await self.__disconnect_worker(dead_worker)
 
-    async def __reroute_tasks(self, task_ids: List[bytes]):
+    async def __reroute_tasks(self, task_ids: List[TaskID]):
         for task_id in task_ids:
             await self._task_manager.on_task_reroute(task_id)
 
-    async def __disconnect_worker(self, worker: bytes):
+    async def __disconnect_worker(self, worker: WorkerID):
         """return True if disconnect worker success"""
         if worker not in self._worker_alive_since:
             return
 
-        logging.info(f"worker {worker!r} disconnected")
+        logging.info(f"{worker!r} disconnected")
         await self._binder_monitor.send(StateWorker.new_msg(worker, b"disconnected"))
         self._worker_alive_since.pop(worker)
 
@@ -232,6 +233,6 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         logging.info(f"rerouting {len(task_ids)} tasks")
         await self.__reroute_tasks(task_ids)
 
-    async def __shutdown_worker(self, worker: bytes):
+    async def __shutdown_worker(self, worker: WorkerID):
         await self._binder.send(worker, ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
         await self.__disconnect_worker(worker)

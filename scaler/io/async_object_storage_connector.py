@@ -6,7 +6,7 @@ from typing import Dict, Optional, Tuple
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
 from scaler.utility.exceptions import ObjectStorageException
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ObjectID
 
 
 class AsyncObjectStorageConnector:
@@ -85,7 +85,7 @@ class AsyncObjectStorageConnector:
         if header.response_type != ObjectResponseHeader.ObjectResponseType.GetOK:
             return
 
-        pending_get_future = self._pending_get_requests.get(header.response_id)
+        pending_get_future = self._pending_get_requests.get(header.object_id)
 
         if pending_get_future is None:
             logging.warning(f"unknown get-ok response for unrequested object_id={repr(header.object_id)}.")

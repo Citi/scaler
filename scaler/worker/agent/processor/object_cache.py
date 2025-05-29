@@ -13,14 +13,14 @@ import psutil
 from scaler.client.serializer.mixins import Serializer
 from scaler.io.config import CLEANUP_INTERVAL_SECONDS
 from scaler.utility.exceptions import DeserializeObjectError
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ClientID, ObjectID
 
 
 class ObjectCache(threading.Thread):
     def __init__(self, garbage_collect_interval_seconds: int, trim_memory_threshold_bytes: int):
         threading.Thread.__init__(self)
 
-        self._serializers: Dict[bytes, Serializer] = dict()
+        self._serializers: Dict[ClientID, Serializer] = dict()
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
         self._previous_garbage_collect_time = time.time()
@@ -43,16 +43,16 @@ class ObjectCache(threading.Thread):
     def destroy(self) -> None:
         self._stop_event.set()
 
-    def add_serializer(self, client: bytes, serializer: Serializer):
+    def add_serializer(self, client: ClientID, serializer: Serializer):
         self._serializers[client] = serializer
 
-    def serialize(self, client: bytes, obj: Any) -> bytes:
+    def serialize(self, client: ClientID, obj: Any) -> bytes:
         return self.get_serializer(client).serialize(obj)
 
-    def deserialize(self, client: bytes, payload: bytes) -> Any:
+    def deserialize(self, client: ClientID, payload: bytes) -> Any:
         return self.get_serializer(client).deserialize(payload)
 
-    def add_object(self, client: bytes, object_id: ObjectID, object_bytes: bytes) -> None:
+    def add_object(self, client: ClientID, object_id: ObjectID, object_bytes: bytes) -> None:
 
         if object_id.is_serializer():
             self.add_serializer(client, cloudpickle.loads(object_bytes))
@@ -81,11 +81,11 @@ class ObjectCache(threading.Thread):
         self._cached_objects_alive_since[object_id] = time.time()
         return obj
 
-    def get_serializer(self, client: bytes) -> Serializer:
+    def get_serializer(self, client: ClientID) -> Serializer:
         serializer = self._serializers.get(client)
 
         if serializer is None:
-            raise DeserializeObjectError(f"cannot get serializer for client={client.hex()}")
+            raise DeserializeObjectError(f"cannot get serializer for {client!r}")
 
         return serializer
 

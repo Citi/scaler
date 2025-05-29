@@ -1,6 +1,6 @@
 import dataclasses
 
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ObjectID
 
 
 @dataclasses.dataclass

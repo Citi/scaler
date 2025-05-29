@@ -3,7 +3,7 @@ import dataclasses
 import enum
 import uuid
 from asyncio import Queue
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple, Union
 
 from scaler.io.async_binder import AsyncBinder
 from scaler.io.async_connector import AsyncConnector
@@ -12,9 +12,9 @@ from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import GraphTask, GraphTaskCancel, StateGraphTask, Task, TaskCancel, TaskResult
 from scaler.scheduler.mixins import ClientManager, GraphTaskManager, ObjectManager, TaskManager
 from scaler.utility.graph.topological_sorter import TopologicalSorter
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.many_to_many_dict import ManyToManyDict
 from scaler.utility.mixins import Looper, Reporter
-from scaler.utility.object_id import ObjectID
 
 
 class _NodeTaskState(enum.Enum):
@@ -39,13 +39,13 @@ class _TaskInfo:
 
 @dataclasses.dataclass
 class _Graph:
-    target_task_ids: List[bytes]
+    target_task_ids: List[TaskID]
     sorter: TopologicalSorter
-    tasks: Dict[bytes, _TaskInfo]
-    depended_task_id_to_task_id: ManyToManyDict[bytes, bytes]
-    client: bytes
+    tasks: Dict[TaskID, _TaskInfo]
+    depended_task_id_to_task_id: ManyToManyDict[TaskID, TaskID]
+    client: ClientID
     status: _GraphState = dataclasses.field(default=_GraphState.Running)
-    running_task_ids: Set[bytes] = dataclasses.field(default_factory=set)
+    running_task_ids: Set[TaskID] = dataclasses.field(default_factory=set)
 
 
 class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
@@ -80,8 +80,8 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
         self._unassigned: Queue = Queue()
 
-        self._graph_task_id_to_graph: Dict[bytes, _Graph] = dict()
-        self._task_id_to_graph_task_id: Dict[bytes, bytes] = dict()
+        self._graph_task_id_to_graph: Dict[TaskID, _Graph] = dict()
+        self._task_id_to_graph_task_id: Dict[TaskID, TaskID] = dict()
 
     def register(
         self,
@@ -99,10 +99,10 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         self._task_manager = task_manager
         self._object_manager = object_manager
 
-    async def on_graph_task(self, client: bytes, graph_task: GraphTask):
+    async def on_graph_task(self, client: ClientID, graph_task: GraphTask):
         await self._unassigned.put((client, graph_task))
 
-    async def on_graph_task_cancel(self, client: bytes, graph_task_cancel: GraphTaskCancel):
+    async def on_graph_task_cancel(self, client: ClientID, graph_task_cancel: GraphTaskCancel):
         if graph_task_cancel.task_id not in self._graph_task_id_to_graph:
             await self._binder.send(client, TaskResult.new_msg(graph_task_cancel.task_id, TaskStatus.NotFound))
             return
@@ -129,7 +129,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         assert result.status != TaskStatus.Success
         await self.__cancel_one_graph(graph_task_id, result)
 
-    def is_graph_sub_task(self, task_id: bytes):
+    def is_graph_sub_task(self, task_id: TaskID):
         return task_id in self._task_id_to_graph_task_id
 
     async def routine(self):
@@ -139,18 +139,18 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     def get_status(self) -> Dict:
         return {"graph_manager": {"unassigned": self._unassigned.qsize()}}
 
-    async def __add_new_graph(self, client: bytes, graph_task: GraphTask):
+    async def __add_new_graph(self, client: ClientID, graph_task: GraphTask):
         graph = {}
 
         self._client_manager.on_task_begin(client, graph_task.task_id)
 
         tasks = dict()
-        depended_task_id_to_task_id: ManyToManyDict[bytes, bytes] = ManyToManyDict()
+        depended_task_id_to_task_id: ManyToManyDict[TaskID, TaskID] = ManyToManyDict()
         for task in graph_task.graph:
             self._task_id_to_graph_task_id[task.task_id] = graph_task.task_id
             tasks[task.task_id] = _TaskInfo(_NodeTaskState.Inactive, task)
 
-            required_task_ids = {arg.task_id for arg in task.function_args if isinstance(arg, Task.TaskArgument)}
+            required_task_ids = {arg for arg in task.function_args if isinstance(arg, TaskID)}
             for required_task_id in required_task_ids:
                 depended_task_id_to_task_id.add(required_task_id, task.task_id)
 
@@ -177,7 +177,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         )
         await self.__check_one_graph(graph_task.task_id)
 
-    async def __check_one_graph(self, graph_task_id: bytes):
+    async def __check_one_graph(self, graph_task_id: TaskID):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         if not graph_info.sorter.is_active():
             await self.__finish_one_graph(graph_task_id, TaskStatus.Success)
@@ -232,7 +232,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         if result.task_id in graph_info.target_task_ids:
             await self._binder.send(graph_info.client, result)
 
-    async def __cancel_one_graph(self, graph_task_id: bytes, result: TaskResult):
+    async def __cancel_one_graph(self, graph_task_id: TaskID, result: TaskResult):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         graph_info.status = _GraphState.Canceling
 
@@ -254,7 +254,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
     async def __clean_all_running_nodes(
         self,
-        graph_task_id: bytes,
+        graph_task_id: TaskID,
         result_status: TaskStatus,
         result_metadata: bytes,
         result_objects: List[Tuple[ObjectID, bytes]],
@@ -272,13 +272,13 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                     task_id,
                     result_status,
                     result_metadata,
-                    [object_id.bytes() for object_id in new_result_object_ids]
+                    [bytes(object_id) for object_id in new_result_object_ids]
                 )
             )
 
     async def __clean_all_inactive_nodes(
         self,
-        graph_task_id: bytes,
+        graph_task_id: TaskID,
         result_status: TaskStatus,
         result_metadata: bytes,
         result_objects: List[Tuple[ObjectID, bytes]],
@@ -294,53 +294,55 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
                     TaskResult.new_msg(
                         task_id,
                         result_status,result_metadata,
-                        [object_id.bytes() for object_id in new_result_object_ids]
+                        [bytes(object_id) for object_id in new_result_object_ids]
                     )
                 )
 
-    async def __finish_one_graph(self, graph_task_id: bytes, result_status: TaskStatus):
+    async def __finish_one_graph(self, graph_task_id: TaskID, result_status: TaskStatus):
         self._client_manager.on_task_finish(graph_task_id)
         info = self._graph_task_id_to_graph.pop(graph_task_id)
         await self._binder.send(info.client, TaskResult.new_msg(graph_task_id, result_status, metadata=b""))
 
-    def __is_graph_finished(self, graph_task_id: bytes):
+    def __is_graph_finished(self, graph_task_id: TaskID):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         return not graph_info.sorter.is_active() and not graph_info.running_task_ids
 
-    def __get_argument_object(self, graph_task_id: bytes, argument: Task.Argument) -> Task.ObjectArgument:
-        if isinstance(argument, Task.ObjectArgument):
+    def __get_argument_object(self, graph_task_id: TaskID, argument: Union[TaskID, ObjectID]) -> ObjectID:
+        if isinstance(argument, ObjectID):
             return argument
 
-        assert isinstance(argument, Task.TaskArgument)
-        argument_task_id = argument.task_id
+        assert isinstance(argument, TaskID)
 
         graph_info = self._graph_task_id_to_graph[graph_task_id]
-        task_info = graph_info.tasks[argument_task_id]
+        task_info = graph_info.tasks[argument]
 
         assert len(task_info.result_object_ids) == 1
 
-        return Task.ObjectArgument(task_info.result_object_ids[0])
+        return task_info.result_object_ids[0]
 
-    async def __clean_intermediate_result(self, graph_task_id: bytes, task_id: bytes):
+    async def __clean_intermediate_result(self, graph_task_id: TaskID, task_id: TaskID):
         graph_info = self._graph_task_id_to_graph[graph_task_id]
         task_info = graph_info.tasks[task_id]
 
         for argument in task_info.task.function_args:
-            if not isinstance(argument, Task.TaskArgument):
+            if not isinstance(argument, TaskID):
                 continue
 
-            argument_task_id = argument.task_id
-            graph_info.depended_task_id_to_task_id.remove(argument_task_id, task_id)
-            if graph_info.depended_task_id_to_task_id.has_left_key(argument_task_id):
+            graph_info.depended_task_id_to_task_id.remove(argument, task_id)
+            if graph_info.depended_task_id_to_task_id.has_left_key(argument):
                 continue
 
-            if argument_task_id in graph_info.target_task_ids:
+            if argument in graph_info.target_task_ids:
                 continue
 
             # delete intermediate results as they are not needed anymore
             self._object_manager.on_del_objects(graph_info.client, set(graph_info.tasks[argument].result_object_ids))
 
-    async def __duplicate_objects(self, owner: bytes, result_objects: List[Tuple[ObjectID, bytes]]) -> List[ObjectID]:
+    async def __duplicate_objects(
+        self,
+        owner: ClientID,
+        result_objects: List[Tuple[ObjectID, bytes]]
+    ) -> List[ObjectID]:
         new_result_object_ids = [ObjectID.generate_unique_object_id(owner) for _ in result_objects]
 
         futures = [
@@ -353,7 +355,13 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
 
         return new_result_object_ids
 
-    async def __duplicate_object(self, owner: bytes, object_id: ObjectID, object_name: bytes, new_object_id: ObjectID):
+    async def __duplicate_object(
+        self,
+        owner: ClientID,
+        object_id: ObjectID,
+        object_name: bytes,
+        new_object_id: ObjectID
+    ):
         object_payload = await self._connector_storage.get_object(object_id)
         await self._connector_storage.set_object(new_object_id, object_payload)
 

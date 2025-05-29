@@ -13,13 +13,13 @@ from scaler.scheduler.config import ObjectStorageConfig
 from scaler.scheduler.mixins import ClientManager, ObjectManager, WorkerManager
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
 from scaler.utility.mixins import Looper, Reporter
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ClientID, ObjectID
 
 
 @dataclasses.dataclass
 class _ObjectCreation(ObjectUsage):
     object_id: ObjectID
-    object_creator: bytes
+    object_creator: ClientID
     object_type: ObjectMetadata.ObjectContentType
     object_name: bytes
 
@@ -31,7 +31,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
     def __init__(self, object_storage_config: ObjectStorageConfig):
         self._object_storage_config = object_storage_config
 
-        self._object_tracker: ObjectTracker[bytes, ObjectID, _ObjectCreation] = ObjectTracker(
+        self._object_tracker: ObjectTracker[ClientID, ObjectID, _ObjectCreation] = ObjectTracker(
             "object_usage", self.__finished_object_storage
         )
 
@@ -68,13 +68,12 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
             return
 
         logging.error(
-            f"received unknown object response type instruction_type={instruction.instruction_type} from "
-            f"source={instruction.object_user!r}"
+            f"received unknown object instruction_type={instruction.instruction_type} from {source=}"
         )
 
     def on_add_object(
         self,
-        object_user: bytes,
+        object_user: ClientID,
         object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
@@ -90,11 +89,11 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         self._object_tracker.add_object(creation)
         self._object_tracker.add_blocks_for_one_object(creation.get_object_key(), {creation.object_creator})
 
-    def on_del_objects(self, object_user: bytes, object_ids: Set[ObjectID]):
+    def on_del_objects(self, object_user: ClientID, object_ids: Set[ObjectID]):
         for object_id in object_ids:
             self._object_tracker.remove_one_block_for_objects({object_id}, object_user)
 
-    def clean_client(self, client: bytes):
+    def clean_client(self, client: ClientID):
         self._object_tracker.remove_blocks({client})
 
     async def routine(self):
@@ -125,7 +124,7 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
                 worker,
                 ObjectInstruction.new_msg(
                     ObjectInstruction.ObjectInstructionType.Delete,
-                    worker,
+                    None,
                     ObjectMetadata.new_msg(tuple(deleted_object_ids)),
                 ),
             )

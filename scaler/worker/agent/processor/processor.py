@@ -23,7 +23,7 @@ from scaler.protocol.python.message import (
 )
 from scaler.protocol.python.mixins import Message
 from scaler.utility.logging.utility import setup_logger
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
@@ -185,7 +185,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         object_ids = [
             serializer_id,
             task.func_object_id,
-            *(argument.object_id for argument in task.function_args if isinstance(argument, Task.ObjectArgument))
+            *(cast(ObjectID, argument) for argument in task.function_args),
         ]
         return object_ids
 
@@ -195,7 +195,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             function_with_logger = self.__get_object_with_client_logger(DUMMY_CLIENT, function)
 
             args = [
-                self._object_cache.get_object(cast(Task.ObjectArgument, arg).object_id)
+                self._object_cache.get_object(cast(ObjectID, arg))
                 for arg in task.function_args
             ]
 
@@ -211,9 +211,8 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self.__send_result(task.source, task.task_id, status, result_bytes)
 
-    def __get_object_with_client_logger(self, client: bytes, fn: Callable) -> Callable:
+    def __get_object_with_client_logger(self, client: ClientID, fn: Callable) -> Callable:
         assert self is not None
-        assert isinstance(client, bytes)
         return fn
 
         # if client in self._client_to_decorator:
@@ -238,7 +237,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         # self._client_to_decorator[client] = wrap
         # return wrap(fn)
 
-    def __send_result(self, source: bytes, task_id: bytes, status: TaskStatus, result_bytes: bytes):
+    def __send_result(self, source: ClientID, task_id: TaskID, status: TaskStatus, result_bytes: bytes):
         self._current_task = None
 
         result_object_id = ObjectID.generate_unique_object_id(source)
@@ -256,7 +255,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
             )
         )
         self._connector_agent.send(
-            TaskResult.new_msg(task_id, status, metadata=b"", results=[result_object_id.bytes()])
+            TaskResult.new_msg(task_id, status, metadata=b"", results=[bytes(result_object_id)])
         )
 
     @staticmethod

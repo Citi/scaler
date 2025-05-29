@@ -14,8 +14,8 @@ from scaler.protocol.python.message import (
     TaskResult,
     WorkerHeartbeat,
 )
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.mixins import Reporter
-from scaler.utility.object_id import ObjectID
 
 
 class ObjectManager(Reporter):
@@ -26,7 +26,7 @@ class ObjectManager(Reporter):
     @abc.abstractmethod
     def on_add_object(
         self,
-        object_user: bytes,
+        object_user: ClientID,
         object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
@@ -34,11 +34,11 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_del_objects(self, task_id: bytes, object_ids: Set[ObjectID]):
+    def on_del_objects(self, object_user: ClientID, object_ids: Set[ObjectID]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def clean_client(self, client: bytes):
+    def clean_client(self, client: ClientID):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -52,40 +52,40 @@ class ObjectManager(Reporter):
 
 class ClientManager(Reporter):
     @abc.abstractmethod
-    def get_client_task_ids(self, client: bytes) -> Set[bytes]:
+    def get_client_task_ids(self, client: ClientID) -> Set[TaskID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def has_client_id(self, client_id: bytes) -> bool:
+    def has_client_id(self, client_id: ClientID) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_client_id(self, task_id: bytes) -> Optional[bytes]:
+    def get_client_id(self, task_id: TaskID) -> Optional[ClientID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_begin(self, client: bytes, task_id: bytes):
+    def on_task_begin(self, client: ClientID, task_id: TaskID):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_finish(self, task_id: bytes) -> bytes:
+    def on_task_finish(self, task_id: TaskID) -> bytes:
         raise NotImplementedError()
 
-    async def on_heartbeat(self, client: bytes, info: ClientHeartbeat):
+    async def on_heartbeat(self, client: ClientID, info: ClientHeartbeat):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_disconnect(self, client: bytes, request: ClientDisconnect):
+    async def on_client_disconnect(self, client: ClientID, request: ClientDisconnect):
         raise NotImplementedError()
 
 
 class GraphTaskManager(Reporter):
     @abc.abstractmethod
-    async def on_graph_task(self, client: bytes, graph_task: GraphTask):
+    async def on_graph_task(self, client: ClientID, graph_task: GraphTask):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_graph_task_cancel(self, client: bytes, graph_task_cancel: GraphTaskCancel):
+    async def on_graph_task_cancel(self, client: ClientID, graph_task_cancel: GraphTaskCancel):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -93,17 +93,17 @@ class GraphTaskManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def is_graph_sub_task(self, task_id: bytes):
+    def is_graph_sub_task(self, task_id: TaskID) -> bool:
         raise NotImplementedError()
 
 
 class TaskManager(Reporter):
     @abc.abstractmethod
-    async def on_task_new(self, client: bytes, task: Task):
+    async def on_task_new(self, client: ClientID, task: Task):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_cancel(self, client: bytes, task_cancel: TaskCancel):
+    async def on_task_cancel(self, client: ClientID, task_cancel: TaskCancel):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -111,7 +111,7 @@ class TaskManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_reroute(self, task_id: bytes):
+    async def on_task_reroute(self, task_id: TaskID):
         raise NotImplementedError()
 
 
@@ -129,15 +129,15 @@ class WorkerManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_heartbeat(self, worker: bytes, info: WorkerHeartbeat):
+    async def on_heartbeat(self, worker: WorkerID, info: WorkerHeartbeat):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_shutdown(self, client: bytes):
+    async def on_client_shutdown(self, client: ClientID):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_disconnect(self, source: bytes, request: DisconnectRequest):
+    async def on_disconnect(self, source: WorkerID, request: DisconnectRequest):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -145,9 +145,9 @@ class WorkerManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_worker_by_task_id(self, task_id: bytes) -> bytes:
+    def get_worker_by_task_id(self, task_id: TaskID) -> WorkerID:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def get_worker_ids(self) -> Set[bytes]:
+    def get_worker_ids(self) -> Set[WorkerID]:
         raise NotImplementedError()

@@ -26,6 +26,7 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.mixins import Message
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop
 from scaler.utility.exceptions import ClientShutdownException
+from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
@@ -58,6 +59,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._address = address
         self._io_threads = io_threads
 
+        self._ident = WorkerID.generate_unique_worker_id(name)  # _identity is internal to multiprocessing.Process
+
         self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
         self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)
 
@@ -81,8 +84,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._processor_manager: Optional[VanillaProcessorManager] = None
 
     @property
-    def identity(self):
-        return self._connector_external.identity
+    def identity(self) -> WorkerID:
+        return self._ident
 
     def run(self) -> None:
         self.__initialize()
@@ -100,11 +103,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             address=self._address,
             bind_or_connect="connect",
             callback=self.__on_receive_external,
-            identity=None,
+            identity=self._ident,
         )
 
         self._binder_internal = AsyncBinder(
-            context=self._context, name=self.name, address=self._address_internal, identity=None
+            context=self._context, name=self.name, address=self._address_internal, identity=self._ident
         )
         self._binder_internal.register(self.__on_receive_internal)
 
@@ -115,6 +118,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_manager = VanillaTaskManager(task_timeout_seconds=self._task_timeout_seconds)
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
         self._processor_manager = VanillaProcessorManager(
+            identity=self._ident,
             event_loop=self._event_loop,
             address_internal=self._address_internal,
             garbage_collect_interval_seconds=self._garbage_collect_interval_seconds,
@@ -171,7 +175,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         raise TypeError(f"Unknown {message=}")
 
-    async def __on_receive_internal(self, processor_id: bytes, message: Message):
+    async def __on_receive_internal(self, processor_id_bytes: bytes, message: Message):
+        processor_id = ProcessorID(processor_id_bytes)
+
         if isinstance(message, ProcessorInitialized):
             await self._processor_manager.on_processor_initialized(processor_id, message)
             return
@@ -184,7 +190,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             await self._processor_manager.on_task_result(processor_id, message)
             return
 
-        raise TypeError(f"Unknown message from {processor_id=}: {message}")
+        raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
     async def __get_loops(self):
         try:
@@ -201,18 +207,18 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         except asyncio.CancelledError:
             pass
         except (ClientShutdownException, TimeoutError) as e:
-            logging.info(f"Worker[{self.pid}]: {str(e)}")
+            logging.info(f"{self.identity!r}: {str(e)}")
         except Exception as e:
-            logging.exception(f"Worker[{self.pid}]: failed with unhandled exception:\n{(e)}")
+            logging.exception(f"{self.identity!r}: failed with unhandled exception:\n{(e)}")
 
-        await self._connector_external.send(DisconnectRequest.new_msg(self._connector_external.identity))
+        await self._connector_external.send(DisconnectRequest.new_msg(self.identity))
 
         self._connector_external.destroy()
         self._processor_manager.destroy("quitted")
         self._binder_internal.destroy()
         os.remove(self._address_path_internal)
 
-        logging.info(f"Worker[{self.pid}]: quitted")
+        logging.info(f"{self.identity!r}: quitted")
 
     def __run_forever(self):
         self._loop.run_until_complete(self._task)

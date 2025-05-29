@@ -5,6 +5,7 @@ from typing import Optional
 import psutil
 
 from scaler.io.async_connector import AsyncConnector
+from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.utility.mixins import Looper
@@ -23,15 +24,17 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = 0
         self._latency_us = 0
 
-        self._storage_address: asyncio.Future[ObjectStorageAddress] = asyncio.Future()
+        self._storage_address: Optional[ObjectStorageAddress] = None
 
     def register(
         self,
         connector_external: AsyncConnector,
+        connector_storage: AsyncObjectStorageConnector,
         worker_task_manager: SymphonyTaskManager,
         timeout_manager: TimeoutManager,
     ):
         self._connector_external = connector_external
+        self._connector_storage = connector_storage
         self._worker_task_manager = worker_task_manager
         self._timeout_manager = timeout_manager
 
@@ -44,14 +47,12 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = 0
         self._timeout_manager.update_last_seen_time()
 
-        if self._storage_address.done():
-            return
+        if not self._connector_storage.is_connected():
+            self._storage_address = heartbeat.object_storage_address()
+            await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
 
-        self._storage_address.set_result(heartbeat.object_storage_address())
-
-    async def get_storage_address(self) -> ObjectStorageAddress:
-        """Returns the object storage configuration, or block until it receives it."""
-        return await self._storage_address
+    def get_storage_address(self) -> ObjectStorageAddress:
+        return self._storage_address
 
     async def routine(self):
         if self._start_timestamp_ns != 0:
