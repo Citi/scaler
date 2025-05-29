@@ -9,7 +9,7 @@ from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ClientID, ObjectID
 
 
 @dataclasses.dataclass
@@ -23,7 +23,7 @@ class ObjectCache:
 class ObjectBuffer:
     def __init__(
         self,
-        identity: bytes,
+        identity: ClientID,
         serializer: Serializer,
         connector_agent: SyncConnector,
         connector_storage: SyncObjectStorageConnector,
@@ -63,8 +63,7 @@ class ObjectBuffer:
         )
 
         for obj_cache in self._pending_objects:
-            is_overridden = self._connector_storage.set_object(obj_cache.object_id, obj_cache.object_payload)
-            assert not is_overridden
+            self._connector_storage.set_object(obj_cache.object_id, obj_cache.object_payload)
 
         self._pending_objects.clear()
 

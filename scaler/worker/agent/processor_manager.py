@@ -19,7 +19,7 @@ from scaler.protocol.python.message import (
 )
 from scaler.utility.exceptions import ProcessorDiedError
 from scaler.utility.metadata.profile_result import ProfileResult
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ObjectID, ProcessorID, TaskID, WorkerID
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.mixins import HeartbeatManager, ProcessorManager, ProfilingManager, TaskManager
@@ -29,6 +29,7 @@ from scaler.worker.agent.processor_holder import ProcessorHolder
 class VanillaProcessorManager(ProcessorManager):
     def __init__(
         self,
+        identity: WorkerID,
         event_loop: str,
         address_internal: ZMQConfig,
         garbage_collect_interval_seconds: int,
@@ -39,6 +40,7 @@ class VanillaProcessorManager(ProcessorManager):
     ):
         tblib.pickling_support.install()
 
+        self._identity = identity
         self._event_loop = event_loop
 
         self._garbage_collect_interval_seconds = garbage_collect_interval_seconds
@@ -57,7 +59,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._current_holder: Optional[ProcessorHolder] = None
         self._suspended_holders_by_task_id: Dict[bytes, ProcessorHolder] = {}
-        self._holders_by_processor_id: Dict[bytes, ProcessorHolder] = {}
+        self._holders_by_processor_id: Dict[ProcessorID, ProcessorHolder] = {}
 
         self._can_accept_task_lock: asyncio.Lock = asyncio.Lock()
 
@@ -98,7 +100,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         await self._can_accept_task_lock.acquire()
 
-    async def on_processor_initialized(self, processor_id: bytes, processor_initialized: ProcessorInitialized):
+    async def on_processor_initialized(self, processor_id: ProcessorID, processor_initialized: ProcessorInitialized):
         assert self._current_holder is not None
 
         if self._current_holder.initialized():
@@ -124,7 +126,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         return True
 
-    async def on_cancel_task(self, task_id: bytes) -> Optional[Task]:
+    async def on_cancel_task(self, task_id: TaskID) -> Optional[Task]:
         assert self._current_holder is not None
 
         if self.current_task_id() == task_id:
@@ -140,7 +142,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         return None
 
-    async def on_failing_processor(self, processor_id: bytes, process_status: str):
+    async def on_failing_processor(self, processor_id: ProcessorID, process_status: str):
         assert self._current_holder is not None
 
         holder = self._holders_by_processor_id.get(processor_id)
@@ -177,10 +179,10 @@ class VanillaProcessorManager(ProcessorManager):
             )
 
             await self._task_manager.on_task_result(
-                TaskResult.new_msg(task_id, TaskStatus.Failed, profile_result.serialize(), [result_object_id.bytes()])
+                TaskResult.new_msg(task_id, TaskStatus.Failed, profile_result.serialize(), [bytes(result_object_id)])
             )
 
-    async def on_suspend_task(self, task_id: bytes) -> bool:
+    async def on_suspend_task(self, task_id: TaskID) -> bool:
         assert self._current_holder is not None
         holder = self._current_holder
 
@@ -192,13 +194,13 @@ class VanillaProcessorManager(ProcessorManager):
         holder.suspend()
         self._suspended_holders_by_task_id[task_id] = holder
 
-        logging.info(f"Worker[{os.getpid()}]: suspend Processor[{holder.pid()}]")
+        logging.info(f"{self._identity!r}: suspend Processor[{holder.pid()}]")
 
         self.__start_new_processor()
 
         return True
 
-    def on_resume_task(self, task_id: bytes) -> bool:
+    def on_resume_task(self, task_id: TaskID) -> bool:
         assert self._can_accept_task_lock.locked()
         assert self.current_processor_is_initialized()
 
@@ -215,11 +217,11 @@ class VanillaProcessorManager(ProcessorManager):
         self._current_holder = suspended_holder
         suspended_holder.resume()
 
-        logging.info(f"Worker[{os.getpid()}]: resume Processor[{self._current_holder.pid()}]")
+        logging.info(f"{self._identity!r}: resume Processor[{self._current_holder.pid()}]")
 
         return True
 
-    async def on_task_result(self, processor_id: bytes, task_result: TaskResult):
+    async def on_task_result(self, processor_id: ProcessorID, task_result: TaskResult):
         assert self._current_holder is not None
         task_id = task_result.task_id
 
@@ -261,7 +263,7 @@ class VanillaProcessorManager(ProcessorManager):
         for processor_id in self._holders_by_processor_id.keys():
             await self._binder_internal.send(processor_id, instruction)
 
-    async def on_internal_object_instruction(self, processor_id: bytes, instruction: ObjectInstruction):
+    async def on_internal_object_instruction(self, processor_id: ProcessorID, instruction: ObjectInstruction):
         if not self.__processor_ready_to_process_object(processor_id):
             return
 
@@ -282,11 +284,11 @@ class VanillaProcessorManager(ProcessorManager):
 
         return self._current_holder.task()
 
-    def current_task_id(self) -> bytes:
+    def current_task_id(self) -> Optional[TaskID]:
         task = self.current_task()
 
         if task is None:
-            return b""
+            return None
         else:
             return task.task_id
 
@@ -314,7 +316,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         self._profiling_manager.on_process_start(processor_pid)
 
-        logging.info(f"Worker[{os.getpid()}]: start Processor[{processor_pid}]")
+        logging.info(f"{self._identity!r}: start Processor[{processor_pid}]")
 
     def __kill_processor(self, reason: str, holder: ProcessorHolder):
         processor_pid = holder.pid()
@@ -326,7 +328,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         holder.kill()
 
-        logging.info(f"Worker[{os.getpid()}]: stop Processor[{processor_pid}], reason: {reason}")
+        logging.info(f"{self._identity!r}: stop Processor[{processor_pid}], reason: {reason}")
 
     def __restart_current_processor(self, reason: str):
         assert self._current_holder is not None
@@ -351,7 +353,7 @@ class VanillaProcessorManager(ProcessorManager):
 
         return profile_result
 
-    def __processor_ready_to_process_object(self, processor_id: bytes) -> bool:
+    def __processor_ready_to_process_object(self, processor_id: ProcessorID) -> bool:
         holder = self._holders_by_processor_id.get(processor_id)
 
         if holder is None:

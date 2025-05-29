@@ -54,7 +54,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         assert args is not None
         logging.info(f"{self.__get_prefix()} received signal, shutting down")
         for worker in self._workers:
-            logging.info(f"{self.__get_prefix()} shutting down worker[{worker.pid}]")
+            logging.info(f"{self.__get_prefix()} shutting down {worker.identity!r}")
             os.kill(worker.pid, signal.SIGINT)
 
     def __register_signal(self):
@@ -89,7 +89,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
             worker.start()
 
         for i, worker in enumerate(self._workers):
-            logging.info(f"Worker[{worker.ident}] started")
+            logging.info(f"{worker.identity!r} started")
 
         for worker in self._workers:
             worker.join()

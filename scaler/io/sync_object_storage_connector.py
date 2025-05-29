@@ -5,7 +5,7 @@ from typing import Optional, Iterable, Tuple
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.object_storage import ObjectRequestHeader, ObjectResponseHeader
 from scaler.utility.exceptions import ObjectStorageException
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ObjectID
 
 
 class SyncObjectStorageConnector:
@@ -35,11 +35,9 @@ class SyncObjectStorageConnector:
     def address(self) -> str:
         return f"tcp://{self._host}:{self._port}"
 
-    def set_object(self, object_id: ObjectID, payload: bytes) -> bool:
+    def set_object(self, object_id: ObjectID, payload: bytes):
         """
         Sets the object's payload on the object storage server.
-
-        Returns `True` if the object data got overridden. Otherwise, returns `False`.
         """
 
         with self._socket_lock:
@@ -48,11 +46,9 @@ class SyncObjectStorageConnector:
 
         self.__ensure_response_type(
             response_header,
-            [ObjectResponseHeader.ObjectResponseType.SetOK, ObjectResponseHeader.ObjectResponseType.SetOKOverride]
+            [ObjectResponseHeader.ObjectResponseType.SetOK],
         )
         self.__ensure_empty_payload(response_payload)
-
-        return response_header.response_type == ObjectResponseHeader.ObjectResponseType.SetOKOverride
 
     def get_object(self, object_id: ObjectID, max_payload_length: int = 2**64 - 1) -> bytearray:
         """

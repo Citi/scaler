@@ -4,7 +4,7 @@ import struct
 
 from scaler.protocol.capnp._python import _object_storage  # noqa
 from scaler.protocol.python.mixins import Message
-from scaler.utility.object_id import ObjectID
+from scaler.utility.identifiers import ObjectID
 
 OBJECT_ID_FORMAT = "!QQQQ"
 
@@ -61,7 +61,6 @@ class ObjectResponseHeader(Message):
 
     class ObjectResponseType(enum.Enum):
         SetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.setOK
-        SetOKOverride = _object_storage.ObjectResponseHeader.ObjectResponseType.setOKOverride
         GetOK = _object_storage.ObjectResponseHeader.ObjectResponseType.getOK
         DelOK = _object_storage.ObjectResponseHeader.ObjectResponseType.delOK
         DelNotExists = _object_storage.ObjectResponseHeader.ObjectResponseType.delNotExists
@@ -106,7 +105,7 @@ class ObjectResponseHeader(Message):
 
 
 def _to_capnp_object_id(object_id: ObjectID) -> _object_storage.ObjectID:
-    field0, field1, field2, field3 = struct.unpack(OBJECT_ID_FORMAT, object_id.bytes())
+    field0, field1, field2, field3 = struct.unpack(OBJECT_ID_FORMAT, object_id)
 
     return _object_storage.ObjectID(field0=field0, field1=field1, field2=field2, field3=field3)
 

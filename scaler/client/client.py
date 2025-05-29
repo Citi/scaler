@@ -1,7 +1,6 @@
 import dataclasses
 import functools
 import logging
-import os
 import threading
 import uuid
 from collections import Counter
@@ -21,12 +20,12 @@ from scaler.io.config import DEFAULT_CLIENT_TIMEOUT_SECONDS, DEFAULT_HEARTBEAT_I
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
 from scaler.protocol.python.message import ClientDisconnect, ClientShutdownResponse, GraphTask, Task
-from scaler.utility.exceptions import ClientQuitException
+from scaler.utility.exceptions import ClientQuitException, MissingObjects
 from scaler.utility.graph.optimization import cull_graph
 from scaler.utility.graph.topological_sorter import TopologicalSorter
+from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.utility.metadata.task_flags import TaskFlags, retrieve_task_flags_from_task
-from scaler.utility.object_id import ObjectID
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.processor.processor import Processor
 
@@ -82,7 +81,7 @@ class Client:
         self._serializer = serializer
 
         self._profiling = profiling
-        self._identity = f"{os.getpid()}|Client|{uuid.uuid4().bytes.hex()}".encode()
+        self._identity = ClientID.generate_unique_client_id()
 
         self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
         self._scheduler_address = ZMQConfig.from_string(address)
@@ -131,7 +130,7 @@ class Client:
         )
 
     @property
-    def identity(self):
+    def identity(self) -> ClientID:
         return self._identity
 
     def __del__(self):
@@ -273,7 +272,7 @@ class Client:
                     task_id=graph_task.task_id,
                     source=self._identity,
                     metadata=b"",
-                    func_object_id=b"",
+                    func_object_id=None,
                     function_args=[],
                 ),
                 is_delayed=not block,
@@ -381,9 +380,9 @@ class Client:
             self.__destroy()
 
     def __submit(self, function_object_id: ObjectID, args: Tuple[Any, ...], delayed: bool) -> Tuple[Task, ScalerFuture]:
-        task_id = uuid.uuid1().bytes
+        task_id = TaskID.generate_unique_task_id()
 
-        object_ids = []
+        object_ids: List[Union[ObjectID, TaskID]] = []
         for arg in args:
             if isinstance(arg, ObjectReference):
                 if not self._object_buffer.is_valid_object_id(arg.object_id):
@@ -395,13 +394,12 @@ class Client:
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
-        arguments: List[Task.Argument] = [Task.ObjectArgument(object_id) for object_id in object_ids]
         task = Task.new_msg(
             task_id=task_id,
             source=self._identity,
             metadata=task_flags_bytes,
             func_object_id=function_object_id,
-            function_args=arguments,
+            function_args=object_ids,
         )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
@@ -437,9 +435,9 @@ class Client:
 
     def __split_data_and_graph(
         self, graph: Dict[str, Union[Any, Tuple[Union[Callable, str], ...]]]
-    ) -> Tuple[Dict[str, Tuple[Task.Argument, Any]], Dict[str, _CallNode]]:
+    ) -> Tuple[Dict[str, Tuple[ObjectID, Any]], Dict[str, _CallNode]]:
         call_graph = {}
-        node_name_to_argument: Dict[str, Tuple[Task.Argument, Union[Any, Tuple[Union[Callable, Any], ...]]]] = dict()
+        node_name_to_argument: Dict[str, Tuple[ObjectID, Union[Any, Tuple[Union[Callable, Any], ...]]]] = dict()
 
         for node_name, node in graph.items():
             if isinstance(node, tuple) and len(node) > 0 and callable(node[0]):
@@ -451,13 +449,13 @@ class Client:
             else:
                 object_id = self._object_buffer.buffer_send_object(node, name=node_name).object_id
 
-            node_name_to_argument[node_name] = (Task.ObjectArgument(object_id), node)
+            node_name_to_argument[node_name] = (object_id, node)
 
         return node_name_to_argument, call_graph
 
     @staticmethod
     def __check_graph(
-        node_to_argument: Dict[str, Tuple[Task.Argument, Any]], call_graph: Dict[str, _CallNode], keys: List[str]
+        node_to_argument: Dict[str, Tuple[ObjectID, Any]], call_graph: Dict[str, _CallNode], keys: List[str]
     ):
         duplicate_keys = [key for key, count in dict(Counter(keys)).items() if count > 1]
         if duplicate_keys:
@@ -481,14 +479,14 @@ class Client:
 
     def __construct_graph(
         self,
-        node_name_to_arguments: Dict[str, Tuple[Task.ObjectArgument, Any]],
+        node_name_to_arguments: Dict[str, Tuple[ObjectID, Any]],
         call_graph: Dict[str, _CallNode],
         keys: List[str],
         block: bool,
     ) -> Tuple[GraphTask, Dict[str, ScalerFuture], Dict[str, ScalerFuture]]:
-        graph_task_id = uuid.uuid1().bytes
+        graph_task_id = TaskID.generate_unique_task_id()
 
-        node_name_to_task_id: Dict[str, bytes] = {node_name: uuid.uuid1().bytes for node_name in call_graph.keys()}
+        node_name_to_task_id = {node_name: TaskID.generate_unique_task_id() for node_name in call_graph.keys()}
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
@@ -498,12 +496,12 @@ class Client:
             task_id = node_name_to_task_id[node_name]
             function_cache = self._object_buffer.buffer_send_function(node.func)
 
-            arguments: List[Task.Argument] = []
+            arguments: List[Union[TaskID, ObjectID]] = []
             for arg in node.args:
                 assert arg in call_graph or arg in node_name_to_arguments
 
                 if arg in call_graph:
-                    arguments.append(Task.TaskArgument(node_name_to_task_id[arg]))
+                    arguments.append(TaskID(node_name_to_task_id[arg]))
                 elif arg in node_name_to_arguments:
                     argument, _ = node_name_to_arguments[arg]
                     arguments.append(argument)
@@ -533,7 +531,7 @@ class Client:
                 argument, data = node_name_to_arguments[key]
                 future: ScalerFuture = self._future_factory(
                     task=Task.new_msg(
-                        task_id=uuid.uuid1().bytes,
+                        task_id=TaskID.generate_unique_task_id(),
                         source=self._identity,
                         metadata=b"",
                         func_object_id=None,

@@ -1,8 +1,6 @@
 import asyncio
 import logging
-import uuid
 from concurrent.futures import Future
-from itertools import chain
 from typing import Dict, Optional, Set, cast
 
 import cloudpickle
@@ -18,9 +16,10 @@ from scaler.protocol.python.message import (
     TaskCancel,
     TaskResult,
 )
+from scaler.utility.identifiers import ObjectID, TaskID
 from scaler.utility.metadata.task_flags import retrieve_task_flags_from_task
 from scaler.utility.mixins import Looper
-from scaler.utility.serialization import generate_object_id, generate_serializer_object_id, serialize_failure
+from scaler.utility.serialization import serialize_failure
 from scaler.utility.queues.async_sorted_priority_queue import AsyncSortedPriorityQueue
 from scaler.worker.agent.mixins import HeartbeatManager, TaskManager
 from scaler.worker.symphony.session_callback import SessionCallback, SoamMessage
@@ -41,17 +40,17 @@ class SymphonyTaskManager(Looper, TaskManager):
 
         self._executor_semaphore = asyncio.Semaphore(value=self._base_concurrency)
 
-        self._task_id_to_task: Dict[bytes, Task] = dict()
-        self._task_id_to_future: bidict[bytes, asyncio.Future] = bidict()
+        self._task_id_to_task: Dict[TaskID, Task] = dict()
+        self._task_id_to_future: bidict[TaskID, asyncio.Future] = bidict()
 
         self._serializers: Dict[bytes, Serializer] = dict()
 
         self._queued_task_id_queue = AsyncSortedPriorityQueue()
         self._queued_task_ids: Set[bytes] = set()
 
-        self._acquiring_task_ids: Set[bytes] = set()  # tasks contesting the semaphore
-        self._processing_task_ids: Set[bytes] = set()
-        self._canceled_task_ids: Set[bytes] = set()
+        self._acquiring_task_ids: Set[TaskID] = set()  # tasks contesting the semaphore
+        self._processing_task_ids: Set[TaskID] = set()
+        self._canceled_task_ids: Set[TaskID] = set()
 
         self._storage_address: Optional[ObjectStorageAddress] = None
 
@@ -81,19 +80,15 @@ class SymphonyTaskManager(Looper, TaskManager):
     def register(
         self,
         connector_external: AsyncConnector,
+        connector_storage: AsyncObjectStorageConnector,
         heartbeat_manager: HeartbeatManager,
     ):
         self._connector_external = connector_external
+        self._connector_storage = connector_storage
         self._heartbeat_manager = heartbeat_manager
 
     async def routine(self):  # SymphonyTaskManager has two loops
-        if not self.initialized():
-            self.__initialize()
-
-        self._connector_storage.routine()
-
-    def initialized(self) -> bool:
-        return self._storage_address is not None
+        pass
 
     async def on_object_instruction(self, instruction: ObjectInstruction):
         if instruction.instruction_type == ObjectInstruction.ObjectInstructionType.Delete:
@@ -186,7 +181,7 @@ class SymphonyTaskManager(Looper, TaskManager):
                 self._processing_task_ids.remove(task_id)
 
                 if future.exception() is None:
-                    serializer_id = generate_serializer_object_id(task.source)
+                    serializer_id = ObjectID.generate_serializer_object_id(task.source)
                     serializer = self._serializers[serializer_id]
                     result_bytes = serializer.serialize(future.result())
                     status = TaskStatus.Success
@@ -194,7 +189,7 @@ class SymphonyTaskManager(Looper, TaskManager):
                     result_bytes = serialize_failure(cast(Exception, future.exception()))
                     status = TaskStatus.Failed
 
-                result_object_id = generate_object_id(task.source, uuid.uuid4().bytes)
+                result_object_id = ObjectID.generate_unique_object_id(task.source)
 
                 await self._connector_storage.set_object(result_object_id, result_bytes)
                 await self._connector_external.send(
@@ -235,18 +230,12 @@ class SymphonyTaskManager(Looper, TaskManager):
         self._processing_task_ids.add(task_id)
         self._task_id_to_future[task.task_id] = await self.__execute_task(task)
 
-    async def __initialize(self):
-        self._storage_address = await self._heartbeat_manager.get_storage_address()
-
-        self._connector_storage = AsyncObjectStorageConnector(self._storage_address.host, self._storage_address.port)
-        await self._connector_storage.connect()
-
     async def __execute_task(self, task: Task) -> asyncio.Future:
         """
         This method is not very efficient because it does let objects linger in the cache. Each time inputs are
         requested, all object data are requested.
         """
-        serializer_id = generate_serializer_object_id(task.source)
+        serializer_id = ObjectID.generate_serializer_object_id(task.source)
 
         if serializer_id not in self._serializers:
             serializer_bytes = await self._connector_storage.get_object(serializer_id)
@@ -259,7 +248,7 @@ class SymphonyTaskManager(Looper, TaskManager):
 
         get_tasks = [
             self._connector_storage.get_object(object_id)
-            for object_id in chain([task.func_object_id], (arg.data for arg in task.function_args))
+            for object_id in [task.func_object_id, *(cast(ObjectID, arg) for arg in task.function_args)]
         ]
 
         function_bytes, *arg_bytes = await asyncio.gather(*get_tasks)

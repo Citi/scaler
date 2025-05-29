@@ -8,6 +8,7 @@ from scaler.protocol.python.message import StateTask, Task, TaskCancel, TaskResu
 from scaler.protocol.python.status import TaskManagerStatus
 from scaler.scheduler.graph_manager import VanillaGraphTaskManager
 from scaler.scheduler.mixins import ClientManager, ObjectManager, TaskManager, WorkerManager
+from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.queues.async_indexed_queue import AsyncIndexedQueue
 
@@ -23,10 +24,10 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
         self._worker_manager: Optional[WorkerManager] = None
         self._graph_manager: Optional[VanillaGraphTaskManager] = None
 
-        self._task_id_to_task: Dict[bytes, Task] = dict()
+        self._task_id_to_task: Dict[TaskID, Task] = dict()
 
         self._unassigned: AsyncIndexedQueue = AsyncIndexedQueue()
-        self._running: Set[bytes] = set()
+        self._running: Set[TaskID] = set()
 
         self._success_count: int = 0
         self._failed_count: int = 0
@@ -82,7 +83,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
             not_found=self._notfound_count,
         )
 
-    async def on_task_new(self, client: bytes, task: Task):
+    async def on_task_new(self, client: ClientID, task: Task):
         if (
             0 <= self._max_number_of_tasks_waiting <= self._unassigned.qsize()
             and not self._worker_manager.has_available_worker()
@@ -100,7 +101,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
             TaskStatus.Inactive,
         )
 
-    async def on_task_cancel(self, client: bytes, task_cancel: TaskCancel):
+    async def on_task_cancel(self, client: ClientID, task_cancel: TaskCancel):
         if task_cancel.task_id not in self._task_id_to_task:
             logging.warning(f"cannot cancel, task not found: task_id={task_cancel.task_id.hex()}")
             await self.on_task_done(TaskResult.new_msg(task_cancel.task_id, TaskStatus.NotFound))
@@ -154,7 +155,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
         if client is not None:
             await self._binder.send(client, result)
 
-    async def on_task_reroute(self, task_id: bytes):
+    async def on_task_reroute(self, task_id: TaskID):
         assert self._client_manager.get_client_id(task_id) is not None
 
         self._running.remove(task_id)
@@ -166,7 +167,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
         )
 
     async def __send_monitor(
-        self, task_id: bytes, function_name: bytes, status: TaskStatus, metadata: Optional[bytes] = b""
+        self, task_id: TaskID, function_name: bytes, status: TaskStatus, metadata: Optional[bytes] = b""
     ):
         worker = self._worker_manager.get_worker_by_task_id(task_id)
         await self._binder_monitor.send(StateTask.new_msg(task_id, function_name, status, worker, metadata))

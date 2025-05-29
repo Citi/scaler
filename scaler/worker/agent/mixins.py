@@ -10,6 +10,7 @@ from scaler.protocol.python.message import (
     TaskResult,
     WorkerHeartbeatEcho,
 )
+from scaler.utility.identifiers import ProcessorID, TaskID
 from scaler.utility.metadata.profile_result import ProfileResult
 from scaler.worker.agent.processor_holder import ProcessorHolder
 
@@ -58,7 +59,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_processor_initialized(self, processor_id: bytes, processor_initialized: ProcessorInitialized):
+    async def on_processor_initialized(self, processor_id: ProcessorID, processor_initialized: ProcessorInitialized):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -66,23 +67,23 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_cancel_task(self, task_id: bytes) -> Optional[Task]:
+    async def on_cancel_task(self, task_id: TaskID) -> Optional[Task]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_failing_processor(self, processor_id: bytes, process_status: str):
+    async def on_failing_processor(self, processor_id: ProcessorID, process_status: str):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_suspend_task(self, task_id: bytes) -> bool:
+    async def on_suspend_task(self, task_id: TaskID) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_resume_task(self, task_id: bytes) -> bool:
+    def on_resume_task(self, task_id: TaskID) -> bool:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_result(self, processor_id: bytes, task_result: TaskResult):
+    async def on_task_result(self, processor_id: ProcessorID, task_result: TaskResult):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -90,7 +91,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_internal_object_instruction(self, processor_id: bytes, instruction: ObjectInstruction):
+    async def on_internal_object_instruction(self, processor_id: ProcessorID, instruction: ObjectInstruction):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -106,7 +107,7 @@ class ProcessorManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def current_task_id(self) -> bytes:
+    def current_task_id(self) -> TaskID:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -128,9 +129,9 @@ class ProfilingManager(metaclass=abc.ABCMeta):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_start(self, pid: int, task_id: bytes):
+    def on_task_start(self, pid: int, task_id: TaskID):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_end(self, pid: int, task_id: bytes) -> ProfileResult:
+    def on_task_end(self, pid: int, task_id: TaskID) -> ProfileResult:
         raise NotImplementedError()

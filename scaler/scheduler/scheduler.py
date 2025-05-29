@@ -31,6 +31,7 @@ from scaler.scheduler.task_manager import VanillaTaskManager
 from scaler.scheduler.worker_manager import VanillaWorkerManager
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException
+from scaler.utility.identifiers import ClientID, WorkerID
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 
 
@@ -131,35 +132,35 @@ class Scheduler:
         # =====================================================================================
         # receive from upstream
         if isinstance(message, ClientHeartbeat):
-            await self._client_manager.on_heartbeat(source, message)
+            await self._client_manager.on_heartbeat(ClientID(source), message)
             return
 
         if isinstance(message, GraphTask):
-            await self._graph_manager.on_graph_task(source, message)
+            await self._graph_manager.on_graph_task(ClientID(source), message)
             return
 
         if isinstance(message, GraphTaskCancel):
-            await self._graph_manager.on_graph_task_cancel(source, message)
+            await self._graph_manager.on_graph_task_cancel(ClientID(source), message)
             return
 
         if isinstance(message, Task):
-            await self._task_manager.on_task_new(source, message)
+            await self._task_manager.on_task_new(ClientID(source), message)
             return
 
         if isinstance(message, TaskCancel):
-            await self._task_manager.on_task_cancel(source, message)
+            await self._task_manager.on_task_cancel(ClientID(source), message)
             return
 
         # scheduler receives client shutdown request from upstream
         if isinstance(message, ClientDisconnect):
-            await self._client_manager.on_client_disconnect(source, message)
+            await self._client_manager.on_client_disconnect(ClientID(source), message)
             return
 
         # =====================================================================================
         # receive from downstream
         # receive worker heartbeat from downstream
         if isinstance(message, WorkerHeartbeat):
-            await self._worker_manager.on_heartbeat(source, message)
+            await self._worker_manager.on_heartbeat(WorkerID(source), message)
             return
 
         # receive task result from downstream
@@ -169,7 +170,7 @@ class Scheduler:
 
         # scheduler receives worker disconnect request from downstream
         if isinstance(message, DisconnectRequest):
-            await self._worker_manager.on_disconnect(source, message)
+            await self._worker_manager.on_disconnect(WorkerID(source), message)
             return
 
         # =====================================================================================
