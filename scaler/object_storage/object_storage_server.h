@@ -110,8 +110,7 @@ private:
         }
 
         auto payload_view = getMemoryViewForResponsePayload(meta.responseHeader);
-        co_await scaler::object_storage::write_response_header(*meta.socket, meta.responseHeader, payload_view.size());
-        co_await scaler::object_storage::write_response_payload(*meta.socket, payload_view);
+        co_await scaler::object_storage::write_response(*meta.socket, meta.responseHeader, payload_view);
     }
 
     awaitable<void> optionally_send_pending_requests(scaler::object_storage::ObjectRequestHeader requestHeader) {
@@ -156,9 +155,7 @@ public:
 
                 auto payload_view = getMemoryViewForResponsePayload(responseHeader);
 
-                co_await scaler::object_storage::write_response_header(*socket, responseHeader, payload_view.size());
-
-                co_await scaler::object_storage::write_response_payload(*socket, payload_view);
+                co_await scaler::object_storage::write_response(*socket, responseHeader, payload_view);
             }
         } catch (std::exception& e) {
             // TODO: Logging support

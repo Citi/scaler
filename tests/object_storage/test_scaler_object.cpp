@@ -31,8 +31,11 @@ protected:
     static void SetUpTestSuite() {
         static std::once_flag server_started;
         std::call_once(server_started, []() {
-            std::thread([] { run_object_storage_server("127.0.0.1", "55555"); }).detach();
-            std::this_thread::sleep_for(std::chrono::seconds(1));  // Allow server to start
+            int on_server_ready_fd = create_server_ready_eventfd();
+            std::thread([on_server_ready_fd] {
+                run_object_storage_server("127.0.0.1", "55555", on_server_ready_fd);
+            }).detach();
+            wait_server_ready_eventfd(on_server_ready_fd);
         });
     }
 
