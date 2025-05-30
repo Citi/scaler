@@ -12,5 +12,5 @@ install(TARGETS ymq
 
 find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
 
-Python_add_library(ymqpy MODULE ymqpy.cpp WITH_SOABI)
+Python_add_library(ymqpy MODULE ymqpy.c WITH_SOABI)
 install(TARGETS ymqpy DESTINATION ${SKBUILD_PROJECT_NAME})
