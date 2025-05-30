@@ -16,7 +16,7 @@ class ClientID(Identifier):
         return f"ClientID({self.decode()})"
 
     @staticmethod
-    def generate_unique_client_id(name: Optional[str] = None) -> "ClientID":
+    def generate_client_id(name: Optional[str] = None) -> "ClientID":
         if name is None:
             name = uuid.uuid4().bytes.hex()
 
@@ -28,7 +28,7 @@ class WorkerID(Identifier):
         return f"WorkerID({self.decode()})"
 
     @staticmethod
-    def generate_unique_worker_id(name: Optional[str] = None) -> "WorkerID":
+    def generate_worker_id(name: Optional[str] = None) -> "WorkerID":
         if name is None:
             name = uuid.uuid4().bytes.hex()
 
@@ -40,7 +40,7 @@ class ProcessorID(Identifier):
         return f"ProcessorID({self.hex()})"
 
     @staticmethod
-    def generate_unique_worker_id() -> "ProcessorID":
+    def generate_processor_id() -> "ProcessorID":
         return ProcessorID(uuid.uuid1().bytes)
 
 
@@ -49,7 +49,7 @@ class TaskID(Identifier):
         return f"TaskID({self.hex()})"
 
     @staticmethod
-    def generate_unique_task_id() -> "TaskID":
+    def generate_task_id() -> "TaskID":
         return TaskID(uuid.uuid4().bytes)
 
 
@@ -72,7 +72,7 @@ class ObjectID(bytes):
         return super().__new__(cls, value)
 
     @staticmethod
-    def generate_unique_object_id(owner: ClientID) -> "ObjectID":
+    def generate_object_id(owner: ClientID) -> "ObjectID":
         owner_hash = hashlib.md5(owner).digest()
         unique_object_tag = uuid.uuid4().bytes
         return ObjectID(owner_hash + unique_object_tag)

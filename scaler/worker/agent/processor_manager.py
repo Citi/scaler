@@ -164,7 +164,7 @@ class VanillaProcessorManager(ProcessorManager):
             source = task.source
             task_id = task.task_id
 
-            result_object_id = ObjectID.generate_unique_object_id(source)
+            result_object_id = ObjectID.generate_object_id(source)
             result_object_bytes = serialize_failure(ProcessorDiedError(f"{process_status=}"))
 
             await self._connector_storage.set_object(result_object_id, result_object_bytes)

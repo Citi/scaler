@@ -83,15 +83,15 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
             not_found=self._notfound_count,
         )
 
-    async def on_task_new(self, client: ClientID, task: Task):
+    async def on_task_new(self, client_id: ClientID, task: Task):
         if (
             0 <= self._max_number_of_tasks_waiting <= self._unassigned.qsize()
             and not self._worker_manager.has_available_worker()
         ):
-            await self._binder.send(client, TaskResult.new_msg(task.task_id, TaskStatus.NoWorker))
+            await self._binder.send(client_id, TaskResult.new_msg(task.task_id, TaskStatus.NoWorker))
             return
 
-        self._client_manager.on_task_begin(client, task.task_id)
+        self._client_manager.on_task_begin(client_id, task.task_id)
         self._task_id_to_task[task.task_id] = task
 
         await self._unassigned.put(task.task_id)
@@ -101,7 +101,7 @@ class VanillaTaskManager(TaskManager, Looper, Reporter):
             TaskStatus.Inactive,
         )
 
-    async def on_task_cancel(self, client: ClientID, task_cancel: TaskCancel):
+    async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel):
         if task_cancel.task_id not in self._task_id_to_task:
             logging.warning(f"cannot cancel, task not found: task_id={task_cancel.task_id.hex()}")
             await self.on_task_done(TaskResult.new_msg(task_cancel.task_id, TaskStatus.NotFound))

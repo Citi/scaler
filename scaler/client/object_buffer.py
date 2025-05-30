@@ -101,7 +101,7 @@ class ObjectBuffer:
 
     def __construct_function(self, fn: Callable) -> ObjectCache:
         function_payload = self._serializer.serialize(fn)
-        object_id = ObjectID.generate_unique_object_id(self._identity)
+        object_id = ObjectID.generate_object_id(self._identity)
         function_cache = ObjectCache(
             object_id,
             ObjectMetadata.ObjectContentType.Object,
@@ -113,7 +113,7 @@ class ObjectBuffer:
 
     def __construct_object(self, obj: Any, name: Optional[str] = None) -> ObjectCache:
         object_payload = self._serializer.serialize(obj)
-        object_id = ObjectID.generate_unique_object_id(self._identity)
+        object_id = ObjectID.generate_object_id(self._identity)
         name_bytes = name.encode() if name else f"<obj {repr(object_id)}>".encode()
         object_cache = ObjectCache(object_id, ObjectMetadata.ObjectContentType.Object, name_bytes, object_payload)
 

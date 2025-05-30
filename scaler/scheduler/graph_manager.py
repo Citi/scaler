@@ -98,12 +98,12 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         self._task_manager = task_manager
         self._object_manager = object_manager
 
-    async def on_graph_task(self, client: ClientID, graph_task: GraphTask):
-        await self._unassigned.put((client, graph_task))
+    async def on_graph_task(self, client_id: ClientID, graph_task: GraphTask):
+        await self._unassigned.put((client_id, graph_task))
 
-    async def on_graph_task_cancel(self, client: ClientID, graph_task_cancel: GraphTaskCancel):
+    async def on_graph_task_cancel(self, client_id: ClientID, graph_task_cancel: GraphTaskCancel):
         if graph_task_cancel.task_id not in self._graph_task_id_to_graph:
-            await self._binder.send(client, TaskResult.new_msg(graph_task_cancel.task_id, TaskStatus.NotFound))
+            await self._binder.send(client_id, TaskResult.new_msg(graph_task_cancel.task_id, TaskStatus.NotFound))
             return
 
         graph_task_id = self._task_id_to_graph_task_id[graph_task_cancel.task_id]
@@ -138,10 +138,10 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
     def get_status(self) -> Dict:
         return {"graph_manager": {"unassigned": self._unassigned.qsize()}}
 
-    async def __add_new_graph(self, client: ClientID, graph_task: GraphTask):
+    async def __add_new_graph(self, client_id: ClientID, graph_task: GraphTask):
         graph = {}
 
-        self._client_manager.on_task_begin(client, graph_task.task_id)
+        self._client_manager.on_task_begin(client_id, graph_task.task_id)
 
         tasks = dict()
         depended_task_id_to_task_id: ManyToManyDict[TaskID, TaskID] = ManyToManyDict()
@@ -172,7 +172,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         sorter.prepare()
 
         self._graph_task_id_to_graph[graph_task.task_id] = _Graph(
-            graph_task.targets, sorter, tasks, depended_task_id_to_task_id, client
+            graph_task.targets, sorter, tasks, depended_task_id_to_task_id, client_id
         )
         await self.__check_one_graph(graph_task.task_id)
 
@@ -343,7 +343,7 @@ class VanillaGraphTaskManager(GraphTaskManager, Looper, Reporter):
         owner: ClientID,
         result_objects: List[Tuple[ObjectID, bytes]]
     ) -> List[ObjectID]:
-        new_result_object_ids = [ObjectID.generate_unique_object_id(owner) for _ in result_objects]
+        new_result_object_ids = [ObjectID.generate_object_id(owner) for _ in result_objects]
 
         futures = [
             self.__duplicate_object(owner, result_object_id, result_object_name, new_object_id)

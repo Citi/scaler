@@ -73,12 +73,12 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
 
     def on_add_object(
         self,
-        object_user: ClientID,
+        client_id: ClientID,
         object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
     ):
-        creation = _ObjectCreation(object_id, object_user, object_type, object_name)
+        creation = _ObjectCreation(object_id, client_id, object_type, object_name)
         logging.debug(
             f"add object cache "
             f"object_name={creation.object_name!r}, "
@@ -89,12 +89,12 @@ class VanillaObjectManager(ObjectManager, Looper, Reporter):
         self._object_tracker.add_object(creation)
         self._object_tracker.add_blocks_for_one_object(creation.get_object_key(), {creation.object_creator})
 
-    def on_del_objects(self, object_user: ClientID, object_ids: Set[ObjectID]):
+    def on_del_objects(self, client_id: ClientID, object_ids: Set[ObjectID]):
         for object_id in object_ids:
-            self._object_tracker.remove_one_block_for_objects({object_id}, object_user)
+            self._object_tracker.remove_one_block_for_objects({object_id}, client_id)
 
-    def clean_client(self, client: ClientID):
-        self._object_tracker.remove_blocks({client})
+    def clean_client(self, client_id: ClientID):
+        self._object_tracker.remove_blocks({client_id})
 
     async def routine(self):
         await self.__routine_send_objects_deletions()
