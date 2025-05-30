@@ -1,0 +1,39 @@
+#define PY_SSIZE_T_CLEAN
+#include <Python.h>
+
+#include "server.h"
+
+extern "C" {
+static PyObject* object_storage_server_run_object_storage_server(PyObject* self, PyObject* args) {
+    const char* addr;
+    const char* port;
+    int sts;
+
+    if (!PyArg_ParseTuple(args, "ss", &addr, &port))
+        return NULL;
+    run_object_storage_server(addr, port);
+    Py_INCREF(Py_None);
+    return Py_None;
+}
+
+static PyMethodDef object_storage_server_methods[] = {
+    {
+        "run_object_storage_server",
+        object_storage_server_run_object_storage_server,
+        METH_VARARGS,
+        "Execute a shell command.",
+    },
+
+    {NULL, NULL, 0, NULL},
+};
+
+static struct PyModuleDef object_storage_server_module = {
+    //
+    .m_methods = object_storage_server_methods,
+    //
+};
+
+PyMODINIT_FUNC PyInit_object_storage_server(void) {
+    return PyModuleDef_Init(&object_storage_server_module);
+}
+}
