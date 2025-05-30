@@ -23,7 +23,7 @@ static void IoSocket_dealloc(IoSocket* self) {
     Py_TYPE(self)->tp_free(self);
 }
 
-PyObject* IoSocket_repr(IoSocket* self) {
+static PyObject* IoSocket_repr(IoSocket* self) {
     return PyUnicode_FromFormat("<IoSocket identity=\"%s\">", self->identity);
 }
 
