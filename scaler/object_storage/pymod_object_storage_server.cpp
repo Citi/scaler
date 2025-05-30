@@ -7,7 +7,6 @@ extern "C" {
 static PyObject* object_storage_server_run_object_storage_server(PyObject* self, PyObject* args) {
     const char* addr;
     const char* port;
-    int sts;
 
     if (!PyArg_ParseTuple(args, "ss", &addr, &port))
         return NULL;
@@ -21,7 +20,7 @@ static PyMethodDef object_storage_server_methods[] = {
         "run_object_storage_server",
         object_storage_server_run_object_storage_server,
         METH_VARARGS,
-        "Execute a shell command.",
+        "Run object storage server on address:port",
     },
 
     {NULL, NULL, 0, NULL},
