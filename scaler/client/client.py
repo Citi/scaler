@@ -81,7 +81,7 @@ class Client:
         self._serializer = serializer
 
         self._profiling = profiling
-        self._identity = ClientID.generate_unique_client_id()
+        self._identity = ClientID.generate_client_id()
 
         self._client_agent_address = ZMQConfig(ZMQType.inproc, host=f"scaler_client_{uuid.uuid4().hex}")
         self._scheduler_address = ZMQConfig.from_string(address)
@@ -380,17 +380,17 @@ class Client:
             self.__destroy()
 
     def __submit(self, function_object_id: ObjectID, args: Tuple[Any, ...], delayed: bool) -> Tuple[Task, ScalerFuture]:
-        task_id = TaskID.generate_unique_task_id()
+        task_id = TaskID.generate_task_id()
 
-        object_ids: List[Union[ObjectID, TaskID]] = []
+        function_args: List[Union[ObjectID, TaskID]] = []
         for arg in args:
             if isinstance(arg, ObjectReference):
                 if not self._object_buffer.is_valid_object_id(arg.object_id):
                     raise MissingObjects(f"unknown object: {arg.object_id!r}.")
 
-                object_ids.append(arg.object_id)
+                function_args.append(arg.object_id)
             else:
-                object_ids.append(self._object_buffer.buffer_send_object(arg).object_id)
+                function_args.append(self._object_buffer.buffer_send_object(arg).object_id)
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
@@ -399,7 +399,7 @@ class Client:
             source=self._identity,
             metadata=task_flags_bytes,
             func_object_id=function_object_id,
-            function_args=object_ids,
+            function_args=function_args,
         )
 
         future = self._future_factory(task=task, is_delayed=delayed, group_task_id=None)
@@ -484,9 +484,9 @@ class Client:
         keys: List[str],
         block: bool,
     ) -> Tuple[GraphTask, Dict[str, ScalerFuture], Dict[str, ScalerFuture]]:
-        graph_task_id = TaskID.generate_unique_task_id()
+        graph_task_id = TaskID.generate_task_id()
 
-        node_name_to_task_id = {node_name: TaskID.generate_unique_task_id() for node_name in call_graph.keys()}
+        node_name_to_task_id = {node_name: TaskID.generate_task_id() for node_name in call_graph.keys()}
 
         task_flags_bytes = self.__get_task_flags().serialize()
 
@@ -531,7 +531,7 @@ class Client:
                 argument, data = node_name_to_arguments[key]
                 future: ScalerFuture = self._future_factory(
                     task=Task.new_msg(
-                        task_id=TaskID.generate_unique_task_id(),
+                        task_id=TaskID.generate_task_id(),
                         source=self._identity,
                         metadata=b"",
                         func_object_id=None,

@@ -88,7 +88,7 @@ class Cluster(multiprocessing.get_context("spawn").Process):  # type: ignore[mis
         for worker in self._workers:
             worker.start()
 
-        for i, worker in enumerate(self._workers):
+        for worker in self._workers:
             logging.info(f"{worker.identity!r} started")
 
         for worker in self._workers:

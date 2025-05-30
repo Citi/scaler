@@ -52,7 +52,7 @@ class SymphonyWorker(multiprocessing.get_context("spawn").Process):  # type: ign
         self._address = address
         self._io_threads = io_threads
 
-        self._ident = WorkerID.generate_unique_worker_id(name)  # _identity is internal to multiprocessing.Process
+        self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
 
         self._service_name = service_name
         self._base_concurrency = base_concurrency

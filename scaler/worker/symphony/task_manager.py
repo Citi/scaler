@@ -189,7 +189,7 @@ class SymphonyTaskManager(Looper, TaskManager):
                     result_bytes = serialize_failure(cast(Exception, future.exception()))
                     status = TaskStatus.Failed
 
-                result_object_id = ObjectID.generate_unique_object_id(task.source)
+                result_object_id = ObjectID.generate_object_id(task.source)
 
                 await self._connector_storage.set_object(result_object_id, result_bytes)
                 await self._connector_external.send(

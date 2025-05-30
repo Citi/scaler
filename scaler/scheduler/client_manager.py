@@ -50,8 +50,8 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         self._task_manager = task_manager
         self._worker_manager = worker_manager
 
-    def get_client_task_ids(self, client: ClientID) -> Set[TaskID]:
-        return self._client_to_task_ids.get_values(client)
+    def get_client_task_ids(self, client_id: ClientID) -> Set[TaskID]:
+        return self._client_to_task_ids.get_values(client_id)
 
     def has_client_id(self, client_id: ClientID) -> bool:
         return client_id in self._client_last_seen
@@ -59,42 +59,42 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
     def get_client_id(self, task_id: TaskID) -> Optional[ClientID]:
         return self._client_to_task_ids.get_key(task_id)
 
-    def on_task_begin(self, client: ClientID, task_id: TaskID):
-        self._client_to_task_ids.add(client, task_id)
+    def on_task_begin(self, client_id: ClientID, task_id: TaskID):
+        self._client_to_task_ids.add(client_id, task_id)
 
     def on_task_finish(self, task_id: TaskID) -> ClientID:
         return self._client_to_task_ids.remove_value(task_id)
 
-    async def on_heartbeat(self, client: ClientID, info: ClientHeartbeat):
+    async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
         await self._binder.send(
-            client,
+            client_id,
             ClientHeartbeatEcho.new_msg(object_storage_address=self._storage_address)
         )
-        if client not in self._client_last_seen:
-            logging.info(f"{client!r} connected")
+        if client_id not in self._client_last_seen:
+            logging.info(f"{client_id!r} connected")
 
-        self._client_last_seen[client] = (time.time(), info)
+        self._client_last_seen[client_id] = (time.time(), info)
 
-    async def on_client_disconnect(self, client: ClientID, request: ClientDisconnect):
+    async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect):
         if request.disconnect_type == ClientDisconnect.DisconnectType.Disconnect:
-            await self.__on_client_disconnect(client)
+            await self.__on_client_disconnect(client_id)
             return
 
         if self._protected:
             logging.warning("cannot shutdown clusters as scheduler is running in protected mode")
             accepted = False
         else:
-            logging.info(f"shutdown scheduler and all clusters as received signal from {client!r}")
+            logging.info(f"shutdown scheduler and all clusters as received signal from {client_id!r}")
             accepted = True
 
-        await self._binder.send(client, ClientShutdownResponse.new_msg(accepted=accepted))
+        await self._binder.send(client_id, ClientShutdownResponse.new_msg(accepted=accepted))
 
         if self._protected:
             return
 
-        await self._worker_manager.on_client_shutdown(client)
+        await self._worker_manager.on_client_shutdown(client_id)
 
-        raise ClientShutdownException(f"received client shutdown from {client!r}, quitting")
+        raise ClientShutdownException(f"received client shutdown from {client_id!r}, quitting")
 
     async def routine(self):
         await self.__routine_cleanup_clients()
@@ -123,10 +123,10 @@ class VanillaClientManager(ClientManager, Looper, Reporter):
         await self.__cancel_tasks(client_id)
         self._object_manager.clean_client(client_id)
 
-    async def __cancel_tasks(self, client: ClientID):
-        if client not in self._client_to_task_ids.keys():
+    async def __cancel_tasks(self, client_id: ClientID):
+        if client_id not in self._client_to_task_ids.keys():
             return
 
-        tasks = self._client_to_task_ids.get_values(client).copy()
+        tasks = self._client_to_task_ids.get_values(client_id).copy()
         for task in tasks:
-            await self._task_manager.on_task_cancel(client, TaskCancel.new_msg(task))
+            await self._task_manager.on_task_cancel(client_id, TaskCancel.new_msg(task))

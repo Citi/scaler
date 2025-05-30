@@ -59,7 +59,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._address = address
         self._io_threads = io_threads
 
-        self._ident = WorkerID.generate_unique_worker_id(name)  # _identity is internal to multiprocessing.Process
+        self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
 
         self._address_path_internal = os.path.join(tempfile.gettempdir(), f"scaler_worker_{uuid.uuid4().hex}")
         self._address_internal = ZMQConfig(ZMQType.ipc, host=self._address_path_internal)

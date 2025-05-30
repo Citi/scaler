@@ -26,7 +26,7 @@ class ObjectManager(Reporter):
     @abc.abstractmethod
     def on_add_object(
         self,
-        object_user: ClientID,
+        client_id: ClientID,
         object_id: ObjectID,
         object_type: ObjectMetadata.ObjectContentType,
         object_name: bytes,
@@ -34,11 +34,11 @@ class ObjectManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_del_objects(self, object_user: ClientID, object_ids: Set[ObjectID]):
+    def on_del_objects(self, client_id: ClientID, object_ids: Set[ObjectID]):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def clean_client(self, client: ClientID):
+    def clean_client(self, client_id: ClientID):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -52,7 +52,7 @@ class ObjectManager(Reporter):
 
 class ClientManager(Reporter):
     @abc.abstractmethod
-    def get_client_task_ids(self, client: ClientID) -> Set[TaskID]:
+    def get_client_task_ids(self, client_id: ClientID) -> Set[TaskID]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -64,28 +64,29 @@ class ClientManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def on_task_begin(self, client: ClientID, task_id: TaskID):
+    def on_task_begin(self, client_id: ClientID, task_id: TaskID):
         raise NotImplementedError()
 
     @abc.abstractmethod
     def on_task_finish(self, task_id: TaskID) -> bytes:
         raise NotImplementedError()
 
-    async def on_heartbeat(self, client: ClientID, info: ClientHeartbeat):
+    @abc.abstractmethod
+    async def on_heartbeat(self, client_id: ClientID, info: ClientHeartbeat):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_disconnect(self, client: ClientID, request: ClientDisconnect):
+    async def on_client_disconnect(self, client_id: ClientID, request: ClientDisconnect):
         raise NotImplementedError()
 
 
 class GraphTaskManager(Reporter):
     @abc.abstractmethod
-    async def on_graph_task(self, client: ClientID, graph_task: GraphTask):
+    async def on_graph_task(self, client_id: ClientID, graph_task: GraphTask):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_graph_task_cancel(self, client: ClientID, graph_task_cancel: GraphTaskCancel):
+    async def on_graph_task_cancel(self, client_id: ClientID, graph_task_cancel: GraphTaskCancel):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -99,11 +100,11 @@ class GraphTaskManager(Reporter):
 
 class TaskManager(Reporter):
     @abc.abstractmethod
-    async def on_task_new(self, client: ClientID, task: Task):
+    async def on_task_new(self, client_id: ClientID, task: Task):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_task_cancel(self, client: ClientID, task_cancel: TaskCancel):
+    async def on_task_cancel(self, client_id: ClientID, task_cancel: TaskCancel):
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -129,15 +130,15 @@ class WorkerManager(Reporter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_heartbeat(self, worker: WorkerID, info: WorkerHeartbeat):
+    async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_client_shutdown(self, client: ClientID):
+    async def on_client_shutdown(self, client_id: ClientID):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    async def on_disconnect(self, source: WorkerID, request: DisconnectRequest):
+    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
         raise NotImplementedError()
 
     @abc.abstractmethod

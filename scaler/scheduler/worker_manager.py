@@ -94,24 +94,24 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
         await self._task_manager.on_task_done(task_result)
 
-    async def on_heartbeat(self, worker: WorkerID, info: WorkerHeartbeat):
-        if await self._allocator.add_worker(worker):
-            logging.info(f"{worker!r} connected")
-            await self._binder_monitor.send(StateWorker.new_msg(worker, b"connected"))
+    async def on_heartbeat(self, worker_id: WorkerID, info: WorkerHeartbeat):
+        if await self._allocator.add_worker(worker_id):
+            logging.info(f"{worker_id!r} connected")
+            await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"connected"))
 
-        self._worker_alive_since[worker] = (time.time(), info)
+        self._worker_alive_since[worker_id] = (time.time(), info)
         await self._binder.send(
-            worker,
+            worker_id,
             WorkerHeartbeatEcho.new_msg(object_storage_address=self._storage_address)
         )
 
-    async def on_client_shutdown(self, client: ClientID):
+    async def on_client_shutdown(self, client_id: ClientID):
         for worker in self._allocator.get_worker_ids():
             await self.__shutdown_worker(worker)
 
-    async def on_disconnect(self, source: WorkerID, request: DisconnectRequest):
+    async def on_disconnect(self, worker_id: WorkerID, request: DisconnectRequest):
         await self.__disconnect_worker(request.worker)
-        await self._binder.send(source, DisconnectResponse.new_msg(request.worker))
+        await self._binder.send(worker_id, DisconnectResponse.new_msg(request.worker))
 
     async def routine(self):
         await self.__balance_request()
@@ -128,7 +128,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
 
     @staticmethod
     def __worker_status_from_heartbeat(
-        worker: WorkerID, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
+        worker_id: WorkerID, worker_task_numbers: Dict, last: float, info: WorkerHeartbeat
     ) -> WorkerStatus:
         current_processor = next((p for p in info.processors if not p.suspended), None)
         suspended = min(len([p for p in info.processors if p.suspended]), UINT8_MAX)
@@ -140,7 +140,7 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
             debug_info = f"00{int(info.task_lock)}"
 
         return WorkerStatus.new_msg(
-            worker_id=worker,
+            worker_id=worker_id,
             agent=info.agent,
             rss_free=info.rss_free,
             free=worker_task_numbers["free"],
@@ -217,22 +217,22 @@ class VanillaWorkerManager(WorkerManager, Looper, Reporter):
         for task_id in task_ids:
             await self._task_manager.on_task_reroute(task_id)
 
-    async def __disconnect_worker(self, worker: WorkerID):
+    async def __disconnect_worker(self, worker_id: WorkerID):
         """return True if disconnect worker success"""
-        if worker not in self._worker_alive_since:
+        if worker_id not in self._worker_alive_since:
             return
 
-        logging.info(f"{worker!r} disconnected")
-        await self._binder_monitor.send(StateWorker.new_msg(worker, b"disconnected"))
-        self._worker_alive_since.pop(worker)
+        logging.info(f"{worker_id!r} disconnected")
+        await self._binder_monitor.send(StateWorker.new_msg(worker_id, b"disconnected"))
+        self._worker_alive_since.pop(worker_id)
 
-        task_ids = self._allocator.remove_worker(worker)
+        task_ids = self._allocator.remove_worker(worker_id)
         if not task_ids:
             return
 
         logging.info(f"rerouting {len(task_ids)} tasks")
         await self.__reroute_tasks(task_ids)
 
-    async def __shutdown_worker(self, worker: WorkerID):
-        await self._binder.send(worker, ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
-        await self.__disconnect_worker(worker)
+    async def __shutdown_worker(self, worker_id: WorkerID):
+        await self._binder.send(worker_id, ClientDisconnect.new_msg(ClientDisconnect.DisconnectType.Shutdown))
+        await self.__disconnect_worker(worker_id)

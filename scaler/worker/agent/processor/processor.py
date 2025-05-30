@@ -239,7 +239,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __send_result(self, source: ClientID, task_id: TaskID, status: TaskStatus, result_bytes: bytes):
         self._current_task = None
 
-        result_object_id = ObjectID.generate_unique_object_id(source)
+        result_object_id = ObjectID.generate_object_id(source)
 
         self._connector_storage.set_object(result_object_id, result_bytes)
         self._connector_agent.send(
