@@ -4,24 +4,35 @@
 #include <functional>
 
 // First-party
+#include "epoll_context.hpp"
 #include "event_loop_thread.hpp"
 
 class EventManager {
-    EventLoopThread& eventLoop;
-    const int fd;
-    // Implementation defined method, will call onRead, onWrite etc based on events
-    void onEvents();
+    using Events   = uint64_t;
+    using Callback = std::function<void(FileDescriptor&, Events)>;
+
+    EventLoopThread& thread;
+    FileDescriptor fd;
+    Callback callback;
 
 public:
-    int events;
-    int revents;
-    void updateEvents();
+    EventManager(EventLoopThread& thread, FileDescriptor&& fd, Callback callback)
+        : thread(thread), fd(std::move(fd)), callback(std::move(callback)) {
+            thread.getEventLoop().registerEventManager(this);
+        }
 
-    // User that registered them should have everything they need
-    // In the future, we might add more onXX() methods, for now these are all we need.
-    using OnEventCallback = std::function<void()>;
-    OnEventCallback onRead;
-    OnEventCallback onWrite;
-    OnEventCallback onClose;
-    OnEventCallback onError;
+    ~EventManager() {
+        thread.getEventLoop().removeEventManager(this);
+        fd.~FileDescriptor();  // Close the file descriptor
+    }
+
+    bool operator==(const EventManager& other) const {
+        return this->fd == other.fd;
+    }
+
+    void onEvent(Events events) {
+        this->callback(fd, events);
+    }
+
+    friend class EpollContext;
 };

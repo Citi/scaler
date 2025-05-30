@@ -1,16 +1,31 @@
 #pragma once
 
+// System
+#include "sys/epoll.h"
+
 // C++
 #include <functional>
 
 // First-party
 #include "event_manager.hpp"
+#include "event_loop.hpp"
 
 struct EpollContext {
-    using Function   = std::function<void()>;  // TBD
-    using TimeStamp  = int;                    // TBD
-    using Identifier = int;                    // TBD
-    void registerCallbackBeforeLoop(EventManager*);
+    FileDescriptor epoll_fd;
+
+    void registerEventManager(EventManager& em) {
+        epoll_event ev {
+            .events = EPOLLOUT | EPOLLIN | EPOLLET,  // Edge-triggered
+            .data = {.ptr = &em},
+        };
+
+        epoll_fd.epoll_ctl(EPOLL_CTL_ADD, em.fd, &ev);
+    }
+
+    void removeEventManager(EventManager& em) {
+        epoll_fd.epoll_ctl(EPOLL_CTL_DEL, em.fd, nullptr);
+    }
+
     void loop() {
         for (;;) {
             // EXAMPLE
@@ -55,10 +70,10 @@ struct EpollContext {
     }
     void stop();
 
-    void executeNow(Function func);
-    void executeLater(Function func, Identifier identifier);
-    void executeAt(TimeStamp, Function, Identifier identifier);
-    void cancelExecution(Identifier identifier);
+    // void executeNow(Function func);
+    // void executeLater(Function func, Identifier identifier);
+    // void executeAt(TimeStamp, Function, Identifier identifier);
+    // void cancelExecution(Identifier identifier);
 
     // int epoll_fd;
     // int connect_timer_tfd;
