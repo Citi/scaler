@@ -22,8 +22,9 @@ Each person maintains a todo and done list.
 
 ## DONE
 
-- todo...
+- Class stubs
+- EventManager
 
 ## TODO
 
-- todo...
+- much to do...
