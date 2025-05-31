@@ -22,16 +22,3 @@ dask-worker-space/*
 .pre-commit-config.yaml
 
 .DS_Store
-
-_deps/
-CMakeFiles/
-CMakeCache.txt
-cmake_install.cmake
-Makefile
-CTestTestfile.cmake
-*.o
-*.so
-libgtest*
-compile_commands.json
-protocol/
-version.h
