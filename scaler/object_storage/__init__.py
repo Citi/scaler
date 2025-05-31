@@ -5,15 +5,17 @@ import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
 lib_path = os.path.abspath(os.path.join(current_dir, "../lib"))
 fallback_path = os.path.abspath(os.path.join(current_dir, "../../build/scaler/object_storage"))
+pymod_path = lib_path
 
 # Check which directory exists and update PYTHONPATH accordingly
 if os.path.isdir(lib_path):
     sys.path.append(lib_path)
 else:
+    pymod_path = fallback_path
     sys.path.append(fallback_path)
 
 # Now try to import the module
 try:
     import object_storage_server
 except ImportError as e:
-    print("Failed to import object_storage_server:", e)
+    raise ImportError(f"Failed to import object_storage_server from {pymod_path}") from e

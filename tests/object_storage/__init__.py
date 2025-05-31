@@ -11,4 +11,4 @@ sys.path.append(pymod_path)
 try:
     import object_storage_server
 except ImportError as e:
-    print("Failed to import object_storage_server:", e)
+    raise ImportError(f"Failed to import object_storage_server from {pymod_path}") from e
