@@ -20,3 +20,18 @@ target_include_directories(server PRIVATE ${CMAKE_BINARY_DIR})
 
 install(TARGETS server
         LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+
+find_package(Python COMPONENTS Development)
+
+add_library(object_storage_server SHARED)
+
+set_target_properties(object_storage_server PROPERTIES  PREFIX "")
+
+target_sources(object_storage_server PRIVATE pymod_object_storage_server.cpp)
+target_include_directories(object_storage_server PRIVATE ${Python_INCLUDE_DIRS})
+target_link_libraries(object_storage_server PRIVATE server
+                                            PRIVATE ${Python_LIBRARIES}
+)
+
+install(TARGETS object_storage_server
+        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
