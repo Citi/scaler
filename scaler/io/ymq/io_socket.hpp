@@ -8,6 +8,7 @@
 // First-party
 #include "event_loop_thread.hpp"
 #include "message_connection_tcp.hpp"
+#include "scaler/io/ymq/file_descriptor.hpp"
 #include "tcp_client.hpp"
 #include "tcp_server.hpp"
 
@@ -18,7 +19,7 @@ class IOSocket {
 
     std::optional<TcpServer> tcpServer;
     std::optional<TcpClient> tcpClient;
-    std::map<int /* class FileDescriptor */, MessageConnectionTCP*> fdToConnection;
+    std::map<FileDescriptor, MessageConnectionTCP*> fdToConnection;
     std::map<std::string, MessageConnectionTCP*> identityToConnection;
 
 public:

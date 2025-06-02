@@ -9,10 +9,13 @@
 #include "event_loop.hpp"
 #include "io_socket.hpp"
 
+struct IOSocket;
+
 class EventLoopThread {
     using PollingContext = configuration::polling_context_t;
+    using Identity = std::string;
     std::thread thread;
-    std::map<std::string /* type of IOSocket's identity */, IOSocket> identityToIOSocket;
+    std::map<Identity, IOSocket> identityToIOSocket;
     EventLoop<PollingContext> eventLoop;
 
 public:

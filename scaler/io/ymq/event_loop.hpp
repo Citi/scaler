@@ -12,6 +12,7 @@
 // Third-Party
 #include "third_party/concurrentqueue.h"
 
+using moodycamel::ConcurrentQueue;
 
 template <class EventLoopBackend = EpollContext>
 struct EventLoop {
@@ -27,9 +28,9 @@ struct EventLoop {
     void cancelExecution(Identifier identifier);
     void registerCallbackBeforeLoop(EventManager*);
 
-    InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
-    TimedConcurrentQueue<FunctionType> timedExecutionQueue;
-    ConcurrentQueue<FunctionType> delayedExecutionQueue;
+    InterruptiveConcurrentQueue<Function> immediateExecutionQueue;
+    TimedConcurrentQueue<Function> timedExecutionQueue;
+    ConcurrentQueue<Function> delayedExecutionQueue;
 
     EventLoopBackend eventLoopBackend;
 };

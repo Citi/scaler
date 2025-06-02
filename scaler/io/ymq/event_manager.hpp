@@ -5,10 +5,13 @@
 
 // First-party
 #include "event_loop_thread.hpp"
+#include "scaler/io/ymq/file_descriptor.hpp"
+
+struct EventLoopThread;
 
 class EventManager {
     EventLoopThread& eventLoop;
-    const int fd;
+    FileDescriptor fd;
     // Implementation defined method, will call onRead, onWrite etc based on events
     void onEvents();
 

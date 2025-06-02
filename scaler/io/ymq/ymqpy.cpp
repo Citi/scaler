@@ -5,7 +5,7 @@
 #include <stddef.h>
 
 // First-party
-// #include "io_socket.hpp"
+#include "io_socket.hpp"
 
 typedef struct {
     PyObject_HEAD;
