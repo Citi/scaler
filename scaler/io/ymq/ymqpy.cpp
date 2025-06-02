@@ -9,17 +9,21 @@
 
 typedef struct {
     PyObject_HEAD;
-    void* socket;  // <- the actual socket object
+    IOSocket* socket;  // <- the actual socket object
 } PyIoSocket;
 
 static int IoSocket_init(PyIoSocket* self, PyObject* args, PyObject* kwds) {
     char* identity = NULL;
     if (!PyArg_ParseTuple(args, "s", &identity))
         return -1;
+    self->socket = nullptr;  // TODO!
     return 0;
 }
 
 static void IoSocket_dealloc(PyIoSocket* self) {
+    self->socket->~IOSocket();
+    self->socket = nullptr;
+
     Py_TYPE(self)->tp_free(self);
 }
 
@@ -29,7 +33,7 @@ static PyObject* IoSocket_repr(PyIoSocket* self) {
 }
 
 static PyObject* identity_getter(PyIoSocket* self, void* closure) {
-    Py_RETURN_NONE;
+    return PyUnicode_FromStringAndSize(self->socket->identity.data(), self->socket->identity.size());
 }
 
 static PyGetSetDef IoSocket_properties[] = {
@@ -58,6 +62,52 @@ static PyTypeObject PyIoSocketType = {
 // clang-format on
 #pragma clang diagnostic pop
 
+static int createSocketTypesEnum(PyObject* module) {
+    auto socketTypesDict = PyDict_New();
+
+    if (!socketTypesDict) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create SocketTypes dictionary");
+        return -1;
+    }
+
+    if (PyDict_SetItemString(socketTypesDict, "Binder", PyLong_FromLong((long)SocketTypes::Binder)) < 0 ||
+        PyDict_SetItemString(socketTypesDict, "Sub", PyLong_FromLong((long)SocketTypes::Sub)) < 0 ||
+        PyDict_SetItemString(socketTypesDict, "Pub", PyLong_FromLong((long)SocketTypes::Pub)) < 0 ||
+        PyDict_SetItemString(socketTypesDict, "Dealer", PyLong_FromLong((long)SocketTypes::Dealer)) < 0 ||
+        PyDict_SetItemString(socketTypesDict, "Router", PyLong_FromLong((long)SocketTypes::Router)) < 0 ||
+        PyDict_SetItemString(socketTypesDict, "Pair", PyLong_FromLong((long)SocketTypes::Pair)) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to set items in SocketTypes dictionary");
+        return -1;
+    }
+
+    auto enumModule = PyImport_ImportModule("enum");
+
+    if (!enumModule) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
+        return -1;
+    }
+
+    auto socketTypeClass = PyObject_CallMethod(enumModule, "IntEnum", "sO", "SocketTypes", socketTypesDict);
+    Py_DECREF(enumModule);
+
+    if (!socketTypeClass) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create SocketTypes enum class");
+        Py_DECREF(socketTypesDict);
+        return -1;
+    }
+
+    if (PyModule_AddObjectRef(module, "SocketTypes", socketTypeClass) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to add SocketTypes enum to module");
+        Py_DECREF(socketTypeClass);
+        Py_DECREF(socketTypesDict);
+        return -1;
+    }
+
+    Py_DECREF(socketTypesDict);
+    Py_DECREF(socketTypeClass);
+    return 0;
+}
+
 static int ymq_exec(PyObject* module) {
     if (PyType_Ready(&PyIoSocketType) < 0)
         return -1;
@@ -65,7 +115,8 @@ static int ymq_exec(PyObject* module) {
     if (PyModule_AddObjectRef(module, "IoSocket", (PyObject*)&PyIoSocketType) < 0)
         return -1;
 
-    // Additional initialization code can go here
+    if (createSocketTypesEnum(module) < 0)
+        return -1;
 
     return 0;
 }
