@@ -1,7 +1,7 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-#include "server.h"
+#include "server_interface.h"
 
 extern "C" {
 static PyObject* object_storage_server_run_object_storage_server(PyObject* self, PyObject* args) {

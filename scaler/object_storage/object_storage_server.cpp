@@ -1,5 +1,3 @@
-#include "server.h"
-
 #include <boost/asio/awaitable.hpp>
 #include <boost/asio/co_spawn.hpp>
 #include <boost/asio/detached.hpp>
@@ -15,6 +13,7 @@
 #include <string>
 
 #include "object_storage_server.h"
+#include "server_interface.h"
 
 // Helper macros to stringify the macro value
 #define STRINGIFY_HELPER(x) #x

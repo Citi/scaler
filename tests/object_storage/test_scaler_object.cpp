@@ -16,7 +16,7 @@
 #include "scaler/object_storage/constants.h"
 #include "scaler/object_storage/defs.h"
 #include "scaler/object_storage/io_helper.h"
-#include "scaler/object_storage/server.h"
+#include "scaler/object_storage/server_interface.h"
 
 using boost::asio::buffer;
 using boost::asio::ip::tcp;
