@@ -68,7 +68,7 @@ class WorkerProcessorTable:
 
     @staticmethod
     def draw_row(processor_status: ProcessorStatus, rss_free: int):
-        cpu = processor_status.resource.cpu / 10
+        cpu = min(processor_status.resource.cpu / 10, 100.0)
         rss = int(processor_status.resource.rss / 1e6)
         rss_free = int(rss_free / 1e6)
 

@@ -57,9 +57,9 @@ class WorkerRow:
 
     def populate(self, data: WorkerStatus):
         self.worker = data.worker_id.decode()
-        self.agt_cpu = data.agent.cpu / 10
+        self.agt_cpu = min(data.agent.cpu / 10, 100.0)
         self.agt_rss = int(data.agent.rss / 1e6)
-        self.cpu = sum(p.resource.cpu for p in data.processor_statuses) / 10
+        self.cpu = min(sum(p.resource.cpu for p in data.processor_statuses) / 10, 100.0)
         self.rss = int(sum(p.resource.rss for p in data.processor_statuses) / 1e6)
         self.rss_free = int(data.rss_free / 1e6)
         self.free = data.free
