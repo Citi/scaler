@@ -19,7 +19,7 @@ target_link_libraries(cc_object_storage_server PRIVATE CapnProto::capnp)
 target_include_directories(cc_object_storage_server PRIVATE ${CMAKE_BINARY_DIR})
 
 install(TARGETS cc_object_storage_server
-        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+        LIBRARY DESTINATION scaler/object_storage/)
 
 find_package(Python COMPONENTS Development)
 
@@ -33,5 +33,7 @@ target_link_libraries(object_storage_server PRIVATE cc_object_storage_server
                                             PRIVATE ${Python_LIBRARIES}
 )
 
+target_link_options(object_storage_server PRIVATE "-Wl,-rpath,$ORIGIN")
+
 install(TARGETS object_storage_server
-        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+        LIBRARY DESTINATION scaler/object_storage/)
