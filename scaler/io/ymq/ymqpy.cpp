@@ -31,10 +31,6 @@ static PyObject* PyBytesYmq_repr(PyBytesYmq* self) {
 }
 
 static PyObject* PyBytesYmq_data_getter(PyBytesYmq* self) {
-    if (self->bytes.is_empty()) {
-        Py_RETURN_NONE;
-    }
-
     return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
 }
 
