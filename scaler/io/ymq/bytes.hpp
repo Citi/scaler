@@ -124,6 +124,7 @@ public:
     // }
 
     size_t len() const { return m_len; }
+    const uint8_t* data() { return m_data; }
 
     friend class Buffer;
 };

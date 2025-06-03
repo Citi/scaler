@@ -2,6 +2,7 @@
 #include <Python.h>
 
 // C
+#include <cstring>
 #include <stddef.h>
 
 // C++
@@ -15,10 +16,122 @@ struct YmqState {
     PyObject* enumModule;  // Reference to the enum module
 };
 
-typedef struct {
+struct PyBytesYmq {
+    PyObject_HEAD;
+    Bytes bytes;  // <- the actual bytes object
+    int shares;
+};
+
+static PyObject* PyBytesYmq_repr(PyBytesYmq* self) {
+    if (self->bytes.is_empty()) {
+        return PyUnicode_FromString("<Bytes: empty>");
+    } else {
+        return PyUnicode_FromFormat("<Bytes: %db>", self->bytes.len());
+    }
+}
+
+static PyObject* PyBytesYmq_data_getter(PyBytesYmq* self) {
+    if (self->bytes.is_empty()) {
+        Py_RETURN_NONE;
+    }
+
+    return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
+}
+
+static PyObject* PyBytesYmq_len_getter(PyBytesYmq* self) {
+    return PyLong_FromSize_t(self->bytes.len());
+}
+
+static PyGetSetDef PyBytesYmq_properties[] = {
+    {"data", (getter)PyBytesYmq_data_getter, nullptr, PyDoc_STR("Data of the Bytes object"), nullptr},
+    {"len", (getter)PyBytesYmq_len_getter, nullptr, PyDoc_STR("Length of the Bytes object"), nullptr},
+    {nullptr, nullptr, nullptr, nullptr, nullptr}  // Sentinel
+};
+
+static int PyBytesYmq_getbuffer(PyBytesYmq* self, Py_buffer* view, int flags) {
+    self->shares++;
+
+    return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
+}
+
+static void PyBytesYmq_releasebuffer(PyBytesYmq* self, Py_buffer* view) {
+    self->shares--;
+
+    if (self->shares <= 0) {
+        // TODO: free data here?
+    }
+}
+
+static PyBufferProcs PyBytesYmqBufferProcs = {
+    .bf_getbuffer     = (getbufferproc)PyBytesYmq_getbuffer,
+    .bf_releasebuffer = (releasebufferproc)PyBytesYmq_releasebuffer,
+};
+
+static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {
+    PyObject* bytes = nullptr;
+    if (!PyArg_ParseTuple(args, "O", &bytes)) {
+        return -1;  // Error parsing arguments
+    }
+
+    if (!PyBytes_Check(bytes)) {
+        bytes = PyObject_Bytes(bytes);
+
+        if (!bytes) {
+            PyErr_SetString(PyExc_TypeError, "Expected bytes or bytes-like object");
+            return -1;
+        }
+    }
+
+    char* data;
+    Py_ssize_t len;
+
+    if (PyBytes_AsStringAndSize(bytes, &data, &len) < 0) {
+        PyErr_SetString(PyExc_TypeError, "Failed to get bytes data");
+        return -1;
+    }
+
+    self->bytes = Bytes::copy((uint8_t*)data, len);
+    self->shares = 0;
+
+    return 0;
+}
+
+static void PyBytesYmq_dealloc(PyBytesYmq* self) {
+    if (self->shares > 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Cannot deallocate Bytes while it is still shared");
+        return;
+    }
+
+    self->bytes.~Bytes();  // Call the destructor of Bytes
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreorder-init-list"
+#pragma clang diagnostic ignored "-Wc99-designator"
+// clang-format off
+// this ordering is canonical as per the Python documentation
+static PyTypeObject PyBytesYmqType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name      = "ymq.Bytes",
+    .tp_doc       = PyDoc_STR("Bytes"),
+    .tp_basicsize = sizeof(PyBytesYmq),
+    .tp_itemsize  = 0,
+    .tp_flags     = Py_TPFLAGS_DEFAULT,
+    .tp_new       = PyType_GenericNew,
+    .tp_init      = (initproc)PyBytesYmq_init,
+    .tp_repr      = (reprfunc)PyBytesYmq_repr,
+    .tp_dealloc   = (destructor)PyBytesYmq_dealloc,
+    .tp_getset    = PyBytesYmq_properties,
+    .tp_as_buffer = &PyBytesYmqBufferProcs,
+};
+// clang-format on
+#pragma clang diagnostic pop
+
+struct PyIoSocket {
     PyObject_HEAD;
     IOSocket* socket;  // <- the actual socket object
-} PyIoSocket;
+};
 
 static int IoSocket_init(PyIoSocket* self, PyObject* args, PyObject* kwds) {
     char* identity = NULL;
@@ -150,6 +263,12 @@ static int ymq_exec(PyObject* module) {
         return -1;
 
     if (PyModule_AddObjectRef(module, "IoSocket", (PyObject*)&PyIoSocketType) < 0)
+        return -1;
+
+    if (PyType_Ready(&PyBytesYmqType) < 0)
+        return -1;
+
+    if (PyModule_AddObjectRef(module, "Bytes", (PyObject*)&PyBytesYmqType) < 0)
         return -1;
 
     auto state = (YmqState*)PyModule_GetState(module);
