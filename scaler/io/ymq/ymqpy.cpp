@@ -10,6 +10,7 @@
 #include <vector>
 
 // First-party
+#include "bytes.hpp"
 #include "io_socket.hpp"
 
 struct YmqState {
