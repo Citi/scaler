@@ -6,7 +6,8 @@ if [[ "$1" != "Debug" && "$1" != "Release" ]]; then
 fi
 
 BUILD_TYPE="$1"
-cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -GNinja
-cd build && ninja
+cmake -S . -B build -DCMAKE_BUILD_TYPE=${BUILD_TYPE}
+cd build && make
 cp scaler/io/ymq/libymq.so ../scaler/io/ymq/.
 cp scaler/object_storage/*.so ../scaler/object_storage/.
+ctest

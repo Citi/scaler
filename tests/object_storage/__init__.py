@@ -1,1 +1,0 @@
-from scaler.object_storage import object_storage_server
