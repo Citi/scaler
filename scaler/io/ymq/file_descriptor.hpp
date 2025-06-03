@@ -28,8 +28,9 @@ class FileDescriptor {
 
 public:
     ~FileDescriptor() noexcept(false) {
-        if (auto code = close(fd) < 0)
-            throw std::system_error(errno, std::system_category(), "Failed to close file descriptor");
+        if (this->ownership == Ownership::Owned)
+            if (auto code = close(fd) < 0)
+                throw std::system_error(errno, std::system_category(), "Failed to close file descriptor");
 
         this->fd = -1;
     }
@@ -66,9 +67,7 @@ public:
         return *this;
     }
 
-    bool operator==(const FileDescriptor& other) const {
-        return fd == other.fd;
-    }
+    bool operator==(const FileDescriptor& other) const { return fd == other.fd; }
 
     static std::expected<FileDescriptor, Errno> socket(int domain, int type, int protocol) {
         if (int fd = ::socket(domain, type, protocol) < 0) {
