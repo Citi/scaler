@@ -1,7 +1,6 @@
 #!/bin/bash -e
 
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCMAKE_INSTALL_PREFIX=.
 cd build && make
-cp scaler/io/ymq/libymq.so ../scaler/io/ymq/.
-cp scaler/object_storage/*.so ../scaler/object_storage/.
+make install
 ctest
