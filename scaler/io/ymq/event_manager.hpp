@@ -19,6 +19,7 @@ class EventManager {
     FileDescriptor fd;
     Callback callback;
 
+    // must happen on io thread
     void removeFromEventLoop();
 
 public:
@@ -27,6 +28,7 @@ public:
 
     ~EventManager() { removeFromEventLoop(); }
 
+    // must happen on io thread
     void addToEventLoop();
 
     bool operator==(const EventManager& other) const { return this->fd == other.fd; }
