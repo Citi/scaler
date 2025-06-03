@@ -11,7 +11,9 @@
 // First-party
 #include "io_socket.hpp"
 
-static PyObject* enumModule;
+struct YmqState {
+    PyObject* enumModule;  // Reference to the enum module
+};
 
 typedef struct {
     PyObject_HEAD;
@@ -94,8 +96,16 @@ static int createIntEnum(PyObject* module, std::string enumName, std::vector<std
         Py_DECREF(value);
     }
 
+    auto state = (YmqState*)PyModule_GetState(module);
+
+    if (!state) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
+        Py_DECREF(enumDict);
+        return -1;
+    }
+
     // create our class by calling enum.IntEnum(enumName, enumDict)
-    auto enumClass = PyObject_CallMethod(enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
+    auto enumClass = PyObject_CallMethod(state->enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
     Py_DECREF(enumDict);
 
     if (!enumClass) {
@@ -142,9 +152,16 @@ static int ymq_exec(PyObject* module) {
     if (PyModule_AddObjectRef(module, "IoSocket", (PyObject*)&PyIoSocketType) < 0)
         return -1;
 
-    enumModule = PyImport_ImportModule("enum");
+    auto state = (YmqState*)PyModule_GetState(module);
 
-    if (!enumModule) {
+    if (!state) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
+        return -1;
+    }
+
+    state->enumModule = PyImport_ImportModule("enum");
+
+    if (!state->enumModule) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
         return -1;
     }
@@ -166,13 +183,19 @@ static PyModuleDef_Slot ymq_slots[] = {
     {0, NULL}  // Sentinel
 };
 
+void ymq_free(YmqState* state) {
+    Py_DECREF(state->enumModule);
+    state->enumModule = nullptr;
+}
+
 static PyModuleDef ymq_module = {
     .m_base    = PyModuleDef_HEAD_INIT,
     .m_name    = "ymq",
     .m_doc     = PyDoc_STR("YMQ Python bindings"),
-    .m_size    = 0,
+    .m_size    = sizeof(YmqState),
     .m_methods = ymq_methods,
     .m_slots   = ymq_slots,
+    .m_free    = (freefunc)ymq_free,
 };
 
 PyMODINIT_FUNC PyInit_ymq(void) {
