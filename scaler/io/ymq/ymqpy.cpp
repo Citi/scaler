@@ -1,6 +1,6 @@
-#include <cstdio>
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
+#include <structmember.h>
 
 // C
 #include <stddef.h>
@@ -172,6 +172,12 @@ static PyObject* PyMessage_repr(PyMessage* self) {
     return PyUnicode_FromFormat("<Message address=%R payload=%R>", self->address, self->payload);
 }
 
+static PyMemberDef PyMessage_members[] = {
+    {"address", T_OBJECT_EX, offsetof(PyMessage, address), READONLY, PyDoc_STR("Address of the message")},
+    {"payload", T_OBJECT_EX, offsetof(PyMessage, payload), READONLY, PyDoc_STR("Payload of the message")},
+    {nullptr}  // Sentinel
+};
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wreorder-init-list"
 #pragma clang diagnostic ignored "-Wc99-designator"
@@ -188,6 +194,7 @@ static PyTypeObject PyMessageType = {
     .tp_init      = (initproc)PyMessage_init,
     .tp_dealloc   = (destructor)PyMessage_dealloc,
     .tp_repr      = (reprfunc)PyMessage_repr,
+    .tp_members   = PyMessage_members,
 };
 // clang-format on
 #pragma clang diagnostic pop
