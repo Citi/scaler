@@ -1,9 +1,11 @@
+#include <cstdio>
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
 // C
-#include <cstring>
 #include <stddef.h>
+
+#include <cstring>
 
 // C++
 #include <utility>
@@ -87,7 +89,7 @@ static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {
         return -1;
     }
 
-    self->bytes = Bytes::copy((uint8_t*)data, len);
+    self->bytes  = Bytes::copy((uint8_t*)data, len);
     self->shares = 0;
 
     return 0;
@@ -121,6 +123,73 @@ static PyTypeObject PyBytesYmqType = {
     .tp_dealloc   = (destructor)PyBytesYmq_dealloc,
     .tp_getset    = PyBytesYmq_properties,
     .tp_as_buffer = &PyBytesYmqBufferProcs,
+};
+// clang-format on
+#pragma clang diagnostic pop
+
+struct PyMessage {
+    PyObject_HEAD;
+    PyBytesYmq* address;
+    PyBytesYmq* payload;
+};
+
+static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
+    PyBytesYmq *address = nullptr, *payload = nullptr;
+
+    char* keywords[] = {const_cast<char*>("address"), const_cast<char*>("payload"), nullptr};
+
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "OO", keywords, address, payload)) {
+        PyErr_SetString(PyExc_TypeError, "Expected two Bytes objects: address and payload");
+        return -1;
+    }
+
+    if (!PyObject_TypeCheck((PyObject*)address, &PyBytesYmqType)) {
+        PyErr_SetString(PyExc_TypeError, "Expected address to be a Bytes object");
+        return -1;
+    }
+
+    if (!PyObject_TypeCheck((PyObject*)payload, &PyBytesYmqType)) {
+        PyErr_SetString(PyExc_TypeError, "Expected payload to be a Bytes object");
+        return -1;
+    }
+
+    self->address = address;
+    self->payload = payload;
+    Py_INCREF(self->address);  // Increment reference count for address
+    Py_INCREF(self->payload);  // Increment reference count for payload
+
+    return 0;
+}
+
+static void PyMessage_dealloc(PyMessage* self) {
+    Py_XDECREF(self->address);  // Decrement reference count for address
+    Py_XDECREF(self->payload);  // Decrement reference count for payload
+
+    Py_TYPE(self)->tp_free((PyObject*)self);
+}
+
+static PyObject* PyMessage_repr(PyMessage* self) {
+    return PyUnicode_FromFormat("<Message address=%R payload=%R>", self->address, self->payload);
+}
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wreorder-init-list"
+#pragma clang diagnostic ignored "-Wc99-designator"
+// clang-format off
+// this ordering is canonical as per the Python documentation
+static PyTypeObject PyMessageType = {
+    PyVarObject_HEAD_INIT(NULL, 0)
+    .tp_name      = "ymq.Message",
+    .tp_doc       = PyDoc_STR("Message"),
+    .tp_basicsize = sizeof(PyMessage),
+    .tp_itemsize  = 0,
+    .tp_flags     = Py_TPFLAGS_DEFAULT,
+    .tp_new       = PyType_GenericNew,
+    .tp_init      = (initproc)PyMessage_init,
+    .tp_dealloc   = (destructor)PyMessage_dealloc,
+    .tp_repr      = (reprfunc)PyMessage_repr,
+    // .tp_getset    = PyBytesYmq_properties,
+    // .tp_as_buffer = &PyBytesYmqBufferProcs,
 };
 // clang-format on
 #pragma clang diagnostic pop
@@ -159,6 +228,14 @@ static PyGetSetDef IoSocket_properties[] = {
     {nullptr, nullptr, nullptr, nullptr, nullptr}  // Sentinel
 };
 
+// static PyObject* IoSocket_send(PyIoSocket* self, PyObject)
+
+static PyMethodDef IoSocket_methods[] = {
+    // {"send", (PyCFunction)IoSocket_send, METH_VARARGS, PyDoc_STR("Send a message")},
+    // {"recv", (PyCFunction)IoSocket_recv, METH_VARARGS, PyDoc_STR("Receive a message")},
+    {nullptr, nullptr, 0, nullptr}  // Sentinel
+};
+
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wreorder-init-list"
 #pragma clang diagnostic ignored "-Wc99-designator"
@@ -176,6 +253,7 @@ static PyTypeObject PyIoSocketType = {
     .tp_repr      = (reprfunc)IoSocket_repr,
     .tp_dealloc   = (destructor)IoSocket_dealloc,
     .tp_getset    = IoSocket_properties,
+    .tp_methods = IoSocket_methods
 };
 // clang-format on
 #pragma clang diagnostic pop
@@ -266,6 +344,12 @@ static int ymq_exec(PyObject* module) {
         return -1;
 
     if (PyModule_AddObjectRef(module, "Bytes", (PyObject*)&PyBytesYmqType) < 0)
+        return -1;
+
+    if (PyType_Ready(&PyMessageType) < 0)
+        return -1;
+
+    if (PyModule_AddObjectRef(module, "Message", (PyObject*)&PyMessageType) < 0)
         return -1;
 
     auto state = (YmqState*)PyModule_GetState(module);
