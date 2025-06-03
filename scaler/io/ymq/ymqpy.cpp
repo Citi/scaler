@@ -162,8 +162,8 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
 }
 
 static void PyMessage_dealloc(PyMessage* self) {
-    Py_XDECREF(self->address);  // Decrement reference count for address
-    Py_XDECREF(self->payload);  // Decrement reference count for payload
+    Py_DECREF(self->address);  // Decrement reference count for address
+    Py_DECREF(self->payload);  // Decrement reference count for payload
 
     Py_TYPE(self)->tp_free((PyObject*)self);
 }
@@ -188,8 +188,6 @@ static PyTypeObject PyMessageType = {
     .tp_init      = (initproc)PyMessage_init,
     .tp_dealloc   = (destructor)PyMessage_dealloc,
     .tp_repr      = (reprfunc)PyMessage_repr,
-    // .tp_getset    = PyBytesYmq_properties,
-    // .tp_as_buffer = &PyBytesYmqBufferProcs,
 };
 // clang-format on
 #pragma clang diagnostic pop
@@ -253,7 +251,7 @@ static PyTypeObject PyIoSocketType = {
     .tp_repr      = (reprfunc)IoSocket_repr,
     .tp_dealloc   = (destructor)IoSocket_dealloc,
     .tp_getset    = IoSocket_properties,
-    .tp_methods = IoSocket_methods
+    .tp_methods   = IoSocket_methods
 };
 // clang-format on
 #pragma clang diagnostic pop
