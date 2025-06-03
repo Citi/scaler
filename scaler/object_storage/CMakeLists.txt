@@ -1,7 +1,7 @@
 add_library(cc_object_storage_server SHARED)
 
 target_sources(cc_object_storage_server PRIVATE
-  object_storage_server.cpp
+  object_storage_server.h
   io_helper.cpp
 )
 
@@ -14,9 +14,9 @@ file(MAKE_DIRECTORY "${CAPNPC_OUTPUT_DIR}")
 
 capnp_generate_cpp(objectStorageSources objectStorageHeaders "../protocol/capnp/object_storage.capnp")
 
-target_sources(cc_object_storage_server PRIVATE ${objectStorageSources})
-target_link_libraries(cc_object_storage_server PRIVATE CapnProto::capnp)
-target_include_directories(cc_object_storage_server PRIVATE ${CMAKE_BINARY_DIR})
+target_sources(cc_object_storage_server PUBLIC ${objectStorageSources})
+target_link_libraries(cc_object_storage_server PUBLIC CapnProto::capnp)
+target_include_directories(cc_object_storage_server PUBLIC ${CMAKE_BINARY_DIR})
 
 install(TARGETS cc_object_storage_server
         LIBRARY DESTINATION scaler/object_storage/)

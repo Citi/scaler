@@ -1,9 +1,15 @@
+#include "scaler/object_storage/object_storage_server.h"
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-#include "server_interface.h"
+#include <string>
 
 extern "C" {
+void run_object_storage_server(const char* name, const char* port) {
+    scaler::object_storage::ObjectStorageServer server;
+    run_internal_object_storage_server(server, name, port);
+}
+
 static PyObject* object_storage_server_run_object_storage_server(PyObject* self, PyObject* args) {
     const char* addr;
     const char* port;
