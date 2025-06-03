@@ -10,9 +10,9 @@
 #include <iostream>
 #include <map>
 
-#include "defs.h"
-#include "io_helper.h"
 #include "protocol/object_storage.capnp.h"
+#include "scaler/object_storage/defs.h"
+#include "scaler/object_storage/io_helper.h"
 
 template <>
 struct std::hash<scaler::object_storage::object_t> {
