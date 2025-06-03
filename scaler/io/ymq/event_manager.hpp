@@ -1,38 +1,37 @@
 #pragma once
 
 // C++
+#include <sys/types.h>
+
 #include <functional>
 
 // First-party
-#include "epoll_context.hpp"
 #include "event_loop_thread.hpp"
+#include "scaler/io/ymq/file_descriptor.hpp"
+
+struct EventLoopThread;
 
 class EventManager {
-    using Events   = uint64_t;
+    using Events   = u_int64_t;
     using Callback = std::function<void(FileDescriptor&, Events)>;
 
     EventLoopThread& thread;
     FileDescriptor fd;
     Callback callback;
 
+    void removeFromEventLoop();
+
 public:
     EventManager(EventLoopThread& thread, FileDescriptor&& fd, Callback callback)
-        : thread(thread), fd(std::move(fd)), callback(std::move(callback)) {
-            thread.getEventLoop().registerEventManager(this);
-        }
+        : thread(thread), fd(std::move(fd)), callback(std::move(callback)) {}
 
-    ~EventManager() {
-        thread.getEventLoop().removeEventManager(this);
-        fd.~FileDescriptor();  // Close the file descriptor
-    }
+    ~EventManager() { removeFromEventLoop(); }
 
-    bool operator==(const EventManager& other) const {
-        return this->fd == other.fd;
-    }
+    void addToEventLoop();
 
-    void onEvent(Events events) {
-        this->callback(fd, events);
-    }
+    bool operator==(const EventManager& other) const { return this->fd == other.fd; }
+
+    void onEvent(Events events) { this->callback(fd, events); }
 
     friend class EpollContext;
 };

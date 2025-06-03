@@ -3,12 +3,11 @@
 // System
 #include "sys/epoll.h"
 
-// C++
-#include <functional>
-
 // First-party
 #include "event_manager.hpp"
-#include "event_loop.hpp"
+#include "file_descriptor.hpp"
+
+struct EventManager;
 
 struct EpollContext {
     FileDescriptor epoll_fd;

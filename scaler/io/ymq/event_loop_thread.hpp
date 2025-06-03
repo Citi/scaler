@@ -9,11 +9,17 @@
 #include "event_loop.hpp"
 #include "io_socket.hpp"
 
+class IOSocket;
+
+template<class EventLoopBackend>
+class EventLoop;
+
 class EventLoopThread {
-    using PollingContext = configuration::polling_context_t;
+    using PollingContext = EpollContext;
+    using Identity = std::string;
     std::thread thread;
-    std::map<std::string /* type of IOSocket's identity */, IOSocket> identityToIOSocket;
-    EventLoop<PollingContext> eventLoop;
+    std::map<Identity, IOSocket> identityToIOSocket;
+    EventLoop<PollingContext>* eventLoop;
 
 public:
     // Why not make the class a friend class of IOContext?

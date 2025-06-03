@@ -4,14 +4,18 @@
 #include <functional>
 
 // First-party
-#include "event_loop_backend.hpp"
 #include "event_manager.hpp"
 #include "interruptive_concurrent_queue.hpp"
 #include "timed_concurrent_queue.hpp"
+#include "epoll_context.hpp"
 
 // Third-Party
 #include "third_party/concurrentqueue.h"
 
+using moodycamel::ConcurrentQueue;
+
+class EpollContext;
+class EventManager;
 
 template <class EventLoopBackend = EpollContext>
 struct EventLoop {
@@ -27,16 +31,16 @@ struct EventLoop {
     void cancelExecution(Identifier identifier);
 
     void registerEventManager(EventManager& em) {
-        backend.registerEventManager(em);
+        eventLoopBackend->registerEventManager(em);
     }
 
     void removeEventManager(EventManager& em) {
-        backend.removeEventManager(em);
+        eventLoopBackend->removeEventManager(em);
     }
 
-    InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
-    TimedConcurrentQueue<FunctionType> timedExecutionQueue;
-    ConcurrentQueue<FunctionType> delayedExecutionQueue;
+    InterruptiveConcurrentQueue<Function> immediateExecutionQueue;
+    TimedConcurrentQueue<Function> timedExecutionQueue;
+    ConcurrentQueue<Function> delayedExecutionQueue;
 
-    EventLoopBackend backend;
+    EventLoopBackend* eventLoopBackend;
 };

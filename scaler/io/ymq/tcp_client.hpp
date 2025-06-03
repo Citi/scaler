@@ -9,6 +9,8 @@
 #include "event_manager.hpp"
 #include "file_descriptor.hpp"
 
+class EventLoopThread;
+
 class TcpClient {
     EventLoopThread& eventLoop; /* shared ownership */
     std::unique_ptr<EventManager> eventManager;

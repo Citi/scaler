@@ -1,4 +1,3 @@
-
 add_library(ymq SHARED)
 
 target_sources(ymq PRIVATE
@@ -10,3 +9,8 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
 
 install(TARGETS ymq
         LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+
+find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
+
+Python_add_library(ymqpy MODULE ymqpy.cpp WITH_SOABI)
+install(TARGETS ymqpy DESTINATION ${SKBUILD_PROJECT_NAME})
