@@ -1,11 +1,17 @@
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 
-// todo: should we have this import?
+// C
 #include <stddef.h>
+
+// C++
+#include <utility>
+#include <vector>
 
 // First-party
 #include "io_socket.hpp"
+
+static PyObject* enumModule;
 
 typedef struct {
     PyObject_HEAD;
@@ -62,49 +68,70 @@ static PyTypeObject PyIoSocketType = {
 // clang-format on
 #pragma clang diagnostic pop
 
+static int createIntEnum(PyObject* module, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
+    // create a python dictionary to hold the entries
+    auto enumDict = PyDict_New();
+    if (!enumDict) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create enum dictionary");
+        return -1;
+    }
+
+    // add each entry to the dictionary
+    for (const auto& entry: entries) {
+        PyObject* value = PyLong_FromLong(entry.second);
+        if (!value) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to create enum value");
+            Py_DECREF(enumDict);
+            return -1;
+        }
+
+        if (PyDict_SetItemString(enumDict, entry.first.c_str(), value) < 0) {
+            Py_DECREF(value);
+            Py_DECREF(enumDict);
+            PyErr_SetString(PyExc_RuntimeError, "Failed to set item in enum dictionary");
+            return -1;
+        }
+        Py_DECREF(value);
+    }
+
+    // create our class by calling enum.IntEnum(enumName, enumDict)
+    auto enumClass = PyObject_CallMethod(enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
+    Py_DECREF(enumDict);
+
+    if (!enumClass) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create IntEnum class");
+        return -1;
+    }
+
+    // add the class to the module
+    // this increments the reference count of enumClass
+    if (PyModule_AddObjectRef(module, enumName.c_str(), enumClass) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to add IntEnum class to module");
+        Py_DECREF(enumClass);
+        return -1;
+    }
+    Py_DECREF(enumClass);
+
+    return 0;
+}
+
 static int createSocketTypesEnum(PyObject* module) {
-    auto socketTypesDict = PyDict_New();
+    std::vector<std::pair<std::string, int>> socketTypes = {
+        {
+            "Binder",
+            (int)SocketTypes::Binder,
+        },
+        {"Sub", (int)SocketTypes::Sub},
+        {"Pub", (int)SocketTypes::Pub},
+        {"Dealer", (int)SocketTypes::Dealer},
+        {"Router", (int)SocketTypes::Router},
+        {"Pair", (int)SocketTypes::Pair}};
 
-    if (!socketTypesDict) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create SocketTypes dictionary");
+    if (createIntEnum(module, "SocketTypes", socketTypes) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create SocketTypes enum");
         return -1;
     }
 
-    if (PyDict_SetItemString(socketTypesDict, "Binder", PyLong_FromLong((long)SocketTypes::Binder)) < 0 ||
-        PyDict_SetItemString(socketTypesDict, "Sub", PyLong_FromLong((long)SocketTypes::Sub)) < 0 ||
-        PyDict_SetItemString(socketTypesDict, "Pub", PyLong_FromLong((long)SocketTypes::Pub)) < 0 ||
-        PyDict_SetItemString(socketTypesDict, "Dealer", PyLong_FromLong((long)SocketTypes::Dealer)) < 0 ||
-        PyDict_SetItemString(socketTypesDict, "Router", PyLong_FromLong((long)SocketTypes::Router)) < 0 ||
-        PyDict_SetItemString(socketTypesDict, "Pair", PyLong_FromLong((long)SocketTypes::Pair)) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to set items in SocketTypes dictionary");
-        return -1;
-    }
-
-    auto enumModule = PyImport_ImportModule("enum");
-
-    if (!enumModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
-        return -1;
-    }
-
-    auto socketTypeClass = PyObject_CallMethod(enumModule, "IntEnum", "sO", "SocketTypes", socketTypesDict);
-    Py_DECREF(enumModule);
-
-    if (!socketTypeClass) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create SocketTypes enum class");
-        Py_DECREF(socketTypesDict);
-        return -1;
-    }
-
-    if (PyModule_AddObjectRef(module, "SocketTypes", socketTypeClass) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to add SocketTypes enum to module");
-        Py_DECREF(socketTypeClass);
-        Py_DECREF(socketTypesDict);
-        return -1;
-    }
-
-    Py_DECREF(socketTypesDict);
-    Py_DECREF(socketTypeClass);
     return 0;
 }
 
@@ -114,6 +141,13 @@ static int ymq_exec(PyObject* module) {
 
     if (PyModule_AddObjectRef(module, "IoSocket", (PyObject*)&PyIoSocketType) < 0)
         return -1;
+
+    enumModule = PyImport_ImportModule("enum");
+
+    if (!enumModule) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
+        return -1;
+    }
 
     if (createSocketTypesEnum(module) < 0)
         return -1;
