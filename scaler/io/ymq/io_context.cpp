@@ -9,3 +9,7 @@ IOSocket* IOContext::addIOSocket(std::string identity, std::string socketType) {
     ++threadsHead %= _threads.size();
     return res;
 }
+
+bool IOContext::removeIOSocket(IOSocket*) {
+    return false;
+}
