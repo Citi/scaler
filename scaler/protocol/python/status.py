@@ -18,7 +18,7 @@ class Resource(Message):
 
     @staticmethod
     def new_msg(cpu: int, rss: int) -> "Resource":  # type: ignore[override]
-        return Resource(_status.Resource(cpu=cpu, rss=rss))
+        return Resource(_status.Resource(cpu=min(cpu, 1000), rss=rss))
 
     def get_message(self):
         return self._msg
