@@ -6,7 +6,6 @@ target_sources(ymq PRIVATE
   io_context.cpp
 
   event_loop.h
-  event_loop.cpp
 
   event_loop_thread.h
   event_loop_thread.cpp
@@ -20,6 +19,6 @@ target_sources(ymq PRIVATE
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
 
 install(TARGETS ymq
-        LIBRARY DESTINATION scaler/io/ymq/)
+        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
 
 add_subdirectory(examples)
