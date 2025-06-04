@@ -33,7 +33,7 @@ protected:
         std::call_once(server_started, []() {
             std::thread([] {
                 scaler::object_storage::ObjectStorageServer server;
-                scaler::object_storage::run_internal_object_storage_server(server, "127.0.0.1", "55555");
+                server.run("127.0.0.1", "55555");
             }).detach();
             std::this_thread::sleep_for(std::chrono::seconds(1));  // Allow server to start
         });

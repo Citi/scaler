@@ -7,7 +7,7 @@
 extern "C" {
 void run_object_storage_server(const char* name, const char* port) {
     scaler::object_storage::ObjectStorageServer server;
-    run_internal_object_storage_server(server, name, port);
+    server.run(name, port);
 }
 
 static PyObject* object_storage_server_run_object_storage_server(PyObject* self, PyObject* args) {
