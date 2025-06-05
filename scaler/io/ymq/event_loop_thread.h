@@ -1,22 +1,23 @@
 #pragma once
 
 // C++
+#include <memory>
 #include <map>
 #include <thread>
 
 // First-party
 #include "configuration.h"
 #include "event_loop.h"
-// #include "io_socket.hpp"
 
 class IOSocket;
+struct configuration;
 
 class EventLoopThread {
     using PollingContext = configuration::polling_context_t;
-    using Identity = configuration::Identity;
+    using Identity       = configuration::Identity;
 
     std::thread thread;
-    std::map<Identity, IOSocket> identityToIOSocket;
+    std::map<Identity, std::shared_ptr<IOSocket>> identityToIOSocket;
     EventLoop<PollingContext> eventLoop;
 
 public:
@@ -25,11 +26,11 @@ public:
     // the IOSocket that is being removed will first remove every MessageConnectionTCP
     // managed by it from the EventLoop, before it removes it self from ioSockets.
     // return eventLoop.executeNow(createIOSocket());
-    IOSocket* addIOSocket(std::string identity, std::string socketType);
+    void addIOSocket(std::shared_ptr<IOSocket>);
+    bool removeIOSocket(std::shared_ptr<IOSocket>);
+    std::shared_ptr<IOSocket> getIOSocketByIdentity(size_t identity);
 
-    bool removeIOSocket(IOSocket*);
-    EventLoop<PollingContext>& getEventLoop();
-    // IOSocket* getIOSocketByIdentity(size_t identity);
+    EventLoop<PollingContext>& getEventLoop() { return eventLoop; }
 
     // EventLoopThread(const EventLoopThread&)            = delete;
     // EventLoopThread& operator=(const EventLoopThread&) = delete;
