@@ -1,9 +1,9 @@
 #include "event_manager.h"
 
 void EventManager::addToEventLoop() {
-    thread.getEventLoop().registerEventManager(*this);
+    _eventLoopThread.getEventLoop().registerEventManager(*this);
 }
 
 void EventManager::removeFromEventLoop() {
-    thread.getEventLoop().removeEventManager(*this);
+    _eventLoopThread.getEventLoop().removeEventManager(*this);
 }

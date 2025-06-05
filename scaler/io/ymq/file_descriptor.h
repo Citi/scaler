@@ -19,56 +19,56 @@
 #include "common.h"
 
 class FileDescriptor {
-    enum class Ownership { Owned, Borrowed } ownership;
-    int fd;
+    enum class Ownership { Owned, Borrowed } _ownership;
+    int _fd;
 
-    FileDescriptor(int fd): fd(fd) {}
+    FileDescriptor(int fd): _fd(fd) {}
 
-    void assert_owned() const { assert(ownership == Ownership::Owned); }
+    void assert_owned() const { assert(_ownership == Ownership::Owned); }
 
 public:
     ~FileDescriptor() noexcept(false) {
-        if (this->ownership == Ownership::Owned)
-            if (auto code = close(fd) < 0)
+        if (this->_ownership == Ownership::Owned)
+            if (auto code = close(_fd) < 0)
                 throw std::system_error(errno, std::system_category(), "Failed to close file descriptor");
 
-        this->fd = -1;
+        this->_fd = -1;
     }
 
     FileDescriptor(const FileDescriptor& other) {
-        this->fd        = other.fd;
-        this->ownership = Ownership::Borrowed;
+        this->_fd        = other._fd;
+        this->_ownership = Ownership::Borrowed;
     }
 
     FileDescriptor& operator=(const FileDescriptor& other) {
-        if (this->ownership == Ownership::Owned) {
-            if (fd >= 0)
-                close(fd);
+        if (this->_ownership == Ownership::Owned) {
+            if (_fd >= 0)
+                close(_fd);
         }
 
-        this->fd        = other.fd;
-        this->ownership = Ownership::Borrowed;
+        this->_fd        = other._fd;
+        this->_ownership = Ownership::Borrowed;
 
         return *this;
     }
 
-    FileDescriptor(FileDescriptor&& other) noexcept: fd(other.fd) {
-        other.fd = -1;  // prevent double close
+    FileDescriptor(FileDescriptor&& other) noexcept: _fd(other._fd) {
+        other._fd = -1;  // prevent double close
     }
 
     FileDescriptor& operator=(FileDescriptor&& other) noexcept {
         if (this != &other) {
-            if (fd >= 0)
-                close(fd);
-            this->fd        = other.fd;
-            other.fd        = -1;  // prevent double close
-            this->ownership = other.ownership;
-            other.ownership = Ownership::Borrowed;  // transfer ownership
+            if (_fd >= 0)
+                close(_fd);
+            this->_fd        = other._fd;
+            other._fd        = -1;  // prevent double close
+            this->_ownership = other._ownership;
+            other._ownership = Ownership::Borrowed;  // transfer ownership
         }
         return *this;
     }
 
-    bool operator==(const FileDescriptor& other) const { return fd == other.fd; }
+    bool operator==(const FileDescriptor& other) const { return _fd == other._fd; }
 
     static std::expected<FileDescriptor, Errno> socket(int domain, int type, int protocol) {
         if (int fd = ::socket(domain, type, protocol) < 0) {
@@ -105,7 +105,7 @@ public:
     std::optional<Errno> listen(int backlog) {
         assert_owned();
 
-        if (::listen(fd, backlog) < 0) {
+        if (::listen(_fd, backlog) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -115,7 +115,7 @@ public:
     std::expected<FileDescriptor, Errno> accept(sockaddr& addr, socklen_t& addrlen) {
         assert_owned();
 
-        if (auto fd2 = ::accept(fd, &addr, &addrlen) < 0) {
+        if (auto fd2 = ::accept(_fd, &addr, &addrlen) < 0) {
             return std::unexpected {errno};
         } else {
             return FileDescriptor(fd2);
@@ -125,7 +125,7 @@ public:
     std::optional<Errno> connect(const sockaddr& addr, socklen_t addrlen) {
         assert_owned();
 
-        if (::connect(fd, &addr, addrlen) < 0) {
+        if (::connect(_fd, &addr, addrlen) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -135,7 +135,7 @@ public:
     std::optional<Errno> bind(const sockaddr& addr, socklen_t addrlen) {
         assert_owned();
 
-        if (::bind(fd, &addr, addrlen) < 0) {
+        if (::bind(_fd, &addr, addrlen) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -145,7 +145,7 @@ public:
     std::expected<ssize_t, Errno> read(void* buf, size_t count) {
         assert_owned();
 
-        ssize_t n = ::read(fd, buf, count);
+        ssize_t n = ::read(_fd, buf, count);
         if (n < 0) {
             return std::unexpected {errno};
         } else {
@@ -156,7 +156,7 @@ public:
     std::expected<ssize_t, Errno> write(const void* buf, size_t count) {
         assert_owned();
 
-        ssize_t n = ::write(fd, buf, count);
+        ssize_t n = ::write(_fd, buf, count);
         if (n < 0) {
             return std::unexpected {errno};
         } else {
@@ -168,7 +168,7 @@ public:
         assert_owned();
 
         uint64_t u = 1;
-        if (::eventfd_write(fd, u) < 0) {
+        if (::eventfd_write(_fd, u) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -179,7 +179,7 @@ public:
         assert_owned();
 
         uint64_t u;
-        if (::eventfd_read(fd, &u) < 0) {
+        if (::eventfd_read(_fd, &u) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -189,7 +189,7 @@ public:
     std::optional<Errno> timerfd_settime(const itimerspec& new_value, itimerspec* old_value = nullptr) {
         assert_owned();
 
-        if (::timerfd_settime(fd, 0, &new_value, old_value) < 0) {
+        if (::timerfd_settime(_fd, 0, &new_value, old_value) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -200,7 +200,7 @@ public:
         assert_owned();
 
         uint64_t u;
-        if (::read(fd, &u, sizeof(u)) < 0) {
+        if (::read(_fd, &u, sizeof(u)) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -210,7 +210,7 @@ public:
     std::optional<Errno> epoll_ctl(int op, FileDescriptor& other, epoll_event* event) {
         assert_owned();
 
-        if (::epoll_ctl(fd, op, other.fd, event) < 0) {
+        if (::epoll_ctl(_fd, op, other._fd, event) < 0) {
             return errno;
         } else {
             return std::nullopt;
@@ -220,7 +220,7 @@ public:
     std::optional<Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
         assert_owned();
 
-        if (::epoll_wait(fd, events, maxevents, timeout) < 0) {
+        if (::epoll_wait(_fd, events, maxevents, timeout) < 0) {
             return errno;
         } else {
             return std::nullopt;

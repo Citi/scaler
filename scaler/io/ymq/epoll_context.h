@@ -18,10 +18,10 @@ struct EpollContext {
             .data = {.ptr = &em},
         };
 
-        epoll_fd.epoll_ctl(EPOLL_CTL_ADD, em.fd, &ev);
+        epoll_fd.epoll_ctl(EPOLL_CTL_ADD, em._fd, &ev);
     }
 
     void removeEventManager(EventManager& em) {
-        epoll_fd.epoll_ctl(EPOLL_CTL_DEL, em.fd, nullptr);
+        epoll_fd.epoll_ctl(EPOLL_CTL_DEL, em._fd, nullptr);
     }
 };

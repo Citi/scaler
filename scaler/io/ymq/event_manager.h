@@ -25,25 +25,25 @@ struct Events {
 class EventManager {
     using Callback = std::function<void(FileDescriptor&, Events)>;
 
-    EventLoopThread& thread;
-    FileDescriptor fd;
-    Callback callback;
+    EventLoopThread& _eventLoopThread;
+    FileDescriptor _fd;
+    Callback _callback;
 
     // must happen on io thread
     void removeFromEventLoop();
 
 public:
     EventManager(EventLoopThread& thread, FileDescriptor&& fd, Callback callback)
-        : thread(thread), fd(std::move(fd)), callback(std::move(callback)) {}
+        : _eventLoopThread(thread), _fd(std::move(fd)), _callback(std::move(callback)) {}
 
     ~EventManager() { removeFromEventLoop(); }
 
     // must happen on io thread
     void addToEventLoop();
 
-    bool operator==(const EventManager& other) const { return this->fd == other.fd; }
+    bool operator==(const EventManager& other) const { return this->_fd == other._fd; }
 
-    void onEvent(Events events) { this->callback(fd, events); }
+    void onEvent(Events events) { this->_callback(_fd, events); }
 
     friend class EpollContext;
 };
