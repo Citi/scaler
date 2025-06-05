@@ -43,7 +43,7 @@ public:
     FileDescriptor& operator=(const FileDescriptor& other) {
         if (this->ownership == Ownership::Owned) {
             if (fd >= 0)
-                close(fd);  // close current fd
+                close(fd);
         }
 
         this->fd        = other.fd;
@@ -55,6 +55,7 @@ public:
     FileDescriptor(FileDescriptor&& other) noexcept: fd(other.fd) {
         other.fd = -1;  // prevent double close
     }
+
     FileDescriptor& operator=(FileDescriptor&& other) noexcept {
         if (this != &other) {
             if (fd >= 0)
