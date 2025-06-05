@@ -31,7 +31,7 @@ class SchedulerClusterCombo:
         self,
         n_workers: int,
         address: Optional[str] = None,
-        storage_address: Optional[ObjectStorageConfig] = None,
+        storage_address: Optional[str] = None,
         monitor_address: Optional[str] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
@@ -62,7 +62,7 @@ class SchedulerClusterCombo:
         if storage_address is None:
             self._storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
         else:
-            self._storage_address = storage_address
+            self._storage_address = ObjectStorageConfig.from_string(storage_address)
 
         if monitor_address is None:
             self._monitor_address = None
