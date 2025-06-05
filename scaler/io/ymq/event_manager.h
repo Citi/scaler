@@ -5,23 +5,45 @@
 
 // First-party
 #include "event_loop_thread.h"
+#include "file_descriptor.h"
+
+struct EventLoopThread;
+
+// an io-facility-agnostic representation of event types
+struct Events {
+    bool readable : 1;
+    bool writable : 1;
+
+    static Events fromEpollEvents(uint32_t epollEvents) {
+        return Events {
+            .readable = (epollEvents & EPOLLIN) > 0,
+            .writable = (epollEvents & EPOLLOUT) > 0,
+        };
+    }
+};
 
 class EventManager {
-    EventLoopThread& eventLoop;
-    const int fd;
-    // Implementation defined method, will call onRead, onWrite etc based on events
-    void onEvents();
+    using Callback = std::function<void(FileDescriptor&, Events)>;
+
+    EventLoopThread& thread;
+    FileDescriptor fd;
+    Callback callback;
+
+    // must happen on io thread
+    void removeFromEventLoop();
 
 public:
-    int events;
-    int revents;
-    void updateEvents();
+    EventManager(EventLoopThread& thread, FileDescriptor&& fd, Callback callback)
+        : thread(thread), fd(std::move(fd)), callback(std::move(callback)) {}
 
-    // User that registered them should have everything they need
-    // In the future, we might add more onXX() methods, for now these are all we need.
-    using OnEventCallback = std::function<void()>;
-    OnEventCallback onRead;
-    OnEventCallback onWrite;
-    OnEventCallback onClose;
-    OnEventCallback onError;
+    ~EventManager() { removeFromEventLoop(); }
+
+    // must happen on io thread
+    void addToEventLoop();
+
+    bool operator==(const EventManager& other) const { return this->fd == other.fd; }
+
+    void onEvent(Events events) { this->callback(fd, events); }
+
+    friend class EpollContext;
 };

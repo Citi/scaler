@@ -1,35 +1,40 @@
 #pragma once
 
-// C++
-#include <functional>
-
 // First-party
-// #include "event_manager.hpp"
-// #include "interruptive_concurrent_queue.hpp"
-// #include "timed_concurrent_queue.hpp"
+#include "epoll_context.h"
+#include "event_manager.h"
+#include "interruptive_concurrent_queue.h"
+#include "timed_concurrent_queue.h"
 
 // Third-Party
-// #include "third_party/concurrentqueue.h"
-// #include "event_loop_backend.hpp"
+#include "third_party/concurrentqueue.h"
 
-#include "epoll_context.h"
+using moodycamel::ConcurrentQueue;
+
+class EpollContext;
+class EventManager;
+
 template <class EventLoopBackend = EpollContext>
 struct EventLoop {
     using Function   = std::function<void()>;  // TBD
     using TimeStamp  = int;                    // TBD
     using Identifier = int;                    // TBD
-    void loop();
-    void stop();
 
-    void executeNow(Function func);
-    void executeLater(Function func, Identifier identifier);
-    void executeAt(TimeStamp, Function, Identifier identifier);
-    void cancelExecution(Identifier identifier);
-    void registerCallbackBeforeLoop(EventManager*);
+    EventLoopBackend* eventLoopBackend;
+
+    void registerEventManager(EventManager& em) { eventLoopBackend->registerEventManager(em); }
+
+    void removeEventManager(EventManager& em) { eventLoopBackend->removeEventManager(em); }
+
+    // void loop();
+    // void stop();
+
+    // void executeNow(Function func);
+    // void executeLater(Function func, Identifier identifier);
+    // void executeAt(TimeStamp, Function, Identifier identifier);
+    // void cancelExecution(Identifier identifier);
 
     // InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
     // TimedConcurrentQueue<FunctionType> timedExecutionQueue;
     // ConcurrentQueue<FunctionType> delayedExecutionQueue;
-
-    // EventLoopBackend eventLoopBackend;
 };

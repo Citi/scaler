@@ -3,49 +3,41 @@
 // C++
 // #include <map>
 // #include <optional>
+#include <map>
+#include <memory>
 #include <string>
 
 // First-party
+#include "configuration.h"
 #include "event_loop_thread.h"
-// #include "message_connection_tcp.hpp"
-// #include "tcp_client.hpp"
-// #include "tcp_server.hpp"
+#include "file_descriptor.h"
+#include "message_connection_tcp.h"
+#include "tcp_client.h"
+#include "tcp_server.h"
+
+using Identity = configuration::Identity;
+
+class TCPClient;
+class TCPServer;
+
+enum class SocketTypes { Binder, Sub, Pub, Dealer, Router, Pair };
 
 class IOSocket {
     EventLoopThread& eventLoopThread;
-    enum SocketTypes { Binder, Sub, Pub, Dealer, Router, Pair /* etc. */ };
-    SocketTypes socketTypes;
+    SocketTypes socketType;
+    Identity identity;
 
-    // std::optional<TcpServer> tcpServer;
-    // std::optional<TcpClient> tcpClient;
-    // std::map<int /* class FileDescriptor */, MessageConnectionTCP*> fdToConnection;
-    // std::map<std::string, MessageConnectionTCP*> identityToConnection;
+    TCPServer* tcpServer;
+    TCPClient* tcpClient;
+
+    std::map<FileDescriptor, std::shared_ptr<MessageConnectionTCP>> fdToConnection;
 
 public:
+    IOSocket(EventLoopThread& eventLoopThread, Identity identity, SocketTypes socketType)
+        : eventLoopThread(eventLoopThread), identity(identity), socketType(socketType) {}
+
     IOSocket(const IOSocket&)            = delete;
     IOSocket& operator=(const IOSocket&) = delete;
     IOSocket(IOSocket&&)                 = delete;
     IOSocket& operator=(IOSocket&&)      = delete;
-
-    const std::string identity;
-    // string -> connection mapping
-    // and connection->string mapping
-
-    // put it into the concurrent q, which is execute_now
-    // void sendMessage(Message* msg, Continuation cont) {
-    // EXAMPLE
-    // execute_now(
-    // switch (socketTypes) {
-    //     case Pub:
-    //         for (auto [fd, conn] &: fd_to_conn) {
-    //             conn.send(msg.len, msg.size);
-    //             conn.setWriteCompleteCallback(cont);
-    //             eventLoopThread.getEventLoop().update_events(turn write on for this fd);
-    //         }
-    //         break;
-    // }
-    // )
-    // }
-
-    // void recvMessage(Message* msg);
 };
