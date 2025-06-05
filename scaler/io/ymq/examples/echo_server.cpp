@@ -14,8 +14,9 @@
 int main() {
     printf("Hello, world!\n");
 
-    IOContext context;
+    IOContext context(1);
     IOSocket* socket = context.addIOSocket("ServerSocket", IOSocketType::Dealer);
+
     // char buf[8];
     // while (true) {
     //     socket.read("any_identity", buf, []() { printf("read completed\n"); });

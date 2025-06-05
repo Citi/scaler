@@ -6,6 +6,7 @@
 // First-party
 
 class EventManager;
+
 struct EpollContext {
     using Function   = std::function<void()>;  // TBD
     using TimeStamp  = int;                    // TBD
@@ -53,9 +54,12 @@ struct EpollContext {
             // }
         }
     }
+
     void stop();
 
-    void executeNow(Function func);
+    void executeNow(Function func) {
+        // TODO: Implement this function
+    }
     void executeLater(Function func, Identifier identifier);
     void executeAt(TimeStamp, Function, Identifier identifier);
     void cancelExecution(Identifier identifier);

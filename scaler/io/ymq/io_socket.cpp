@@ -2,3 +2,7 @@
 
 // NOTE: We need it after we put impl
 #include "scaler/io/ymq/event_loop_thread.h"
+
+void IOSocket::onAdded() {
+    // eventLoopThread;
+}

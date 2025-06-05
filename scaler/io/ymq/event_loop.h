@@ -18,18 +18,21 @@ struct EventLoop {
     using Function   = std::function<void()>;  // TBD
     using TimeStamp  = int;                    // TBD
     using Identifier = int;                    // TBD
-    void loop();
+    void loop() { eventLoopBackend.loop(); }
     void stop();
 
-    void executeNow(Function func);
+    void executeNow(Function func) { eventLoopBackend.executeNow(func); }
     void executeLater(Function func, Identifier identifier);
     void executeAt(TimeStamp, Function, Identifier identifier);
     void cancelExecution(Identifier identifier);
     void registerCallbackBeforeLoop(EventManager*);
 
+    // TODO: Change to FileDescriptor
+    // void addToLoop(int fd, ) {}
+
     // InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
     // TimedConcurrentQueue<FunctionType> timedExecutionQueue;
     // ConcurrentQueue<FunctionType> delayedExecutionQueue;
 
-    // EventLoopBackend eventLoopBackend;
+    EventLoopBackend eventLoopBackend;
 };

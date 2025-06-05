@@ -1,6 +1,7 @@
 #pragma once
 
 // C++
+#include <memory>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -12,13 +13,12 @@
 class IOSocket;
 
 class IOContext {
-    // This is a pointer, just for now
-    std::vector<EventLoopThread> _threads;
+    std::vector<std::shared_ptr<EventLoopThread>> _threads;
     std::mutex _threadsMu;
 
 public:
-    IOContext(size_t threadCount): _threads(threadCount) {}
-    IOContext(): _threads(1z) {}
+    IOContext(size_t threadCount = 1);
+
     IOContext(const IOContext&)            = delete;
     IOContext& operator=(const IOContext&) = delete;
     IOContext(IOContext&&)                 = delete;

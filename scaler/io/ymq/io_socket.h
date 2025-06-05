@@ -2,8 +2,8 @@
 
 // C++
 // #include <map>
-// #include <optional>
 #include <memory>
+#include <optional>
 #include <string>
 
 // First-party
@@ -12,9 +12,9 @@
 // #include "scaler/io/ymq/tcp_server.hpp"
 
 // #include "message_connection_tcp.hpp"
-// #include "tcp_client.hpp"
-// #include "tcp_server.hpp"
 
+#include "scaler/io/ymq/tcp_client.hpp"
+#include "scaler/io/ymq/tcp_server.hpp"
 #include "scaler/io/ymq/typedefs.h"
 
 class EventLoopThread;
@@ -22,8 +22,8 @@ class EventLoopThread;
 class IOSocket {
     std::shared_ptr<EventLoopThread> eventLoopThread;
 
-    // std::optional<TcpServer> tcpServer;
-    // std::optional<TcpClient> tcpClient;
+    std::optional<TcpClient> tcpClient;
+    std::optional<TcpServer> tcpServer;
     // std::map<int /* class FileDescriptor */, MessageConnectionTCP*> fdToConnection;
     // std::map<std::string, MessageConnectionTCP*> identityToConnection;
 
@@ -32,9 +32,12 @@ public:
     IOSocket& operator=(const IOSocket&) = delete;
     IOSocket(IOSocket&&)                 = delete;
     IOSocket& operator=(IOSocket&&)      = delete;
+    IOSocket(): identity(), socketType(IOSocketType::Uninit) {}
+    IOSocket(std::shared_ptr<EventLoopThread> eventLoopThread, std::string identity, IOSocketType socketType)
+        : eventLoopThread(eventLoopThread), identity(std::move(identity)), socketType(socketType) {}
 
     const std::string identity;
-    const IOSocketType socketTypes;
+    const IOSocketType socketType;
     // string -> connection mapping
     // and connection->string mapping
 
@@ -53,6 +56,19 @@ public:
     // }
     // )
     // }
+
+    void onAdded() {
+        // Detect if we need to initialize tcpClient and/or tcpServer
+        // If so, initialize it, and then call their onAdd();
+        if (socketType == IOSocketType::Router) {
+            // assert(!tcpClient);
+            tcpClient.emplace(eventLoopThread);
+            // assert(!tcpServer);
+            tcpServer.emplace(eventLoopThread);
+        }
+        // tcpClient.onAdd();
+        // tcpServer.onAdd();
+    }
 
     // void recvMessage(Message* msg);
 };

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <map>
+#include <memory>
 #include <thread>
 
 #include "scaler/io/ymq/configuration.h"
@@ -9,21 +10,21 @@
 
 class IOSocket;
 
-class EventLoopThread {
+class EventLoopThread: public std::enable_shared_from_this<EventLoopThread> {
     using PollingContext = configuration::polling_context_t;
-    std::thread thread;
+    std::jthread thread;
     std::map<std::string, IOSocket> identityToIOSocket;
-    EventLoop<PollingContext> eventLoop;
 
 public:
+    EventLoop<PollingContext> eventLoop;
     // Why not make the class a friend class of IOContext?
     // Because the removeIOSocket method is a bit trickier than addIOSocket,
-    // the IOSocket that is being removed will first remove every MessageConnectionTCP
-    // managed by it from the EventLoop, before it removes it self from ioSockets.
-    // return eventLoop.executeNow(createIOSocket());
+    // the IOSocket that is being removed will first remove every
+    // MessageConnectionTCP managed by it from the EventLoop, before it removes
+    // it self from ioSockets. return eventLoop.executeNow(createIOSocket());
     IOSocket* addIOSocket(std::string identity, IOSocketType socketType);
 
-    bool removeIOSocket(IOSocket*);
+    void removeIOSocket(IOSocket* target);
     // EventLoop<PollingContext>& getEventLoop();
     // IOSocket* getIOSocketByIdentity(size_t identity);
 

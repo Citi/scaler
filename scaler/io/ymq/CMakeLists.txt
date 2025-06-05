@@ -31,6 +31,15 @@ target_sources(cc_ymq PRIVATE
   configuration.hpp
 
   typedefs.h
+  common.hpp
+
+  tcp_server.hpp
+  tcp_server.cpp
+
+  tcp_client.hpp
+  tcp_client.cpp
+
+  event_manager.hpp
 
 )
 
