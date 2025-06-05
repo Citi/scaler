@@ -9,7 +9,7 @@ from scaler.utility.zmq_config import ZMQConfig
 class SchedulerConfig:
     event_loop: str
     address: ZMQConfig
-    object_storage_config: Optional[ObjectStorageConfig]
+    storage_address: Optional[ObjectStorageConfig]
     monitor_address: Optional[ZMQConfig]
     io_threads: int
     max_number_of_tasks_waiting: int

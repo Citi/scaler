@@ -13,7 +13,7 @@ import zmq
 from scaler.io.config import DUMMY_CLIENT
 from scaler.io.sync_connector import SyncConnector
 from scaler.io.sync_object_storage_connector import SyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectMetadata, ObjectStorageAddress, TaskStatus
+from scaler.protocol.python.common import ObjectMetadata, TaskStatus
 from scaler.protocol.python.message import (
     ObjectInstruction,
     ProcessorInitialized,
@@ -23,6 +23,7 @@ from scaler.protocol.python.message import (
 from scaler.protocol.python.mixins import Message
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.serialization import serialize_failure
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.object_cache import ObjectCache
@@ -37,7 +38,7 @@ class Processor(multiprocessing.get_context("spawn").Process):  # type: ignore
         self,
         event_loop: str,
         agent_address: ZMQConfig,
-        storage_address: ObjectStorageAddress,
+        storage_address: ObjectStorageConfig,
         resume_event: Optional[EventType],
         resumed_event: Optional[EventType],
         garbage_collect_interval_seconds: int,

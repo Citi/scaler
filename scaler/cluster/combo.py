@@ -31,7 +31,7 @@ class SchedulerClusterCombo:
         self,
         n_workers: int,
         address: Optional[str] = None,
-        object_storage_config: Optional[ObjectStorageConfig] = None,
+        storage_address: Optional[ObjectStorageConfig] = None,
         monitor_address: Optional[str] = None,
         worker_io_threads: int = DEFAULT_IO_THREADS,
         scheduler_io_threads: int = DEFAULT_IO_THREADS,
@@ -59,22 +59,23 @@ class SchedulerClusterCombo:
         else:
             self._address = ZMQConfig.from_string(address)
 
-        if object_storage_config is None:
-            self._object_storage_config = ObjectStorageConfig(self._address.host, get_available_tcp_port())
+        if storage_address is None:
+            self._storage_address = ObjectStorageConfig(self._address.host, get_available_tcp_port())
         else:
-            self._object_storage_config = object_storage_config
+            self._storage_address = storage_address
 
         if monitor_address is None:
             self._monitor_address = None
         else:
             self._monitor_address = ZMQConfig.from_string(monitor_address)
 
-        self._object_storage = ObjectStorageServerProcess(self._object_storage_config)
+        self._object_storage = ObjectStorageServerProcess(self._storage_address)
         self._object_storage.start()
         self._object_storage.wait_until_ready()  # object storage should be ready before starting the cluster
 
         self._cluster = Cluster(
             address=self._address,
+            storage_address=self._storage_address,
             worker_io_threads=worker_io_threads,
             worker_names=[f"{socket.gethostname().split('.')[0]}_{i}" for i in range(n_workers)],
             heartbeat_interval_seconds=heartbeat_interval_seconds,
@@ -91,7 +92,7 @@ class SchedulerClusterCombo:
 
         self._scheduler = SchedulerProcess(
             address=self._address,
-            object_storage_config=self._object_storage_config,
+            storage_address=self._storage_address,
             monitor_address=self._monitor_address,
             io_threads=scheduler_io_threads,
             max_number_of_tasks_waiting=max_number_of_tasks_waiting,

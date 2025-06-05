@@ -13,10 +13,11 @@ from scaler.io.config import (
     DEFAULT_PER_WORKER_QUEUE_SIZE,
     DEFAULT_WORKER_TIMEOUT_SECONDS,
 )
-from scaler.scheduler.config import SchedulerConfig, ObjectStorageConfig
+from scaler.scheduler.config import SchedulerConfig
 from scaler.scheduler.scheduler import scheduler_main
 from scaler.utility.event_loop import EventLoopType, register_event_loop
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 
 
@@ -135,7 +136,7 @@ def main():
     scheduler_config = SchedulerConfig(
         event_loop=args.event_loop,
         address=args.address,
-        object_storage_config=args.object_storage_address,
+        storage_address=args.object_storage_address,
         monitor_address=args.monitor_address,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,

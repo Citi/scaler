@@ -7,9 +7,9 @@ from typing import Optional, Tuple
 import psutil
 
 from scaler.io.config import DEFAULT_PROCESSOR_KILL_DELAY_SECONDS
-from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import Task
 from scaler.utility.identifiers import ProcessorID
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig
 from scaler.worker.agent.processor.processor import SUSPEND_SIGNAL, Processor
 
@@ -19,7 +19,7 @@ class ProcessorHolder:
         self,
         event_loop: str,
         agent_address: ZMQConfig,
-        storage_address: ObjectStorageAddress,
+        storage_address: ObjectStorageConfig,
         garbage_collect_interval_seconds: int,
         trim_memory_threshold_bytes: int,
         hard_suspend: bool,

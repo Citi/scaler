@@ -42,14 +42,15 @@ class Scheduler:
                 f"{self.__class__.__name__}: scheduler address must be tcp type: {config.address.to_address()}"
             )
 
-        if config.object_storage_config is None:
-            self._object_storage_address = ObjectStorageAddress.new_msg(
-                host=config.address.host, port=config.address.port + 1
+        if config.storage_address is None:
+            self._storage_address = ObjectStorageAddress.new_msg(
+                host=config.address.host,
+                port=config.address.port + 1
             )
         else:
-            self._object_storage_address = ObjectStorageAddress.new_msg(
-                host=config.object_storage_config.host,
-                port=config.object_storage_config.port
+            self._storage_address = ObjectStorageAddress.new_msg(
+                host=config.storage_address.host,
+                port=config.storage_address.port
             )
 
         if config.monitor_address is None:
@@ -72,7 +73,7 @@ class Scheduler:
 
         logging.info(f"{self.__class__.__name__}: listen to scheduler address {config.address.to_address()}")
         logging.info(
-            f"{self.__class__.__name__}: connect to object storage server {config.object_storage_config.to_string()}"
+            f"{self.__class__.__name__}: connect to object storage server {self._storage_address!r}"
         )
         logging.info(
             f"{self.__class__.__name__}: listen to scheduler monitor address {self._address_monitor.to_address()}"
@@ -81,9 +82,9 @@ class Scheduler:
         self._client_manager = VanillaClientManager(
             client_timeout_seconds=config.client_timeout_seconds,
             protected=config.protected,
-            storage_address=self._object_storage_address,
+            storage_address=self._storage_address,
         )
-        self._object_manager = VanillaObjectManager(object_storage_config=config.object_storage_config)
+        self._object_manager = VanillaObjectManager()
         self._graph_manager = VanillaGraphTaskManager()
         self._task_manager = VanillaTaskManager(max_number_of_tasks_waiting=config.max_number_of_tasks_waiting)
         self._worker_manager = VanillaWorkerManager(
@@ -91,7 +92,7 @@ class Scheduler:
             timeout_seconds=config.worker_timeout_seconds,
             load_balance_seconds=config.load_balance_seconds,
             load_balance_trigger_times=config.load_balance_trigger_times,
-            storage_address=self._object_storage_address,
+            storage_address=self._storage_address,
         )
         self._status_reporter = StatusReporter(self._binder_monitor)
 
@@ -126,7 +127,7 @@ class Scheduler:
         )
 
     async def connect_to_storage(self):
-        await self._connector_storage.connect(self._object_storage_address.host, self._object_storage_address.port)
+        await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
 
     async def on_receive_message(self, source: bytes, message: Message):
         # =====================================================================================

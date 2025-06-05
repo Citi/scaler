@@ -28,6 +28,7 @@ from scaler.utility.event_loop import create_async_loop_routine, register_event_
 from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.logging.utility import setup_logger
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.utility.zmq_config import ZMQConfig, ZMQType
 from scaler.worker.agent.heartbeat_manager import VanillaHeartbeatManager
 from scaler.worker.agent.processor_manager import VanillaProcessorManager
@@ -42,6 +43,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         event_loop: str,
         name: str,
         address: ZMQConfig,
+        storage_address: Optional[ObjectStorageConfig],
         io_threads: int,
         heartbeat_interval_seconds: int,
         garbage_collect_interval_seconds: int,
@@ -57,6 +59,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._event_loop = event_loop
         self._name = name
         self._address = address
+
+        self._storage_address = storage_address
         self._io_threads = io_threads
 
         self._ident = WorkerID.generate_worker_id(name)  # _identity is internal to multiprocessing.Process
@@ -113,7 +117,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._connector_storage = AsyncObjectStorageConnector()
 
-        self._heartbeat_manager = VanillaHeartbeatManager()
+        self._heartbeat_manager = VanillaHeartbeatManager(storage_address=self._storage_address)
         self._profiling_manager = VanillaProfilingManager()
         self._task_manager = VanillaTaskManager(task_timeout_seconds=self._task_timeout_seconds)
         self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
@@ -193,6 +197,10 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         raise TypeError(f"Unknown message from {processor_id!r}: {message}")
 
     async def __get_loops(self):
+        if self._storage_address is not None:
+            # With a manually set storage address, immediately connect to the object storage server.
+            await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
+
         try:
             await asyncio.gather(
                 self._processor_manager.initialize(),

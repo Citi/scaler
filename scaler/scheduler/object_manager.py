@@ -9,7 +9,6 @@ from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
 from scaler.protocol.python.common import ObjectMetadata
 from scaler.protocol.python.message import ObjectInstruction
 from scaler.protocol.python.status import ObjectManagerStatus
-from scaler.scheduler.config import ObjectStorageConfig
 from scaler.scheduler.mixins import ClientManager, ObjectManager, WorkerManager
 from scaler.scheduler.object_usage.object_tracker import ObjectTracker, ObjectUsage
 from scaler.utility.mixins import Looper, Reporter
@@ -28,9 +27,7 @@ class _ObjectCreation(ObjectUsage):
 
 
 class VanillaObjectManager(ObjectManager, Looper, Reporter):
-    def __init__(self, object_storage_config: ObjectStorageConfig):
-        self._object_storage_config = object_storage_config
-
+    def __init__(self):
         self._object_tracker: ObjectTracker[ClientID, ObjectID, _ObjectCreation] = ObjectTracker(
             "object_usage", self.__finished_object_storage
         )

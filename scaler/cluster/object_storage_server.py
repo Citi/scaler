@@ -6,7 +6,7 @@ from scaler.utility.object_storage_config import ObjectStorageConfig
 
 
 class ObjectStorageServerProcess(multiprocessing.get_context("fork").Process):  # type: ignore[misc]
-    def __init__(self, object_storage_config: ObjectStorageConfig):
+    def __init__(self, storage_address: ObjectStorageConfig):
         multiprocessing.Process.__init__(self, name="ObjectStorageServer")
 
         self._storage_address = storage_address

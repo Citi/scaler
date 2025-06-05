@@ -5,9 +5,9 @@ import psutil
 
 from scaler.io.async_connector import AsyncConnector
 from scaler.io.async_object_storage_connector import AsyncObjectStorageConnector
-from scaler.protocol.python.common import ObjectStorageAddress
 from scaler.protocol.python.message import Resource, WorkerHeartbeat, WorkerHeartbeatEcho
 from scaler.utility.mixins import Looper
+from scaler.utility.object_storage_config import ObjectStorageConfig
 from scaler.worker.agent.mixins import HeartbeatManager, TimeoutManager
 from scaler.worker.symphony.task_manager import SymphonyTaskManager
 
@@ -23,7 +23,7 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = 0
         self._latency_us = 0
 
-        self._storage_address: Optional[ObjectStorageAddress] = None
+        self._storage_address: Optional[ObjectStorageConfig] = None
 
     def register(
         self,
@@ -46,11 +46,12 @@ class SymphonyHeartbeatManager(Looper, HeartbeatManager):
         self._start_timestamp_ns = 0
         self._timeout_manager.update_last_seen_time()
 
-        if not self._connector_storage.is_connected():
-            self._storage_address = heartbeat.object_storage_address()
+        if self._storage_address is None:
+            address_message = heartbeat.object_storage_address()
+            self._storage_address = ObjectStorageConfig(address_message.host, address_message.port)
             await self._connector_storage.connect(self._storage_address.host, self._storage_address.port)
 
-    def get_storage_address(self) -> ObjectStorageAddress:
+    def get_storage_address(self) -> ObjectStorageConfig:
         return self._storage_address
 
     async def routine(self):
