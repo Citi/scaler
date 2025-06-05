@@ -3,18 +3,24 @@
 // C++
 // #include <map>
 // #include <optional>
+#include <memory>
 #include <string>
 
 // First-party
-#include "scaler/io/ymq/event_loop_thread.h"
 // #include "scaler/io/ymq/message_connection_tcp.hpp"
 // #include "scaler/io/ymq/tcp_client.hpp"
 // #include "scaler/io/ymq/tcp_server.hpp"
 
+// #include "message_connection_tcp.hpp"
+// #include "tcp_client.hpp"
+// #include "tcp_server.hpp"
+
+#include "scaler/io/ymq/typedefs.h"
+
+class EventLoopThread;
+
 class IOSocket {
-    EventLoopThread& eventLoopThread;
-    enum SocketTypes { Binder, Sub, Pub, Dealer, Router, Pair /* etc. */ };
-    SocketTypes socketTypes;
+    std::shared_ptr<EventLoopThread> eventLoopThread;
 
     // std::optional<TcpServer> tcpServer;
     // std::optional<TcpClient> tcpClient;
@@ -28,6 +34,7 @@ public:
     IOSocket& operator=(IOSocket&&)      = delete;
 
     const std::string identity;
+    const IOSocketType socketTypes;
     // string -> connection mapping
     // and connection->string mapping
 
