@@ -52,7 +52,7 @@ public:
         return *this;
     }
 
-    FileDescriptor(FileDescriptor&& other) noexcept: _fd(other._fd) {
+    FileDescriptor(FileDescriptor&& other) noexcept: _ownership(other._ownership), _fd(other._fd) {
         other._fd = -1;  // prevent double close
     }
 
