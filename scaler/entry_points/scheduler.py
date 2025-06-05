@@ -135,7 +135,7 @@ def main():
     scheduler_config = SchedulerConfig(
         event_loop=args.event_loop,
         address=args.address,
-        object_storage_config=args.object_storage_config,
+        object_storage_config=args.object_storage_address,
         monitor_address=args.monitor_address,
         io_threads=args.io_threads,
         max_number_of_tasks_waiting=args.max_number_of_tasks_waiting,
