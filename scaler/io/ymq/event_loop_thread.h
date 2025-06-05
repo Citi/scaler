@@ -28,7 +28,7 @@ public:
     IOSocket* addIOSocket(std::string identity, std::string socketType);
 
     bool removeIOSocket(IOSocket*);
-    // EventLoop<PollingContext>& getEventLoop();
+    EventLoop<PollingContext>& getEventLoop();
     // IOSocket* getIOSocketByIdentity(size_t identity);
 
     // EventLoopThread(const EventLoopThread&)            = delete;
