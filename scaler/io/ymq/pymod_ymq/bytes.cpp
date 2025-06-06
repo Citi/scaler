@@ -1,4 +1,6 @@
 // allows us to define PyTypeObjects in the canonical way without warnings
+#include "scaler/io/ymq/bytes.h"
+#include "object.h"
 #pragma clang diagnostic ignored "-Wreorder-init-list"
 #pragma clang diagnostic ignored "-Wc99-designator"
 
@@ -9,37 +11,56 @@
 
 struct PyBytesYmq {
     PyObject_HEAD;
+    Bytes bytes;
+    int shares;  // Reference count for buffer sharing
 };
 
-static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {
+static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {    
     return 0;  // todo
 }
 
 static void PyBytesYmq_dealloc(PyBytesYmq* self) {
-    // todo
+    printf("PyBytesYmq_dealloc called, shares: %d\n", self->shares);
+
+    Py_TYPE(self)->tp_free(self);
 }
 
 static PyObject* PyBytesYmq_repr(PyBytesYmq* self) {
-    Py_RETURN_NONE;  // todo
+    if (self->bytes.is_empty()) {
+        return PyUnicode_FromString("<Bytes: empty>");
+    } else {
+        return PyUnicode_FromFormat("<Bytes: %db>", self->bytes.len());
+    }
 }
 
 static PyObject* PyBytesYmq_data_getter(PyBytesYmq* self) {
-    Py_RETURN_NONE;  // todo
+    return PyBytes_FromStringAndSize((const char*)self->bytes.data(), self->bytes.len());
 }
 
 static PyObject* PyBytesYmq_len_getter(PyBytesYmq* self) {
-    Py_RETURN_NONE;  // todo
+    return PyLong_FromSize_t(self->bytes.len());
 }
 
 static int PyBytesYmq_getbuffer(PyBytesYmq* self, Py_buffer* view, int flags) {
-    return 0;  // todo
+    self->shares++;
+
+    return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
 }
 
 static void PyBytesYmq_releasebuffer(PyBytesYmq* self, Py_buffer* view) {
-    // todo
+    self->shares--;
+
+    if (self->shares == 0) {
+        // If no more references, we can free the data
+        self->bytes.~Bytes();  // Call the destructor of Bytes
+    }
 }
 
-static PyGetSetDef PyBytesYmq_properties[] = {{nullptr, nullptr, nullptr, nullptr, nullptr}};
+static PyGetSetDef PyBytesYmq_properties[] = {
+    {"data", (getter)PyBytesYmq_data_getter, nullptr, PyDoc_STR("Data of the Bytes object"), nullptr},
+    {"len", (getter)PyBytesYmq_len_getter, nullptr, PyDoc_STR("Length of the Bytes object"), nullptr},
+    {nullptr, nullptr, nullptr, nullptr, nullptr}  // Sentinel
+};
 
 static PyBufferProcs PyBytesYmqBufferProcs = {
     .bf_getbuffer     = (getbufferproc)PyBytesYmq_getbuffer,
