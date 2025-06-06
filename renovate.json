@@ -2,5 +2,15 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "automergeType": "pr",
+  "automergeStrategy": "squash",
+  "recreateWhen": "auto",
+  "packageRules": [
+    {
+      "description": "Automerge latest patch versions",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true
+    }
   ]
 }
