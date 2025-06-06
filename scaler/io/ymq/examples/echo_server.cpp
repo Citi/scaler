@@ -14,7 +14,7 @@ int main() {
     printf("Hello, world!\n");
 
     IOContext context;
-    IOSocket* socket = context.addIOSocket("ServerSocket", "Dealer");
+    std::shared_ptr<IOSocket> socket = context.createIOSocket("ServerSocket", SocketTypes::Dealer);
     // char buf[8];
     // while (true) {
     //     socket.read("any_identity", buf, []() { printf("read completed\n"); });

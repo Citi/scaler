@@ -28,10 +28,7 @@ class Bytes {
         this->m_data = NULL;
     }
 
-    Bytes(uint8_t* m_data, size_t m_len, Ownership tag): m_data(m_data), m_len(m_len), tag(tag) {
-        if (tag == Owned && m_data == NULL)
-            panic("tried to create owned bytes with NULL m_data");
-    }
+    Bytes(uint8_t* m_data, size_t m_len, Ownership tag): m_data(m_data), m_len(m_len), tag(tag) {}
 
 public:
     // move-only
@@ -124,6 +121,7 @@ public:
     // }
 
     size_t len() const { return m_len; }
+    const uint8_t* data() const { return m_data; }
 
     friend class Buffer;
 };

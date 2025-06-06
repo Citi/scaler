@@ -1,11 +1,9 @@
 add_library(cc_ymq SHARED)
-add_library(ymq SHARED)
 
 target_sources(cc_ymq PRIVATE
   bytes.h
   common.h
   configuration.h
-  defs.h
   epoll_context.h
   event_loop_backend.h
   event_loop.h
@@ -34,15 +32,26 @@ install(TARGETS cc_ymq
 
 find_package(Python COMPONENTS Development)
 
-set_target_properties(ymq PROPERTIES  PREFIX "")
+add_library(ymq SHARED)
 
-target_sources(ymq PRIVATE pymod_ymq/ymq.cpp)
+set_target_properties(ymq PROPERTIES  PREFIX "")
+set_target_properties(ymq PROPERTIES LINKER_LANGUAGE CXX)
+
+target_sources(ymq PRIVATE pymod_ymq/bytes.h
+                           pymod_ymq/message.h
+                           pymod_ymq/io_context.h
+                           pymod_ymq/io_socket.h
+                           pymod_ymq/ymq.h
+                           pymod_ymq/ymq.cpp
+)
 target_include_directories(ymq PRIVATE ${Python_INCLUDE_DIRS})
 target_link_libraries(ymq PRIVATE cc_ymq
                           PRIVATE ${Python_LIBRARIES}
 )
 
-target_link_options(ymq PRIVATE "-Wl,-rpath,$ORIGIN")
+target_link_options(ymq PRIVATE "-Wl,-rpath,$ORIGIN,-L/home/george/.pyenv/versions/3.10.17/lib")
 
 install(TARGETS ymq
-        LIBRARY DESTINATION ${CMAKE_SOURCE_DIR}/scaler/lib)
+       LIBRARY DESTINATION scaler/io/ymq)
+
+add_subdirectory(examples)
