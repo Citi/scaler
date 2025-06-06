@@ -13,8 +13,8 @@
 
 // #include "message_connection_tcp.hpp"
 
-#include "scaler/io/ymq/tcp_client.hpp"
-#include "scaler/io/ymq/tcp_server.hpp"
+#include "scaler/io/ymq/tcp_client.h"
+#include "scaler/io/ymq/tcp_server.h"
 #include "scaler/io/ymq/typedefs.h"
 
 class EventLoopThread;
@@ -57,18 +57,7 @@ public:
     // )
     // }
 
-    void onAdded() {
-        // Detect if we need to initialize tcpClient and/or tcpServer
-        // If so, initialize it, and then call their onAdd();
-        if (socketType == IOSocketType::Router) {
-            // assert(!tcpClient);
-            tcpClient.emplace(eventLoopThread);
-            // assert(!tcpServer);
-            tcpServer.emplace(eventLoopThread);
-        }
-        // tcpClient.onAdd();
-        // tcpServer.onAdd();
-    }
+    void onAdded();
 
     // void recvMessage(Message* msg);
 };

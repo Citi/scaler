@@ -5,6 +5,7 @@
 #include <cassert>    // assert
 
 #include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/io_socket.h"
 
 IOContext::IOContext(size_t threadCount): _threads(threadCount) {
     assert(threadCount > 0);
