@@ -4,10 +4,10 @@
 #include <structmember.h>
 
 // First-Party
-#include "py_bytes.cpp"
-#include "py_io_context.cpp"
-#include "py_io_socket.cpp"
-#include "py_message.cpp"
+#include "scaler/io/ymq/pymod_ymq/bytes.cpp"
+#include "scaler/io/ymq/pymod_ymq/io_context.cpp"
+#include "scaler/io/ymq/pymod_ymq/io_socket.cpp"
+#include "scaler/io/ymq/pymod_ymq/message.cpp"
 
 struct YmqState {};
 

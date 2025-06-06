@@ -4,8 +4,8 @@
 #include <functional>
 
 // First-party
-#include "event_loop_thread.h"
-#include "file_descriptor.h"
+#include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/file_descriptor.h"
 
 struct EventLoopThread;
 

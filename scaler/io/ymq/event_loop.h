@@ -1,13 +1,13 @@
 #pragma once
 
 // First-party
-#include "epoll_context.h"
-#include "event_manager.h"
-#include "interruptive_concurrent_queue.h"
-#include "timed_concurrent_queue.h"
+#include "scaler/io/ymq/epoll_context.h"
+#include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/interruptive_concurrent_queue.h"
+#include "scaler/io/ymq/timed_concurrent_queue.h"
 
 // Third-Party
-#include "third_party/concurrentqueue.h"
+#include "scaler/io/ymq/third_party/concurrentqueue.h"
 
 using moodycamel::ConcurrentQueue;
 

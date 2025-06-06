@@ -16,7 +16,7 @@
 #include <optional>
 
 // First-party
-#include "common.h"
+#include "scaler/io/ymq/common.h"
 
 class FileDescriptor {
     enum class Ownership { Owned, Borrowed } _ownership;
