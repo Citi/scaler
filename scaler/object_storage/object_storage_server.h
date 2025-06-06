@@ -60,15 +60,6 @@ class ObjectStorageServer {
 #ifndef NDEBUG
 public:
 #endif
-    ObjectStorageServer(int on_server_ready_fd = -1)
-    {
-        if (on_server_ready_fd < 0) {
-            this->on_server_ready_fd = createServerReadyEventfd();
-        } else {
-            this->on_server_ready_fd = on_server_ready_fd;
-        }
-    }
-
     bool updateRecord(
         const scaler::object_storage::ObjectRequestHeader& requestHeader,
         scaler::object_storage::ObjectResponseHeader& responseHeader,
@@ -145,7 +136,6 @@ public:
     std::map<scaler::object_storage::object_id_t, ObjectWithMeta> objectIDToMeta;
     std::map<std::size_t, shared_object_t> objectHashToObject;
 
-public:
     awaitable<void> process_request(std::shared_ptr<tcp::socket> socket) {
         try {
             for (;;) {
@@ -175,7 +165,6 @@ public:
         }
     }
 
-private:
     static int createServerReadyEventfd() {
         int on_server_ready_fd = eventfd(0, EFD_SEMAPHORE);
         if (on_server_ready_fd == -1) {
@@ -222,6 +211,15 @@ private:
     }
 
 public:
+    ObjectStorageServer(int on_server_ready_fd = -1)
+    {
+        if (on_server_ready_fd < 0) {
+            this->on_server_ready_fd = createServerReadyEventfd();
+        } else {
+            this->on_server_ready_fd = on_server_ready_fd;
+        }
+    }
+
     void run(std::string name, std::string port) {
         try {
             boost::asio::io_context io_context(1);
