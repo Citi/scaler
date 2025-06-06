@@ -5,14 +5,19 @@
 #include <memory>
 
 // First-party
-#include "scaler/io/ymq/event_loop_thread.h"
-#include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/file_descriptor.h"
+// #include "event_loop_thread.hpp"
+// #include "event_manager.hpp"
 #include "scaler/io/ymq/file_descriptor.h"
 
+class EventLoopThread;
+class EventManager;
+
 class TcpServer {
-    EventLoopThread& eventLoop;  // eventLoop thread will call onRead that is associated w/ the eventManager
-    std::unique_ptr<EventManager> eventManager;  // will copy the `onRead()` to itself
-    FileDescriptor fd;
+    // eventLoop thread will call onRead that is associated w/ the eventManager
+    std::shared_ptr<EventLoopThread> eventLoop;
+    // std::unique_ptr<EventManager> eventManager;  // will copy the `onRead()` to itself
+    // FileDescriptor fd;
     // Implementation defined method. accept(3) should happen here.
     // This function will call user defined onAcceptReturn()
     // It will handle error it can handle. If it is unreasonable to
@@ -22,6 +27,8 @@ class TcpServer {
 public:
     TcpServer(const TcpServer&)            = delete;
     TcpServer& operator=(const TcpServer&) = delete;
+    // TODO: Modify the behavior of default ctor
+    TcpServer(std::shared_ptr<EventLoopThread> eventLoop): eventLoop(eventLoop) {}
 
     using AcceptReturnCallback = std::function<void(FileDescriptor, sockaddr, int)>;
     AcceptReturnCallback onAcceptReturn;
