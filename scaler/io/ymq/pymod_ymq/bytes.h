@@ -1,6 +1,5 @@
 // allows us to define PyTypeObjects in the canonical way without warnings
 #include "scaler/io/ymq/bytes.h"
-#include "object.h"
 #pragma clang diagnostic ignored "-Wreorder-init-list"
 #pragma clang diagnostic ignored "-Wc99-designator"
 
@@ -69,17 +68,17 @@ static PyBufferProcs PyBytesYmqBufferProcs = {
 
 // clang-format off
 static PyTypeObject PyBytesYmqType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
+    .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.Bytes",
-    .tp_doc       = PyDoc_STR("Bytes"),
     .tp_basicsize = sizeof(PyBytesYmq),
     .tp_itemsize  = 0,
-    .tp_flags     = Py_TPFLAGS_DEFAULT,
-    .tp_new       = PyType_GenericNew,
-    .tp_init      = (initproc)PyBytesYmq_init,
-    .tp_repr      = (reprfunc)PyBytesYmq_repr,
     .tp_dealloc   = (destructor)PyBytesYmq_dealloc,
-    .tp_getset    = PyBytesYmq_properties,
+    .tp_repr      = (reprfunc)PyBytesYmq_repr,
     .tp_as_buffer = &PyBytesYmqBufferProcs,
+    .tp_flags     = Py_TPFLAGS_DEFAULT,
+    .tp_doc       = PyDoc_STR("Bytes"),
+    .tp_getset    = PyBytesYmq_properties,
+    .tp_init      = (initproc)PyBytesYmq_init,
+    .tp_new       = PyType_GenericNew,
 };
 // clang-format on

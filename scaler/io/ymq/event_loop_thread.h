@@ -3,19 +3,20 @@
 // C++
 #include <memory>
 #include <map>
+#include <string>
 #include <thread>
 
 // First-party
-#include "scaler/io/ymq/configuration.h"
+// #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/event_loop.h"
 #include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/epoll_context.h"
 
 class IOSocket;
-struct configuration;
 
 class EventLoopThread {
-    using PollingContext = configuration::polling_context_t;
-    using Identity       = configuration::Identity;
+    using PollingContext = EpollContext;
+    using Identity       = std::string;
 
     std::thread thread;
     std::map<Identity, std::shared_ptr<IOSocket>> identityToIOSocket;

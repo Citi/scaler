@@ -27,16 +27,16 @@ static PyMemberDef PyMessage_members[] = {{nullptr}};
 
 // clang-format off
 static PyTypeObject PyMessageType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
+    .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.Message",
-    .tp_doc       = PyDoc_STR("Message"),
     .tp_basicsize = sizeof(PyMessage),
     .tp_itemsize  = 0,
-    .tp_flags     = Py_TPFLAGS_DEFAULT,
-    .tp_new       = PyType_GenericNew,
-    .tp_init      = (initproc)PyMessage_init,
     .tp_dealloc   = (destructor)PyMessage_dealloc,
     .tp_repr      = (reprfunc)PyMessage_repr,
+    .tp_flags     = Py_TPFLAGS_DEFAULT,
+    .tp_doc       = PyDoc_STR("Message"),
     .tp_members   = PyMessage_members,
+    .tp_init      = (initproc)PyMessage_init,
+    .tp_new       = PyType_GenericNew,
 };
 // clang-format on

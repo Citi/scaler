@@ -12,5 +12,5 @@ std::shared_ptr<IOSocket> IOContext::createIOSocket(Identity identity, SocketTyp
 }
 
 bool IOContext::removeIOSocket(std::shared_ptr<IOSocket> socket) {
-    todo();
+    return false; // todo: implement this
 }

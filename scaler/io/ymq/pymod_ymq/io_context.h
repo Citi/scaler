@@ -27,16 +27,16 @@ static PyMethodDef PyIOContext_methods[] = {{nullptr, nullptr, 0, nullptr}};
 
 // clang-format off
 static PyTypeObject PyIOContextType = {
-    PyVarObject_HEAD_INIT(NULL, 0)
+    .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.IOContext",
-    .tp_doc       = PyDoc_STR("IOContext"),
     .tp_basicsize = sizeof(PyIOContext),
     .tp_itemsize  = 0,
-    .tp_flags     = Py_TPFLAGS_DEFAULT,
-    .tp_new       = PyType_GenericNew,
-    .tp_init      = (initproc)PyIOContext_init,
-    .tp_repr      = (reprfunc)PyIOContext_repr,
     .tp_dealloc   = (destructor)PyIOContext_dealloc,
+    .tp_repr      = (reprfunc)PyIOContext_repr,
+    .tp_flags     = Py_TPFLAGS_DEFAULT,
+    .tp_doc       = PyDoc_STR("IOContext"),
     .tp_methods   = PyIOContext_methods,
+    .tp_init      = (initproc)PyIOContext_init,
+    .tp_new       = PyType_GenericNew,
 };
 // clang-format on
