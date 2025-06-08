@@ -25,7 +25,7 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
     }
 
     // check if the address and payload are of type PyBytesYmq
-    if (!PyObject_TypeCheck(address, &PyBytesYmqType)) {
+    if (!PyObject_IsInstance(address, (PyObject*) &PyBytesYmqType)) {
         PyObject* args = PyTuple_Pack(1, address);
         address        = PyObject_CallObject((PyObject*)&PyBytesYmqType, args);
         Py_DECREF(args);
@@ -35,7 +35,7 @@ static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
         }
     }
 
-    if (!PyObject_TypeCheck(payload, &PyBytesYmqType)) {
+    if (!PyObject_IsInstance(payload, (PyObject*) &PyBytesYmqType)) {
         PyObject* args = PyTuple_Pack(1, payload);
         payload        = PyObject_CallObject((PyObject*)&PyBytesYmqType, args);
         Py_DECREF(args);
@@ -66,7 +66,7 @@ static PyMemberDef PyMessage_members[] = {{nullptr}};
 
 // clang-format off
 static PyTypeObject PyMessageType = {
-    .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
+    .ob_base      = PyVarObject_HEAD_INIT(NULL, 0)
     .tp_name      = "ymq.Message",
     .tp_basicsize = sizeof(PyMessage),
     .tp_itemsize  = 0,

@@ -23,21 +23,23 @@ class TCPServer;
 enum class SocketTypes { Binder, Sub, Pub, Dealer, Router, Pair };
 
 class IOSocket {
-    EventLoopThread& eventLoopThread;
-    SocketTypes socketType;
-    Identity identity;
+    EventLoopThread& _eventLoopThread;
+    SocketTypes _socketType;
+    Identity _identity;
 
-    TCPServer* tcpServer;
-    TCPClient* tcpClient;
+    TCPServer* _tcpServer;
+    TCPClient* _tcpClient;
 
     std::map<FileDescriptor, std::shared_ptr<MessageConnectionTCP>> fdToConnection;
 
 public:
     IOSocket(EventLoopThread& eventLoopThread, Identity identity, SocketTypes socketType)
-        : eventLoopThread(eventLoopThread), identity(identity), socketType(socketType) {}
+        : _eventLoopThread(eventLoopThread), _identity(identity), _socketType(socketType) {}
 
     IOSocket(const IOSocket&)            = delete;
     IOSocket& operator=(const IOSocket&) = delete;
     IOSocket(IOSocket&&)                 = delete;
     IOSocket& operator=(IOSocket&&)      = delete;
+
+    Identity identity() const { return _identity; }
 };

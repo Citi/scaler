@@ -7,19 +7,18 @@
 
 // C++
 #include <string>
-#include <vector>
 #include <utility>
 
 // First-Party
 #include "scaler/io/ymq/io_socket.h"
-
 #include "scaler/io/ymq/pymod_ymq/bytes.h"
 #include "scaler/io/ymq/pymod_ymq/io_context.h"
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/message.h"
 
 struct YmqState {
-    PyObject* enumModule;  // Reference to the enum module
+    PyObject* enumModule;       // Reference to the enum module
+    PyObject* socketTypesEnum;  // Reference to the SocketTypes enum
 };
 
 extern "C" {
@@ -44,6 +43,7 @@ static int ymq_init(PyObject* module) {
 
 static void ymq_free(YmqState* state) {
     Py_XDECREF(state->enumModule);
+    Py_XDECREF(state->socketTypesEnum);
     state->enumModule = nullptr;
 }
 
@@ -82,22 +82,23 @@ static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector
     }
 
     // create our class by calling enum.IntEnum(enumName, enumDict)
-    auto enumClass = PyObject_CallMethod(state->enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
+    auto socketTypesEnum = PyObject_CallMethod(state->enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
     Py_DECREF(enumDict);
 
-    if (!enumClass) {
+    if (!socketTypesEnum) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IntEnum class");
         return -1;
     }
 
+    state->socketTypesEnum = socketTypesEnum;
+
     // add the class to the module
     // this increments the reference count of enumClass
-    if (PyModule_AddObjectRef(module, enumName.c_str(), enumClass) < 0) {
+    if (PyModule_AddObjectRef(module, enumName.c_str(), socketTypesEnum) < 0) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to add IntEnum class to module");
-        Py_DECREF(enumClass);
+        Py_DECREF(socketTypesEnum);
         return -1;
     }
-    Py_DECREF(enumClass);
 
     return 0;
 }
@@ -141,13 +142,13 @@ static int ymq_exec(PyObject* module) {
     if (PyType_Ready(&PyIOSocketType) < 0)
         return -1;
 
-    if (PyModule_AddObjectRef(module, "IoSocket", (PyObject*)&PyIOSocketType) < 0)
+    if (PyModule_AddObjectRef(module, "IOSocket", (PyObject*)&PyIOSocketType) < 0)
         return -1;
 
     if (PyType_Ready(&PyIOContextType) < 0)
         return -1;
 
-    if (PyModule_AddObjectRef(module, "IoContext", (PyObject*)&PyIOContextType) < 0)
+    if (PyModule_AddObjectRef(module, "IOContext", (PyObject*)&PyIOContextType) < 0)
         return -1;
 
     return 0;
