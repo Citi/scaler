@@ -35,6 +35,10 @@ static PyObject* PyIOContext_repr(PyIOContext* self) {
     return PyUnicode_FromFormat("<IOContext at %p>", (void*)self->ioContext.get());
 }
 
+// todo: how to parse the arguments?
+// https://docs.python.org/3/c-api/structures.html#c.METH_METHOD
+// https://docs.python.org/3.10/c-api/call.html#vectorcall
+// https://peps.python.org/pep-0590/
 static PyObject* PyIOContext_createIOSocket(
     PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames) {
     PyObject *pyIdentity = nullptr, *pySocketType = nullptr;
@@ -50,11 +54,10 @@ static PyObject* PyIOContext_createIOSocket(
         return nullptr;
     }
 
+    // get the module state from the class
     YmqState* state = (YmqState*)PyType_GetModuleState(clazz);
 
-    // YmqState* state = (YmqState*)PyModule_GetState(Py_TYPE(self)->tp_module);
-
-    if (!PyObject_IsInstance(pySocketType, (PyObject*)&PyIOSocketType)) {
+    if (!PyObject_IsInstance(pySocketType, state->socketTypesEnum)) {
         PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of SocketTypes");
         return nullptr;
     }
