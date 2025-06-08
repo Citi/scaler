@@ -40,8 +40,8 @@ static int ymq_init(PyObject* module) {
     return 0;
 }
 
-void ymq_free(YmqState* state) {
-    Py_DECREF(state->enumModule);
+static void ymq_free(YmqState* state) {
+    Py_XDECREF(state->enumModule);
     state->enumModule = nullptr;
 }
 
