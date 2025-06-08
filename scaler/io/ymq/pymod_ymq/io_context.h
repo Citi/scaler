@@ -11,6 +11,8 @@ struct PyIOContext {
     PyObject_HEAD;
 };
 
+extern "C" {
+
 static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds) {
     return 0;  // todo
 }
@@ -21,6 +23,7 @@ static void PyIOContext_dealloc(PyIOContext* self) {
 
 static PyObject* PyIOContext_repr(PyIOContext* self) {
     Py_RETURN_NONE;  // todo
+}
 }
 
 static PyMethodDef PyIOContext_methods[] = {{nullptr, nullptr, 0, nullptr}};

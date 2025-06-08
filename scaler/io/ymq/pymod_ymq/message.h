@@ -11,6 +11,8 @@ struct PyMessage {
     PyObject_HEAD;
 };
 
+extern "C" {
+
 static int PyMessage_init(PyMessage* self, PyObject* args, PyObject* kwds) {
     return 0;  // todo
 }
@@ -21,6 +23,7 @@ static void PyMessage_dealloc(PyMessage* self) {
 
 static PyObject* PyMessage_repr(PyMessage* self) {
     Py_RETURN_NONE;  // todo
+}
 }
 
 static PyMemberDef PyMessage_members[] = {{nullptr}};

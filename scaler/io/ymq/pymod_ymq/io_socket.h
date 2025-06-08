@@ -10,6 +10,8 @@ struct PyIOSocket {
     IOSocket* socket;  // Use shared_ptr for memory management
 };
 
+extern "C" {
+
 static int PyIOSocket_init(PyIOSocket* self, PyObject* args, PyObject* kwds) {
     return 0;  // todo
 }
@@ -26,6 +28,7 @@ static PyObject* PyIOSocket_repr(PyIOSocket* self) {
 
 static PyObject* PyIOSocket_identity_getter(PyIOSocket* self, void* closure) {
     Py_RETURN_NONE;  // todo
+}
 }
 
 static PyGetSetDef PyIOSocket_properties[] = {{nullptr, nullptr, nullptr, nullptr, nullptr}};

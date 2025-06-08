@@ -14,6 +14,8 @@ struct PyBytesYmq {
     int shares;  // Reference count for buffer sharing
 };
 
+extern "C" {
+
 static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {    
     return 0;  // todo
 }
@@ -53,6 +55,7 @@ static void PyBytesYmq_releasebuffer(PyBytesYmq* self, Py_buffer* view) {
         // If no more references, we can free the data
         self->bytes.~Bytes();  // Call the destructor of Bytes
     }
+}
 }
 
 static PyGetSetDef PyBytesYmq_properties[] = {
