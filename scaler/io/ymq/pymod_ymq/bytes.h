@@ -1,3 +1,4 @@
+#pragma once
 
 // Python
 #define PY_SSIZE_T_CLEAN
@@ -17,8 +18,14 @@ extern "C" {
 static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {
     PyObject* bytes        = nullptr;
     const char* keywords[] = {"bytes", nullptr};
-    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)keywords, &bytes)) {
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", (char**)keywords, &bytes)) {
         return -1;  // Error parsing arguments
+    }
+
+    if (!bytes) {
+        // If no bytes were provided, initialize with an empty Bytes object
+        self->bytes = Bytes::empty();
+        return 0;
     }
 
     if (!PyBytes_Check(bytes)) {
