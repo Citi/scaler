@@ -1,28 +1,52 @@
-// allows us to define PyTypeObjects in the canonical way without warnings
-#include "scaler/io/ymq/bytes.h"
-#pragma clang diagnostic ignored "-Wreorder-init-list"
-#pragma clang diagnostic ignored "-Wc99-designator"
 
 // Python
 #define PY_SSIZE_T_CLEAN
 #include <Python.h>
 #include <structmember.h>
 
+// First-party
+#include "scaler/io/ymq/bytes.h"
+
 struct PyBytesYmq {
     PyObject_HEAD;
     Bytes bytes;
-    int shares;  // Reference count for buffer sharing
 };
 
 extern "C" {
 
-static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {    
-    return 0;  // todo
+static int PyBytesYmq_init(PyBytesYmq* self, PyObject* args, PyObject* kwds) {
+    PyObject* bytes        = nullptr;
+    const char* keywords[] = {"bytes", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "O", (char**)keywords, &bytes)) {
+        return -1;  // Error parsing arguments
+    }
+
+    if (!PyBytes_Check(bytes)) {
+        bytes = PyObject_Bytes(bytes);
+
+        if (!bytes) {
+            PyErr_SetString(PyExc_TypeError, "Expected bytes or bytes-like object");
+            return -1;
+        }
+    }
+
+    char* data;
+    Py_ssize_t len;
+
+    if (PyBytes_AsStringAndSize(bytes, &data, &len) < 0) {
+        PyErr_SetString(PyExc_TypeError, "Failed to get bytes data");
+        return -1;
+    }
+
+    // copy the data into the Bytes object
+    // it might be possible to make this zero-copy in the future
+    self->bytes = Bytes::copy((uint8_t*)data, len);
+
+    return 0;
 }
 
 static void PyBytesYmq_dealloc(PyBytesYmq* self) {
-    printf("PyBytesYmq_dealloc called, shares: %d\n", self->shares);
-
+    self->bytes.~Bytes();  // Call the destructor of Bytes
     Py_TYPE(self)->tp_free(self);
 }
 
@@ -43,18 +67,7 @@ static PyObject* PyBytesYmq_len_getter(PyBytesYmq* self) {
 }
 
 static int PyBytesYmq_getbuffer(PyBytesYmq* self, Py_buffer* view, int flags) {
-    self->shares++;
-
     return PyBuffer_FillInfo(view, (PyObject*)self, (void*)self->bytes.data(), self->bytes.len(), true, flags);
-}
-
-static void PyBytesYmq_releasebuffer(PyBytesYmq* self, Py_buffer* view) {
-    self->shares--;
-
-    if (self->shares == 0) {
-        // If no more references, we can free the data
-        self->bytes.~Bytes();  // Call the destructor of Bytes
-    }
 }
 }
 
@@ -66,7 +79,7 @@ static PyGetSetDef PyBytesYmq_properties[] = {
 
 static PyBufferProcs PyBytesYmqBufferProcs = {
     .bf_getbuffer     = (getbufferproc)PyBytesYmq_getbuffer,
-    .bf_releasebuffer = (releasebufferproc)PyBytesYmq_releasebuffer,
+    .bf_releasebuffer = (releasebufferproc) nullptr,
 };
 
 // clang-format off
