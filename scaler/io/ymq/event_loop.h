@@ -1,6 +1,7 @@
 #pragma once
 
 // C++
+#include <cstdint>  // uint64_t
 #include <functional>
 
 // First-party
@@ -27,8 +28,9 @@ struct EventLoop {
     void cancelExecution(Identifier identifier);
     void registerCallbackBeforeLoop(EventManager*);
 
-    // TODO: Change to FileDescriptor
-    // void addToLoop(int fd, ) {}
+    void addFdToLoop(int fd, uint64_t events, EventManager* manager) {
+        eventLoopBackend.addFdToLoop(fd, events, manager);
+    }
 
     // InterruptiveConcurrentQueue<FunctionType> immediateExecutionQueue;
     // TimedConcurrentQueue<FunctionType> timedExecutionQueue;

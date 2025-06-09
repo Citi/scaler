@@ -30,5 +30,7 @@ public:
     using ConnectReturnCallback = std::function<void(FileDescriptor, sockaddr, int)>;
     ConnectReturnCallback onConnectReturn;
 
+    void onAdded();
+
     void retry(/* Arguments */);
 };

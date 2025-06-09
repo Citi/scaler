@@ -11,7 +11,8 @@ void IOSocket::onAdded() {
         tcpClient.emplace(eventLoopThread);
         // assert(!tcpServer);
         tcpServer.emplace(eventLoopThread);
+        tcpClient->onAdded();
+        tcpServer->onAdded();
     }
-    // tcpClient.onAdd();
-    // tcpServer.onAdd();
+    // Different SocketType might have different rules
 }
