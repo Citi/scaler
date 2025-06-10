@@ -16,6 +16,9 @@ inline int createTimerfd() {
     return timerfd;
 }
 
+class EventLoopThread;
+
+#include "scaler/io/ymq/event_manager.h"
 // TODO: HANDLE ERRS
 struct TimedQueue {
     int timer_fd;
@@ -23,18 +26,15 @@ struct TimedQueue {
     using timed_fn   = std::pair<Timestamp, callback_t>;
     using cmp        = decltype([](const auto& x, const auto& y) { return x.first < y.first; });
 
+    std::shared_ptr<EventLoopThread> eventLoopThread;
+    std::unique_ptr<EventManager> events;
+
     std::priority_queue<timed_fn, std::vector<timed_fn>, cmp> pq;
 
-    TimedQueue(): timer_fd(createTimerfd()) {}
+    TimedQueue();
+    TimedQueue(std::shared_ptr<EventLoopThread> eventLoopThread);
 
-    void push(Timestamp timestamp, callback_t cb) {
-        if (pq.size() && timestamp < pq.top().first) {
-            auto ts = convertToItimerspec(timestamp);
-            int ret = timerfd_settime(timer_fd, 0, &ts, nullptr);
-        }
-
-        pq.push({timestamp, cb});
-    }
+    void push(Timestamp timestamp, callback_t cb);
 
     void onRead() {
         uint64_t numItems;
@@ -50,4 +50,6 @@ struct TimedQueue {
                 break;
         }
     }
+
+    void onCreated();
 };

@@ -7,6 +7,7 @@
 
 #include <memory>
 
+#include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
 
 static int create_and_bind_socket() {

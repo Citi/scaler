@@ -7,8 +7,9 @@
 #include <functional>
 #include <system_error>
 
+#include "scaler/io/ymq/timed_queue.h"
+
 // First-party
-#include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/file_descriptor.h"
 #include "scaler/io/ymq/timestamp.h"
 
@@ -16,6 +17,7 @@ class EventManager;
 
 struct EpollContext {
     FileDescriptor epoll_fd;
+    TimedQueue timingFunctions;
 
     using Function   = std::function<void()>;  // TBD
     using Identifier = int;                    // TBD
@@ -29,6 +31,7 @@ struct EpollContext {
         }
 
         this->epoll_fd = std::move(*fd);
+        timingFunctions.onCreated();
     }
 
     void loop();
@@ -42,7 +45,9 @@ struct EpollContext {
     }
 
     void executeLater(Function func, Identifier identifier);
-    void executeAt(Timestamp, Function, Identifier identifier);
+
+    void executeAt(Timestamp timestamp, Function callback) { timingFunctions.push(timestamp, callback); }
+
     void cancelExecution(Identifier identifier);
 
     void executePendingFunctors();
