@@ -7,7 +7,8 @@ std::shared_ptr<IOSocket> IOContext::createIOSocket(Identity identity, SocketTyp
     ++threadsRoundRobin %= _threads.size();
 
     auto socket = std::make_shared<IOSocket>(thread, identity, socketType);
-    thread.addIOSocket(socket);
+    // todo
+    // thread.addIOSocket(socket);
     return socket;
 }
 

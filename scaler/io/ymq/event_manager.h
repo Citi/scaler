@@ -5,45 +5,23 @@
 
 // First-party
 #include "scaler/io/ymq/event_loop_thread.h"
-#include "scaler/io/ymq/file_descriptor.h"
-
-struct EventLoopThread;
-
-// an io-facility-agnostic representation of event types
-struct Events {
-    bool readable : 1;
-    bool writable : 1;
-
-    static Events fromEpollEvents(uint32_t epollEvents) {
-        return Events {
-            .readable = (epollEvents & EPOLLIN) > 0,
-            .writable = (epollEvents & EPOLLOUT) > 0,
-        };
-    }
-};
 
 class EventManager {
-    using Callback = std::function<void(FileDescriptor&, Events)>;
-
-    EventLoopThread& _eventLoopThread;
-    FileDescriptor _fd;
-    Callback _callback;
-
-    // must happen on io thread
-    void removeFromEventLoop();
+    EventLoopThread& eventLoop;
+    const int fd;
+    // Implementation defined method, will call onRead, onWrite etc based on events
+    void onEvents();
 
 public:
-    EventManager(EventLoopThread& thread, FileDescriptor&& fd, Callback callback)
-        : _eventLoopThread(thread), _fd(std::move(fd)), _callback(std::move(callback)) {}
+    int events;
+    int revents;
+    void updateEvents();
 
-    ~EventManager() { removeFromEventLoop(); }
-
-    // must happen on io thread
-    void addToEventLoop();
-
-    bool operator==(const EventManager& other) const { return this->_fd == other._fd; }
-
-    void onEvent(Events events) { this->_callback(_fd, events); }
-
-    friend class EpollContext;
+    // User that registered them should have everything they need
+    // In the future, we might add more onXX() methods, for now these are all we need.
+    using OnEventCallback = std::function<void()>;
+    OnEventCallback onRead;
+    OnEventCallback onWrite;
+    OnEventCallback onClose;
+    OnEventCallback onError;
 };

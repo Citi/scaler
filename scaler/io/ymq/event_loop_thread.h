@@ -2,28 +2,20 @@
 
 // C++
 #include <map>
-#include <memory>
-#include <string>
 #include <thread>
 
 // First-party
-// #include "scaler/io/ymq/configuration.h"
-#include "scaler/io/ymq/epoll_context.h"
+#include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/event_loop.h"
-#include "scaler/io/ymq/io_socket.h"
+// #include "scaler/io/ymq/io_socket.hpp"
 
 class IOSocket;
 
-template <typename T>
-class EventLoop;
-
 class EventLoopThread {
-    using PollingContext = EpollContext;
-    using Identity       = std::string;
-
+    using PollingContext = configuration::polling_context_t;
     std::thread thread;
-    std::map<Identity, std::shared_ptr<IOSocket>> identityToIOSocket;
-    EventLoop<PollingContext>* eventLoop;
+    // std::map<std::string /* type of IOSocket's identity */, IOSocket> identityToIOSocket;
+    EventLoop<PollingContext> eventLoop;
 
 public:
     // Why not make the class a friend class of IOContext?
@@ -31,11 +23,11 @@ public:
     // the IOSocket that is being removed will first remove every MessageConnectionTCP
     // managed by it from the EventLoop, before it removes it self from ioSockets.
     // return eventLoop.executeNow(createIOSocket());
-    void addIOSocket(std::shared_ptr<IOSocket>);
-    bool removeIOSocket(std::shared_ptr<IOSocket>);
-    std::shared_ptr<IOSocket> getIOSocketByIdentity(size_t identity);
+    IOSocket* addIOSocket(std::string identity, std::string socketType);
 
-    EventLoop<PollingContext>& getEventLoop() { return *eventLoop; }
+    bool removeIOSocket(IOSocket*);
+    // EventLoop<PollingContext>& getEventLoop();
+    // IOSocket* getIOSocketByIdentity(size_t identity);
 
     // EventLoopThread(const EventLoopThread&)            = delete;
     // EventLoopThread& operator=(const EventLoopThread&) = delete;
