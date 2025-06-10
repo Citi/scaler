@@ -6,6 +6,8 @@
 #include <cstdint>  // uint64_t
 #include <functional>
 
+#include "scaler/io/ymq/timestamp.h"
+
 // First-party
 
 class EventManager;
@@ -14,7 +16,6 @@ struct EpollContext {
     int epfd;
 
     using Function   = std::function<void()>;  // TBD
-    using TimeStamp  = int;                    // TBD
     using Identifier = int;                    // TBD
     void registerCallbackBeforeLoop(EventManager*);
 
@@ -30,7 +31,7 @@ struct EpollContext {
     }
 
     void executeLater(Function func, Identifier identifier);
-    void executeAt(TimeStamp, Function, Identifier identifier);
+    void executeAt(Timestamp, Function, Identifier identifier);
     void cancelExecution(Identifier identifier);
 
     void executePendingFunctors();
