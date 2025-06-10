@@ -42,19 +42,17 @@ static PyGetSetDef PyIOSocket_properties[] = {{nullptr, nullptr, nullptr, nullpt
 
 static PyMethodDef PyIOSocket_methods[] = {{nullptr, nullptr, 0, nullptr}};
 
-// clang-format off
-static PyTypeObject PyIOSocketType = {
-    .ob_base      = PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name      = "ymq.IOSocket",
-    .tp_basicsize = sizeof(PyIOSocket),
-    .tp_itemsize  = 0,
-    .tp_dealloc   = (destructor)PyIOSocket_dealloc,
-    .tp_repr      = (reprfunc)PyIOSocket_repr,
-    .tp_flags     = Py_TPFLAGS_DEFAULT,
-    .tp_doc       = PyDoc_STR("IOSocket"),
-    .tp_methods   = PyIOSocket_methods,
-    .tp_getset    = PyIOSocket_properties,
-    // .tp_init      = (initproc)PyIOSocket_init,
-    .tp_new       = PyType_GenericNew,
+static PyType_Slot PyIOSocket_slots[] = {
+    {Py_tp_dealloc, (void*)PyIOSocket_dealloc},
+    {Py_tp_repr, (void*)PyIOSocket_repr},
+    {Py_tp_getset, (void*)PyIOSocket_properties},
+    {0, nullptr},
 };
-// clang-format on
+
+static PyType_Spec PyIOSocket_spec = {
+    .name      = "ymq.IOSocket",
+    .basicsize = sizeof(PyIOSocket),
+    .itemsize  = 0,
+    .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
+    .slots     = PyIOSocket_slots,
+};

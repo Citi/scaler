@@ -10,7 +10,6 @@
 
 // First-party
 #include "scaler/io/ymq/io_context.h"
-
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
@@ -57,12 +56,16 @@ static PyObject* PyIOContext_createIOSocket(
     // get the module state from the class
     YmqState* state = (YmqState*)PyType_GetModuleState(clazz);
 
+    if (!state) {
+        // PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
+        return nullptr;
+    }
+
     if (!PyObject_IsInstance(pySocketType, state->socketTypesEnum)) {
         PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of SocketTypes");
         return nullptr;
     }
 
-    // Convert Python string to C++ std::string
     Py_ssize_t identitySize;
     const char* identityCStr = PyUnicode_AsUTF8AndSize(pyIdentity, &identitySize);
 
@@ -97,8 +100,16 @@ static PyObject* PyIOContext_createIOSocket(
     Identity identity(identityCStr, identitySize);
     SocketTypes socketType = static_cast<SocketTypes>(socketTypeValue);
 
-    PyIOSocket* ioSocket = PyObject_NEW(PyIOSocket, &PyIOSocketType);
-    ioSocket->socket     = self->ioContext->createIOSocket(identity, socketType);
+    PyIOSocket* ioSocket = PyObject_New(PyIOSocket, (PyTypeObject*)state->PyIOSocketType);
+
+    if (!ioSocket) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket instance");
+        return nullptr;
+    }
+
+    printf("1\n");
+    ioSocket->socket = self->ioContext->createIOSocket(identity, socketType);
+    printf("2\n");
 
     return (PyObject*)ioSocket;
 }
@@ -111,18 +122,18 @@ static PyMethodDef PyIOContext_methods[] = {
      PyDoc_STR("Create a new IOSocket")},
     {nullptr, nullptr, 0, nullptr}};
 
-// clang-format off
-static PyTypeObject PyIOContextType = {
-    .ob_base      = PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name      = "ymq.IOContext",
-    .tp_basicsize = sizeof(PyIOContext),
-    .tp_itemsize  = 0,
-    .tp_dealloc   = (destructor)PyIOContext_dealloc,
-    .tp_repr      = (reprfunc)PyIOContext_repr,
-    .tp_flags     = Py_TPFLAGS_DEFAULT,
-    .tp_doc       = PyDoc_STR("IOContext"),
-    .tp_methods   = PyIOContext_methods,
-    .tp_init      = (initproc)PyIOContext_init,
-    .tp_new       = PyType_GenericNew,
+static PyType_Slot PyIOContext_slots[] = {
+    {Py_tp_init, (void*)PyIOContext_init},
+    {Py_tp_dealloc, (void*)PyIOContext_dealloc},
+    {Py_tp_repr, (void*)PyIOContext_repr},
+    {Py_tp_methods, (void*)PyIOContext_methods},
+    {0, nullptr},
 };
-// clang-format on
+
+static PyType_Spec PyIOContext_spec = {
+    .name      = "ymq.IOContext",
+    .basicsize = sizeof(PyIOContext),
+    .itemsize  = 0,
+    .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
+    .slots     = PyIOContext_slots,
+};

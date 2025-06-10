@@ -8,6 +8,10 @@
 struct YmqState {
     PyObject* enumModule;       // Reference to the enum module
     PyObject* socketTypesEnum;  // Reference to the SocketTypes enum
+    PyObject* PyBytesYmqType;  // Reference to the BytesYmq type
+    PyObject* PyMessageType;  // Reference to the Message type
+    PyObject* PyIOSocketType;  // Reference to the IOSocket type
+    PyObject* PyIOContextType;  // Reference to the IOContext type
 };
 
 // C++
@@ -23,28 +27,20 @@ struct YmqState {
 
 extern "C" {
 
-static int ymq_init(PyObject* module) {
-    auto state = (YmqState*)PyModule_GetState(module);
-
-    if (!state) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
-        return -1;
-    }
-
-    state->enumModule = PyImport_ImportModule("enum");
-
-    if (!state->enumModule) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
-        return -1;
-    }
-
-    return 0;
-}
-
 static void ymq_free(YmqState* state) {
     Py_XDECREF(state->enumModule);
     Py_XDECREF(state->socketTypesEnum);
+    Py_XDECREF(state->PyBytesYmqType);
+    Py_XDECREF(state->PyMessageType);
+    Py_XDECREF(state->PyIOSocketType);
+    Py_XDECREF(state->PyIOContextType);
+
     state->enumModule = nullptr;
+    state->socketTypesEnum = nullptr;
+    state->PyBytesYmqType = nullptr;
+    state->PyMessageType = nullptr;
+    state->PyIOSocketType = nullptr;
+    state->PyIOContextType = nullptr;
 }
 
 static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
@@ -120,35 +116,51 @@ static int ymq_createSocketTypesEnum(PyObject* module) {
     return 0;
 }
 
-static int ymq_exec(PyObject* module) {
-    if (ymq_init(module) < 0)
+static int ymq_createType(PyObject* module, PyObject** storage, PyType_Spec* spec, const char* name) {
+    *storage = PyType_FromModuleAndSpec(module, spec, nullptr);
+
+    if (!*storage) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create type from spec");
         return -1;
+    }
+
+    if (PyModule_AddObjectRef(module, name, *storage) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to add type to module");
+        Py_DECREF(*storage);
+        return -1;
+    }
+
+    return 0;
+}
+
+static int ymq_exec(PyObject* module) {
+    auto state = (YmqState*)PyModule_GetState(module);
+
+    if (!state) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
+        return -1;
+    }
+
+    state->enumModule = PyImport_ImportModule("enum");
+
+    if (!state->enumModule) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
+        return -1;
+    }
 
     if (ymq_createSocketTypesEnum(module) < 0)
         return -1;
 
-    if (PyType_Ready(&PyBytesYmqType) < 0)
+    if (ymq_createType(module, &state->PyBytesYmqType, &PyBytesYmq_spec, "Bytes") < 0)
         return -1;
 
-    if (PyModule_AddObjectRef(module, "Bytes", (PyObject*)&PyBytesYmqType) < 0)
+    if (ymq_createType(module, &state->PyMessageType, &PyMessage_spec, "Message") < 0)
         return -1;
 
-    if (PyType_Ready(&PyMessageType) < 0)
+    if (ymq_createType(module, &state->PyIOSocketType, &PyIOSocket_spec, "IOSocket") < 0)
         return -1;
 
-    if (PyModule_AddObjectRef(module, "Message", (PyObject*)&PyMessageType) < 0)
-        return -1;
-
-    if (PyType_Ready(&PyIOSocketType) < 0)
-        return -1;
-
-    if (PyModule_AddObjectRef(module, "IOSocket", (PyObject*)&PyIOSocketType) < 0)
-        return -1;
-
-    if (PyType_Ready(&PyIOContextType) < 0)
-        return -1;
-
-    if (PyModule_AddObjectRef(module, "IOContext", (PyObject*)&PyIOContextType) < 0)
+    if (ymq_createType(module, &state->PyIOContextType, &PyIOContext_spec, "IOContext") < 0)
         return -1;
 
     return 0;

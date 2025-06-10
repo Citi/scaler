@@ -17,7 +17,13 @@ class IOContext {
     std::vector<EventLoopThread> _threads;
 
 public:
-    IOContext()                            = default;
+    IOContext(size_t threadCount = 1) {
+        _threads.reserve(threadCount);
+        for (size_t i = 0; i < threadCount; ++i) {
+            _threads.emplace_back();
+        }
+    }
+
     IOContext(const IOContext&)            = delete;
     IOContext& operator=(const IOContext&) = delete;
     IOContext(IOContext&&)                 = delete;

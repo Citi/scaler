@@ -89,19 +89,19 @@ static PyBufferProcs PyBytesYmqBufferProcs = {
     .bf_releasebuffer = (releasebufferproc) nullptr,
 };
 
-// clang-format off
-static PyTypeObject PyBytesYmqType = {
-    .ob_base = PyVarObject_HEAD_INIT(NULL, 0)
-    .tp_name      = "ymq.Bytes",
-    .tp_basicsize = sizeof(PyBytesYmq),
-    .tp_itemsize  = 0,
-    .tp_dealloc   = (destructor)PyBytesYmq_dealloc,
-    .tp_repr      = (reprfunc)PyBytesYmq_repr,
-    .tp_as_buffer = &PyBytesYmqBufferProcs,
-    .tp_flags     = Py_TPFLAGS_DEFAULT,
-    .tp_doc       = PyDoc_STR("Bytes"),
-    .tp_getset    = PyBytesYmq_properties,
-    .tp_init      = (initproc)PyBytesYmq_init,
-    .tp_new       = PyType_GenericNew,
+static PyType_Slot PyBytesYmq_slots[] = {
+    {Py_tp_init, (void*)PyBytesYmq_init},
+    {Py_tp_dealloc, (void*)PyBytesYmq_dealloc},
+    {Py_tp_repr, (void*)PyBytesYmq_repr},
+    {Py_tp_getset, (void*)PyBytesYmq_properties},
+    {Py_bf_getbuffer, (void*)&PyBytesYmqBufferProcs},
+    {0, nullptr},
 };
-// clang-format on
+
+static PyType_Spec PyBytesYmq_spec = {
+    .name      = "ymq.Bytes",
+    .basicsize = sizeof(PyBytesYmq),
+    .itemsize  = 0,
+    .flags     = Py_TPFLAGS_DEFAULT | Py_TPFLAGS_IMMUTABLETYPE,
+    .slots     = PyBytesYmq_slots,
+};
