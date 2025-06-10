@@ -15,8 +15,8 @@ void EpollContext::executePendingFunctors() {}
 void EpollContext::loop() {
     std::array<epoll_event, 1024> events;
     int n = epoll_wait(epfd, events.data(), 1024, 0);
-    for (int i = 0; i < n; ++i) {
-        epoll_event current_event = events[i];
+    for (auto it = events.begin(); it != events.begin() + n; ++it) {
+        epoll_event current_event = *it;
         if (current_event.events & EPOLLERR) {
             // ...
         }
