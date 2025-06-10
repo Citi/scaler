@@ -39,6 +39,8 @@ target_sources(cc_ymq PRIVATE
 
   tcp_client.h
   tcp_client.cpp
+
+  timestamp.h
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/scaler/io/ymq)
