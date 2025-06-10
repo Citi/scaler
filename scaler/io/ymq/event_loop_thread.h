@@ -1,18 +1,21 @@
 #pragma once
 
 // C++
-#include <memory>
 #include <map>
+#include <memory>
 #include <string>
 #include <thread>
 
 // First-party
 // #include "scaler/io/ymq/configuration.h"
+#include "scaler/io/ymq/epoll_context.h"
 #include "scaler/io/ymq/event_loop.h"
 #include "scaler/io/ymq/io_socket.h"
-#include "scaler/io/ymq/epoll_context.h"
 
 class IOSocket;
+
+template <typename T>
+class EventLoop;
 
 class EventLoopThread {
     using PollingContext = EpollContext;
@@ -20,7 +23,7 @@ class EventLoopThread {
 
     std::thread thread;
     std::map<Identity, std::shared_ptr<IOSocket>> identityToIOSocket;
-    EventLoop<PollingContext> eventLoop;
+    EventLoop<PollingContext>* eventLoop;
 
 public:
     // Why not make the class a friend class of IOContext?
@@ -32,7 +35,7 @@ public:
     bool removeIOSocket(std::shared_ptr<IOSocket>);
     std::shared_ptr<IOSocket> getIOSocketByIdentity(size_t identity);
 
-    EventLoop<PollingContext>& getEventLoop() { return eventLoop; }
+    EventLoop<PollingContext>& getEventLoop() { return *eventLoop; }
 
     // EventLoopThread(const EventLoopThread&)            = delete;
     // EventLoopThread& operator=(const EventLoopThread&) = delete;

@@ -5,6 +5,11 @@
 #include <Python.h>
 #include <structmember.h>
 
+struct YmqState {
+    PyObject* enumModule;       // Reference to the enum module
+    PyObject* socketTypesEnum;  // Reference to the SocketTypes enum
+};
+
 // C++
 #include <string>
 #include <utility>
@@ -15,11 +20,6 @@
 #include "scaler/io/ymq/pymod_ymq/io_context.h"
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/message.h"
-
-struct YmqState {
-    PyObject* enumModule;       // Reference to the enum module
-    PyObject* socketTypesEnum;  // Reference to the SocketTypes enum
-};
 
 extern "C" {
 

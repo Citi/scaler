@@ -10,6 +10,7 @@
 
 // First-party
 #include "scaler/io/ymq/io_context.h"
+
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
 
@@ -35,19 +36,18 @@ static PyObject* PyIOContext_repr(PyIOContext* self) {
     return PyUnicode_FromFormat("<IOContext at %p>", (void*)self->ioContext.get());
 }
 
-// todo: how to parse the arguments?
+// todo: how to parse keyword arguments?
 // https://docs.python.org/3/c-api/structures.html#c.METH_METHOD
 // https://docs.python.org/3.10/c-api/call.html#vectorcall
 // https://peps.python.org/pep-0590/
 static PyObject* PyIOContext_createIOSocket(
     PyIOContext* self, PyTypeObject* clazz, PyObject* const* args, Py_ssize_t nargs, PyObject* kwnames) {
-    PyObject *pyIdentity = nullptr, *pySocketType = nullptr;
-
-    // Parse the arguments
-    if (!PyArg_ParseTupleAndKeywords(args, nargs, kwnames, "OO:createIOSocket", &pyIdentity, &pySocketType)) {
-        PyErr_SetString(PyExc_TypeError, "Expected two arguments: identity (str) and socket_type (SocketTypes)");
+    if (nargs != 2) {
+        PyErr_SetString(PyExc_TypeError, "createIOSocket() requires exactly two arguments: identity and socket_type");
         return nullptr;
     }
+
+    PyObject *pyIdentity = args[0], *pySocketType = args[1];
 
     if (!PyUnicode_Check(pyIdentity)) {
         PyErr_SetString(PyExc_TypeError, "Expected identity to be a string");
@@ -61,6 +61,7 @@ static PyObject* PyIOContext_createIOSocket(
         PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of SocketTypes");
         return nullptr;
     }
+
     // Convert Python string to C++ std::string
     Py_ssize_t identitySize;
     const char* identityCStr = PyUnicode_AsUTF8AndSize(pyIdentity, &identitySize);

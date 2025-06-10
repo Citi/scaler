@@ -10,6 +10,7 @@
 #include "scaler/io/ymq/file_descriptor.h"
 
 class EventLoopThread;
+class EventManager;
 
 class TcpClient {
     EventLoopThread& eventLoop; /* shared ownership */

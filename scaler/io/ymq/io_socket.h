@@ -5,7 +5,6 @@
 // #include <optional>
 #include <map>
 #include <memory>
-#include <string>
 
 // First-party
 #include "scaler/io/ymq/configuration.h"

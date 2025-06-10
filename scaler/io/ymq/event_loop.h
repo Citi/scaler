@@ -14,6 +14,9 @@ using moodycamel::ConcurrentQueue;
 class EpollContext;
 class EventManager;
 
+template <typename T>
+class InterruptiveConcurrentQueue;
+
 template <class EventLoopBackend = EpollContext>
 struct EventLoop {
     using Function   = std::function<void()>;  // TBD
@@ -21,6 +24,10 @@ struct EventLoop {
     using Identifier = int;                    // TBD
 
     EventLoopBackend* eventLoopBackend;
+    InterruptiveConcurrentQueue<Function>* immediateExecutionQueue;
+
+    EventLoop(EventLoopBackend& backend)
+        : eventLoopBackend(backend), immediateExecutionQueue(eventLoopBackend, [](Function func) { func(); }) {}
 
     void registerEventManager(EventManager& em) { eventLoopBackend->registerEventManager(em); }
 
@@ -29,7 +36,7 @@ struct EventLoop {
     // void loop();
     // void stop();
 
-    // void executeNow(Function func);
+    void executeNow(Function func) { immediateExecutionQueue->enqueue(std::move(func)); }
     // void executeLater(Function func, Identifier identifier);
     // void executeAt(TimeStamp, Function, Identifier identifier);
     // void cancelExecution(Identifier identifier);

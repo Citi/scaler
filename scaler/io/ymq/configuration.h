@@ -1,7 +1,7 @@
 #pragma once
 
-// First-party
-#include "scaler/io/ymq/epoll_context.h"
+// C++
+#include <string>
 
 class EpollContext;
 
