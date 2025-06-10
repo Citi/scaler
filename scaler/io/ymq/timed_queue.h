@@ -8,7 +8,7 @@
 
 #include "scaler/io/ymq/timestamp.h"
 
-inline constexpr int createTimerfd() {
+inline int createTimerfd() {
     int timerfd = ::timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
     if (timerfd < 0) {
         exit(1);

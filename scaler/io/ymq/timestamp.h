@@ -9,7 +9,7 @@
 struct Timestamp {
     std::chrono::time_point<std::chrono::system_clock> timestamp;
 
-    constexpr friend std::strong_ordering operator<=>(Timestamp x, Timestamp y) { return x.timestamp <=> y.timestamp; }
+    friend std::strong_ordering operator<=>(Timestamp x, Timestamp y) { return x.timestamp <=> y.timestamp; }
 
     Timestamp(): timestamp(std::chrono::system_clock::now()) {}
     Timestamp(std::chrono::time_point<std::chrono::system_clock> t) { timestamp = std::move(t); }
@@ -21,14 +21,14 @@ struct Timestamp {
 };
 
 // For possibly logging purposes
-constexpr inline std::string stringifyTimestamp(Timestamp ts) {
+inline std::string stringifyTimestamp(Timestamp ts) {
     std::ostringstream oss;
     oss << ts.timestamp;
     return oss.str();
 }
 
 // For timerfd
-constexpr inline itimerspec convertToItimerspec(Timestamp ts) {
+inline itimerspec convertToItimerspec(Timestamp ts) {
     using namespace std::chrono;
 
     itimerspec timerspec {};
