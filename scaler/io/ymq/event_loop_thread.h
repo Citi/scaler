@@ -22,7 +22,7 @@ public:
     // the IOSocket that is being removed will first remove every
     // MessageConnectionTCP managed by it from the EventLoop, before it removes
     // it self from ioSockets. return eventLoop.executeNow(createIOSocket());
-    IOSocket* addIOSocket(std::string identity, IOSocketType socketType);
+    IOSocket* createIOSocket(std::string identity, IOSocketType socketType);
 
     void removeIOSocket(IOSocket* target);
     // EventLoop<PollingContext>& getEventLoop();

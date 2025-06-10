@@ -41,7 +41,7 @@ TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoop): eventLoop(even
     serverFd     = create_and_bind_socket();
 }
 
-void TcpServer::onAdded() {
+void TcpServer::onCreated() {
     printf("TcpServer::onAdded()\n");
     eventLoop->eventLoop.addFdToLoop(serverFd, EPOLLIN, this->eventManager.get());
 }

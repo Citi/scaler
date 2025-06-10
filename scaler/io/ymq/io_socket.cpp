@@ -3,7 +3,7 @@
 // NOTE: We need it after we put impl
 #include "scaler/io/ymq/event_loop_thread.h"
 
-void IOSocket::onAdded() {
+void IOSocket::onCreated() {
     // Detect if we need to initialize tcpClient and/or tcpServer
     // If so, initialize it, and then call their onAdd();
     if (socketType == IOSocketType::Router) {
@@ -11,8 +11,8 @@ void IOSocket::onAdded() {
         tcpClient.emplace(eventLoopThread);
         // assert(!tcpServer);
         tcpServer.emplace(eventLoopThread);
-        tcpClient->onAdded();
-        tcpServer->onAdded();
+        tcpClient->onCreated();
+        tcpServer->onCreated();
     }
     // Different SocketType might have different rules
 }

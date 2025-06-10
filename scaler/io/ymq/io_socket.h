@@ -57,7 +57,7 @@ public:
     // )
     // }
 
-    void onAdded();
+    void onCreated();
 
     // void recvMessage(Message* msg);
 };

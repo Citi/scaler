@@ -15,7 +15,7 @@ int main() {
     printf("Hello, world!\n");
 
     IOContext context(1);
-    IOSocket* socket = context.addIOSocket("ServerSocket", IOSocketType::Dealer);
+    IOSocket* socket = context.createIOSocket("ServerSocket", IOSocketType::Dealer);
 
     // char buf[8];
     // while (true) {

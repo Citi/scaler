@@ -25,7 +25,7 @@ public:
     IOContext& operator=(IOContext&&)      = delete;
 
     // These methods need to be thread-safe.
-    IOSocket* addIOSocket(std::string identity, IOSocketType socketType);
+    IOSocket* createIOSocket(std::string identity, IOSocketType socketType);
     // ioSocket.getEventLoop().removeIOSocket(&ioSocket);
     bool removeIOSocket(IOSocket*);
 };

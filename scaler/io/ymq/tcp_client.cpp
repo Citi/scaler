@@ -1,5 +1,5 @@
 #include "scaler/io/ymq/tcp_client.h"
 
-void TcpClient::onAdded() {
+void TcpClient::onCreated() {
     printf("tcpClient onAdded\n");
 }

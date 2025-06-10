@@ -27,11 +27,12 @@ constexpr inline std::string stringifyTimestamp(Timestamp ts) {
     return oss.str();
 }
 
+// For timerfd
 constexpr inline itimerspec convertToItimerspec(Timestamp ts) {
     using namespace std::chrono;
 
     itimerspec timerspec {};
-    auto duration = ts.timestamp - std::chrono::system_clock::now();
+    const auto duration = ts.timestamp - std::chrono::system_clock::now();
     if (duration.count() < 0) {
         return timerspec;
     }
