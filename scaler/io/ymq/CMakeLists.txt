@@ -49,7 +49,7 @@ target_link_libraries(ymq PRIVATE cc_ymq
                           PRIVATE ${Python_LIBRARIES}
 )
 
-target_link_options(ymq PRIVATE "-Wl,-rpath,$ORIGIN,-L/home/george/.pyenv/versions/3.10.17/lib")
+target_link_options(ymq PRIVATE "-Wl,-rpath,$ORIGIN")
 
 install(TARGETS ymq
        LIBRARY DESTINATION scaler/io/ymq)
