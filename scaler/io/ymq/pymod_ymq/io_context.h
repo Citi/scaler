@@ -21,7 +21,31 @@ struct PyIOContext {
 extern "C" {
 
 static int PyIOContext_init(PyIOContext* self, PyObject* args, PyObject* kwds) {
-    self->ioContext = std::make_shared<IOContext>();
+    PyObject* numThreadsObj = nullptr;
+    const char* kwlist[]    = {"num_threads", nullptr};
+    if (!PyArg_ParseTupleAndKeywords(args, kwds, "|O", (char**)kwlist, &numThreadsObj)) {
+        return -1;  // Error parsing arguments
+    }
+
+    size_t numThreads = 1;  // Default to 1 thread if not specified
+
+    if (numThreadsObj) {
+        if (!PyLong_Check(numThreadsObj)) {
+            PyErr_SetString(PyExc_TypeError, "num_threads must be an integer");
+            return -1;
+        }
+        numThreads = PyLong_AsSize_t(numThreadsObj);
+        if (numThreads == static_cast<size_t>(-1) && PyErr_Occurred()) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to convert num_threads to size_t");
+            return -1;
+        }
+        if (numThreads <= 0) {
+            PyErr_SetString(PyExc_ValueError, "num_threads must be greater than 0");
+            return -1;
+        }
+    }
+
+    self->ioContext = std::make_shared<IOContext>(numThreads);
     return 0;
 }
 
@@ -100,18 +124,18 @@ static PyObject* PyIOContext_createIOSocket(
     Identity identity(identityCStr, identitySize);
     SocketTypes socketType = static_cast<SocketTypes>(socketTypeValue);
 
-    PyIOSocket* ioSocket = PyObject_New(PyIOSocket, (PyTypeObject*)state->PyIOSocketType);
-
+    PyIOSocket* ioSocket = (PyIOSocket*)PyObject_CallObject((PyObject*)state->PyIOSocketType, nullptr);
     if (!ioSocket) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocket instance");
         return nullptr;
     }
 
-    printf("1\n");
     ioSocket->socket = self->ioContext->createIOSocket(identity, socketType);
-    printf("2\n");
-
     return (PyObject*)ioSocket;
+}
+
+static PyObject* PyIOContext_numThreads_getter(PyIOContext* self, void* /*closure*/) {
+    return PyLong_FromSize_t(self->ioContext->numThreads());
 }
 }
 
@@ -122,11 +146,20 @@ static PyMethodDef PyIOContext_methods[] = {
      PyDoc_STR("Create a new IOSocket")},
     {nullptr, nullptr, 0, nullptr}};
 
+static PyGetSetDef PyIOContext_properties[] = {
+    {"num_threads",
+     (getter)PyIOContext_numThreads_getter,
+     nullptr,
+     PyDoc_STR("Get the number of threads in the IOContext"),
+     nullptr},
+    {nullptr, nullptr, nullptr, nullptr, nullptr}};
+
 static PyType_Slot PyIOContext_slots[] = {
     {Py_tp_init, (void*)PyIOContext_init},
     {Py_tp_dealloc, (void*)PyIOContext_dealloc},
     {Py_tp_repr, (void*)PyIOContext_repr},
     {Py_tp_methods, (void*)PyIOContext_methods},
+    {Py_tp_getset, (void*)PyIOContext_properties},
     {0, nullptr},
 };
 

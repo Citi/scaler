@@ -32,4 +32,6 @@ public:
     // These methods need to be thread-safe.
     std::shared_ptr<IOSocket> createIOSocket(Identity identity, SocketTypes socketType);
     bool removeIOSocket(std::shared_ptr<IOSocket>);
+
+    size_t numThreads() const { return _threads.size(); }
 };

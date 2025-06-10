@@ -18,9 +18,9 @@ struct PyIOSocket {
 
 extern "C" {
 
-// static int PyIOSocket_init(PyIOSocket* self, PyObject* args, PyObject* kwds) {
-//     return 0;  // todo
-// }
+static int PyIOSocket_init(PyIOSocket* self, PyObject* args, PyObject* kwds) {
+    return 0;
+}
 
 static void PyIOSocket_dealloc(PyIOSocket* self) {
     self->socket.~shared_ptr();               // Call the destructor of shared_ptr
@@ -38,11 +38,14 @@ static PyObject* PyIOSocket_identity_getter(PyIOSocket* self, void* closure) {
 }
 }
 
-static PyGetSetDef PyIOSocket_properties[] = {{nullptr, nullptr, nullptr, nullptr, nullptr}};
+static PyGetSetDef PyIOSocket_properties[] = {
+    {"identity", (getter)PyIOSocket_identity_getter, nullptr, PyDoc_STR("Get the identity of the IOSocket"), nullptr},
+    {nullptr, nullptr, nullptr, nullptr, nullptr}};
 
 static PyMethodDef PyIOSocket_methods[] = {{nullptr, nullptr, 0, nullptr}};
 
 static PyType_Slot PyIOSocket_slots[] = {
+    {Py_tp_init, (void*)PyIOSocket_init},
     {Py_tp_dealloc, (void*)PyIOSocket_dealloc},
     {Py_tp_repr, (void*)PyIOSocket_repr},
     {Py_tp_getset, (void*)PyIOSocket_properties},
