@@ -31,6 +31,15 @@ static void PyIOSocket_dealloc(PyIOSocket* self) {
 static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
     PyErr_SetString(PyExc_NotImplementedError, "send() is not implemented yet");
     return nullptr;
+
+    // in this function we need to:
+    // 1. create an asyncio future (easy)
+    //    - should be pretty easy, just call standard methods
+    // 2. create a handle to that future that can be completed in a C++ callback (harder)
+    //    - how do we call Python from non-Python threads? where is the handle stored?
+    // 3. await the future (very hard)
+    //    - how do you await in a C extension module? is it even possible?
+    //    - might need to call into Python code to make this work
 }
 
 static PyObject* PyIOSocket_repr(PyIOSocket* self) {
