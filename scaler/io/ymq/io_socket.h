@@ -13,7 +13,7 @@
 #include "scaler/io/ymq/tcp_server.h"
 #include "scaler/io/ymq/typedefs.h"
 
-using Identity = configuration::Identity;
+using Identity = Configuration::Identity;
 
 class TCPClient;
 class TCPServer;

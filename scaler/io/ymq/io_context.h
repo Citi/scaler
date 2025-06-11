@@ -10,7 +10,7 @@
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/typedefs.h"
 
-using Identity = configuration::Identity;
+using Identity = Configuration::Identity;
 
 class IOSocket;
 
