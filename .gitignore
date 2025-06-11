@@ -1,6 +1,7 @@
 __pychace__/
 *.py[cod]
 *$py.class
+*.so
 
 build/
 dist/
@@ -22,3 +23,6 @@ dask-worker-space/*
 .pre-commit-config.yaml
 
 .DS_Store
+
+.clangd
+.python-version
