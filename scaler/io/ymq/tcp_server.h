@@ -1,6 +1,8 @@
 #pragma once
 
 // C++
+#include <sys/socket.h>
+
 #include <functional>
 #include <memory>
 
@@ -12,16 +14,21 @@
 class EventLoopThread;
 class EventManager;
 
+// struct sockaddr *__restrict addr, socklen_t *__restrict addr_len
+
 class TcpServer {
     // eventLoop thread will call onRead that is associated w/ the eventManager
-    std::shared_ptr<EventLoopThread> eventLoop;
-    std::unique_ptr<EventManager> eventManager;  // will copy the `onRead()` to itself
-    int serverFd;
+    std::shared_ptr<EventLoopThread> _eventLoopThread;
+    std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself
+    int _serverFd;
     // Implementation defined method. accept(3) should happen here.
     // This function will call user defined onAcceptReturn()
     // It will handle error it can handle. If it is unreasonable to
     // handle the error here, pass it to onAcceptReturn()
     void onRead();
+
+    sockaddr _addr;
+    socklen_t _addr_len;
 
 public:
     TcpServer(const TcpServer&)            = delete;

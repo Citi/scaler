@@ -20,6 +20,7 @@ target_sources(cc_ymq PRIVATE
 
   message_connection.h
   message_connection_tcp.h
+  message_connection_tcp.cpp
 
   third_party/concurrentqueue.h
   interruptive_concurrent_queue.h

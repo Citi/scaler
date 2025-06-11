@@ -1,8 +1,7 @@
 #pragma once
 
 // C++
-// #include <map>
-// #include <optional>
+#include <map>
 #include <memory>
 #include <optional>
 
@@ -19,6 +18,7 @@ class TCPClient;
 class TCPServer;
 
 class EventLoopThread;
+class MessageConnectionTCP;
 
 class IOSocket {
     std::shared_ptr<EventLoopThread> _eventLoopThread;

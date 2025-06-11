@@ -9,6 +9,7 @@
 
 #include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/message_connection_tcp.h"
 
 static int create_and_bind_socket() {
     int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
@@ -37,12 +38,22 @@ static int create_and_bind_socket() {
     return server_fd;
 }
 
-TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoop): eventLoop(eventLoop) {
-    eventManager = std::make_unique<EventManager>(EventManager());
-    serverFd     = create_and_bind_socket();
+TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoopThread): _eventLoopThread(eventLoopThread) {
+    _eventManager = std::make_unique<EventManager>(EventManager());
+    _serverFd     = create_and_bind_socket();
 }
 
 void TcpServer::onCreated() {
     printf("TcpServer::onAdded()\n");
-    eventLoop->eventLoop.registerEventManager(*this->eventManager.get());
+    eventLoopThread->eventLoop.registerEventManager(*this->eventManager.get());
+    // _eventLoopThread->eventLoop.addFdToLoop(_serverFd, EPOLLIN, this->_eventManager.get());
+}
+
+void TcpServer::onRead() {
+    // printf("TcpServer::onRead()\n");
+    // int fd = accept4(_serverFd, &_addr, &_addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    // // MessageConnectionTCP newConn(fd, addr, );
+    // // TODO: Handle accept4 error
+    // _eventLoopThread->eventLoop.addFdToLoop(_serverFd, EPOLLIN | EPOLLOUT | EPOLLET, this->_eventManager.get());
+    // // put into eventloop
 }
