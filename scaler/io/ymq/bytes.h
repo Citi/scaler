@@ -15,10 +15,10 @@ class Bytes {
     uint8_t* _data;
     size_t _len;
 
-    enum Ownership { Owned, Borrowed } tag;
+    enum Ownership { Owned, Borrowed } _tag;
 
     void free() {
-        if (tag != Owned)
+        if (_tag != Owned)
             return;
 
         if (is_empty())
@@ -28,14 +28,14 @@ class Bytes {
         this->_data = NULL;
     }
 
-    Bytes(uint8_t* m_data, size_t m_len, Ownership tag): _data(m_data), _len(m_len), tag(tag) {}
+    Bytes(uint8_t* m_data, size_t m_len, Ownership tag): _data(m_data), _len(m_len), _tag(tag) {}
 
 public:
     // move-only
     // TODO: make copyable
     Bytes(const Bytes&)            = delete;
     Bytes& operator=(const Bytes&) = delete;
-    Bytes(Bytes&& other) noexcept: _data(other._data), _len(other._len), tag(other.tag) {
+    Bytes(Bytes&& other) noexcept: _data(other._data), _len(other._len), _tag(other._tag) {
         other._data = NULL;
         other._len  = 0;
     }
@@ -45,7 +45,7 @@ public:
 
             _data = other._data;
             _len  = other._len;
-            tag    = other.tag;
+            _tag    = other._tag;
 
             other._data = NULL;
             other._len  = 0;
