@@ -23,7 +23,6 @@ target_sources(cc_ymq PRIVATE
 
   third_party/concurrentqueue.h
   interruptive_concurrent_queue.h
-  timed_concurrent_queue.h
 
   typedefs.h
 
