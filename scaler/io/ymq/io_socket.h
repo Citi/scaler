@@ -40,6 +40,7 @@ public:
     IOSocket& operator=(IOSocket&&)      = delete;
 
     Identity identity() const { return _identity; }
+    IOSocketType socketType() const { return _socketType; }
 
     // string -> connection mapping
     // and connection->string mapping
