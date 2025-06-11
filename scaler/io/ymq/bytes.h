@@ -10,12 +10,12 @@
 
 // First-party
 #include "scaler/io/ymq/common.h"
+#include "scaler/io/ymq/typedefs.h"
 
 class Bytes {
     uint8_t* _data;
     size_t _len;
-
-    enum Ownership { Owned, Borrowed } _tag;
+    Ownership _tag;
 
     void free() {
         if (_tag != Owned)
