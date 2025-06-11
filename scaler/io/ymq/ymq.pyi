@@ -1,5 +1,5 @@
 # NOTE: NOT IMPLEMENTATION, TYPE INFORMATION ONLY
-# This file contains type stubs for the Ymq Python C Extension modujle
+# This file contains type stubs for the Ymq Python C Extension module
 
 from enum import IntEnum
 
