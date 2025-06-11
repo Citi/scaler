@@ -5,6 +5,7 @@
 
 // C++
 #include <functional>
+#include <queue>
 #include <system_error>
 
 #include "scaler/io/ymq/timed_queue.h"
@@ -15,9 +16,13 @@
 
 class EventManager;
 
+// TODO: Change struct to class -> some of them are private.
 struct EpollContext {
     FileDescriptor epoll_fd;
     TimedQueue timingFunctions;
+
+    using DelayedFunctionQueue = std::queue<std::function<void()>>;
+    DelayedFunctionQueue delayedFunctions;
 
     using Function   = std::function<void()>;  // TBD
     using Identifier = int;                    // TBD
@@ -44,13 +49,14 @@ struct EpollContext {
         // TODO: Implement this function
     }
 
-    void executeLater(Function func, Identifier identifier);
+    void executeLater(Function func, Identifier) { delayedFunctions.emplace(std::move(func)); }
 
     void executeAt(Timestamp timestamp, Function callback) { timingFunctions.push(timestamp, callback); }
 
+    // TODO: figure out how this work with existing util
     void cancelExecution(Identifier identifier);
 
-    void executePendingFunctors();
+    void execPendingFunctions();
 
     // int connect_timer_tfd;
     // std::map<int, EventManager*> monitoringEvent;

@@ -15,7 +15,13 @@ void EpollContext::removeEventManager(EventManager& em) {
     epoll_fd.epoll_ctl(EPOLL_CTL_DEL, em._fd, nullptr);
 }
 
-void EpollContext::executePendingFunctors() {}
+void EpollContext::execPendingFunctions() {
+    while (delayedFunctions.size()) {
+        auto top = delayedFunctions.front();
+        top();
+        delayedFunctions.pop();
+    }
+}
 
 void EpollContext::loop() {
     std::array<epoll_event, 1024> events;
@@ -34,7 +40,7 @@ void EpollContext::loop() {
         auto* event = (EventManager*)current_event.data.ptr;
         // event->onEvents(current_event.events);
     }
-    executePendingFunctors();
+    execPendingFunctions();
 }
 
 // EXAMPLE
