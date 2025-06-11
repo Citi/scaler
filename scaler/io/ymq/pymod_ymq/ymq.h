@@ -7,7 +7,7 @@
 
 struct YmqState {
     PyObject* enumModule;       // Reference to the enum module
-    PyObject* socketTypesEnum;  // Reference to the SocketTypes enum
+    PyObject* ioSocketTypeEnum;  // Reference to the IOSocketType enum
     PyObject* PyBytesYmqType;  // Reference to the BytesYmq type
     PyObject* PyMessageType;  // Reference to the Message type
     PyObject* PyIOSocketType;  // Reference to the IOSocket type
@@ -29,14 +29,14 @@ extern "C" {
 
 static void ymq_free(YmqState* state) {
     Py_XDECREF(state->enumModule);
-    Py_XDECREF(state->socketTypesEnum);
+    Py_XDECREF(state->ioSocketTypeEnum);
     Py_XDECREF(state->PyBytesYmqType);
     Py_XDECREF(state->PyMessageType);
     Py_XDECREF(state->PyIOSocketType);
     Py_XDECREF(state->PyIOContextType);
 
     state->enumModule = nullptr;
-    state->socketTypesEnum = nullptr;
+    state->ioSocketTypeEnum = nullptr;
     state->PyBytesYmqType = nullptr;
     state->PyMessageType = nullptr;
     state->PyIOSocketType = nullptr;
@@ -78,38 +78,38 @@ static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector
     }
 
     // create our class by calling enum.IntEnum(enumName, enumDict)
-    auto socketTypesEnum = PyObject_CallMethod(state->enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
+    auto ioSocketTypeEnum = PyObject_CallMethod(state->enumModule, "IntEnum", "sO", enumName.c_str(), enumDict);
     Py_DECREF(enumDict);
 
-    if (!socketTypesEnum) {
+    if (!ioSocketTypeEnum) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to create IntEnum class");
         return -1;
     }
 
-    state->socketTypesEnum = socketTypesEnum;
+    state->ioSocketTypeEnum = ioSocketTypeEnum;
 
     // add the class to the module
     // this increments the reference count of enumClass
-    if (PyModule_AddObjectRef(module, enumName.c_str(), socketTypesEnum) < 0) {
+    if (PyModule_AddObjectRef(module, enumName.c_str(), ioSocketTypeEnum) < 0) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to add IntEnum class to module");
-        Py_DECREF(socketTypesEnum);
+        Py_DECREF(ioSocketTypeEnum);
         return -1;
     }
 
     return 0;
 }
 
-static int ymq_createSocketTypesEnum(PyObject* module) {
-    std::vector<std::pair<std::string, int>> socketTypes = {
-        {"Binder", (int)SocketTypes::Binder},
-        {"Sub", (int)SocketTypes::Sub},
-        {"Pub", (int)SocketTypes::Pub},
-        {"Dealer", (int)SocketTypes::Dealer},
-        {"Router", (int)SocketTypes::Router},
-        {"Pair", (int)SocketTypes::Pair}};
+static int ymq_createIOSocketTypeEnum(PyObject* module) {
+    std::vector<std::pair<std::string, int>> ioSocketTypes = {
+        {"Binder", (int)IOSocketType::Binder},
+        {"Sub", (int)IOSocketType::Sub},
+        {"Pub", (int)IOSocketType::Pub},
+        {"Dealer", (int)IOSocketType::Dealer},
+        {"Router", (int)IOSocketType::Router},
+        {"Pair", (int)IOSocketType::Pair}};
 
-    if (ymq_createIntEnum(module, "SocketTypes", socketTypes) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to create SocketTypes enum");
+    if (ymq_createIntEnum(module, "IOSocketType", ioSocketTypes) < 0) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create IOSocketType enum");
         return -1;
     }
 
@@ -148,7 +148,7 @@ static int ymq_exec(PyObject* module) {
         return -1;
     }
 
-    if (ymq_createSocketTypesEnum(module) < 0)
+    if (ymq_createIOSocketTypeEnum(module) < 0)
         return -1;
 
     if (ymq_createType(module, &state->PyBytesYmqType, &PyBytesYmq_spec, "Bytes") < 0)

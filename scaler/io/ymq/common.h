@@ -32,7 +32,8 @@ inline void print_trace(void) {
 
 // this is an unrecoverable error that exits the program
 // prints a message plus the source location
-[[noreturn]] inline void panic(std::string message, const std::source_location& location = std::source_location::current()) {
+[[noreturn]] inline void panic(
+    std::string message, const std::source_location& location = std::source_location::current()) {
     auto file_name = std::string(location.file_name());
     file_name      = file_name.substr(file_name.find_last_of("/") + 1);
 

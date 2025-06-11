@@ -85,8 +85,8 @@ static PyObject* PyIOContext_createIOSocket(
         return nullptr;
     }
 
-    if (!PyObject_IsInstance(pySocketType, state->socketTypesEnum)) {
-        PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of SocketTypes");
+    if (!PyObject_IsInstance(pySocketType, state->ioSocketTypeEnum)) {
+        PyErr_SetString(PyExc_TypeError, "Expected socket_type to be an instance of IOSocketType");
         return nullptr;
     }
 
@@ -122,7 +122,7 @@ static PyObject* PyIOContext_createIOSocket(
     Py_DECREF(value);
 
     Identity identity(identityCStr, identitySize);
-    SocketTypes socketType = static_cast<SocketTypes>(socketTypeValue);
+    IOSocketType socketType = static_cast<IOSocketType>(socketTypeValue);
 
     PyIOSocket* ioSocket = (PyIOSocket*)PyObject_CallObject((PyObject*)state->PyIOSocketType, nullptr);
     if (!ioSocket) {

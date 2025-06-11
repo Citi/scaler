@@ -23,12 +23,14 @@ class FileDescriptor {
     FileDescriptor(int fd): fd(fd) {}
 
 public:
-    ~FileDescriptor() {
+    ~FileDescriptor() noexcept(false) {
         if (auto code = close(fd) < 0)
             throw std::system_error(errno, std::system_category(), "Failed to close file descriptor");
 
         this->fd = -1;
     }
+
+    FileDescriptor(): fd(-1) {}
 
     // move-only
     FileDescriptor(const FileDescriptor&)            = delete;
@@ -164,19 +166,19 @@ public:
         }
     }
 
-    std::optional<Errno> epoll_ctl(int op, FileDescriptor& other, epoll_event& event) {
-        if (::epoll_ctl(fd, op, other.fd, &event) < 0) {
+    std::optional<Errno> epoll_ctl(int op, FileDescriptor& other, epoll_event* event) {
+        if (::epoll_ctl(fd, op, other.fd, event) < 0) {
             return errno;
         } else {
             return std::nullopt;
         }
     }
 
-    std::optional<Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
-        if (::epoll_wait(fd, events, maxevents, timeout) < 0) {
+    std::expected<int, Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
+        if (auto n = ::epoll_wait(fd, events, maxevents, timeout) < 0) {
             return errno;
         } else {
-            return std::nullopt;
+            return n;
         }
     }
 };
