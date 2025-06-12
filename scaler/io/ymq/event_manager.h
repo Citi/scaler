@@ -1,7 +1,9 @@
 #pragma once
 
 // C++
+#include <cstdint>  // uint64_t
 #include <functional>
+#include <memory>
 
 // First-party
 #include "scaler/io/ymq/event_loop_thread.h"

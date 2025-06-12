@@ -5,7 +5,7 @@
 
 class EpollContext;
 
-struct configuration {
-    using polling_context_t = EpollContext;
+struct Configuration {
+    using PollingContext = EpollContext;
     using Identity = std::string;
 };

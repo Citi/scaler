@@ -1,29 +1,21 @@
 #pragma once
 
-// C++
 #include <map>
 #include <memory>
-#include <string>
 #include <thread>
 
-// First-party
-// #include "scaler/io/ymq/configuration.h"
-#include "scaler/io/ymq/epoll_context.h"
+#include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/event_loop.h"
-#include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/typedefs.h"
 
 class IOSocket;
 
-template <typename T>
-class EventLoop;
-
-class EventLoopThread {
-    using PollingContext = EpollContext;
-    using Identity       = std::string;
-
-    std::thread thread;
-    std::map<Identity, std::shared_ptr<IOSocket>> identityToIOSocket;
-    EventLoop<PollingContext>* eventLoop;
+class EventLoopThread: public std::enable_shared_from_this<EventLoopThread> {
+    using PollingContext = Configuration::PollingContext;
+    using Identity       = Configuration::Identity;
+    EventLoop<PollingContext>* _eventLoop;
+    std::jthread _thread;
+    std::map<Identity, IOSocket> _identityToIOSocket;
 
 public:
     // Why not make the class a friend class of IOContext?
@@ -35,8 +27,8 @@ public:
     bool removeIOSocket(std::shared_ptr<IOSocket>);
     std::shared_ptr<IOSocket> getIOSocketByIdentity(size_t identity);
 
-    EventLoop<PollingContext>& getEventLoop() { return *eventLoop; }
-
-    // EventLoopThread(const EventLoopThread&)            = delete;
-    // EventLoopThread& operator=(const EventLoopThread&) = delete;
+    EventLoopThread(const EventLoopThread&)            = delete;
+    EventLoopThread& operator=(const EventLoopThread&) = delete;
+    // TODO: Revisit the default ctor
+    EventLoopThread() = default;
 };

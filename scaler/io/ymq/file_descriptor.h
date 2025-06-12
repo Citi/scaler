@@ -40,6 +40,8 @@ public:
         this->_ownership = Ownership::Borrowed;
     }
 
+    FileDescriptor(): _fd(-1) {}
+
     FileDescriptor& operator=(const FileDescriptor& other) {
         if (this->_ownership == Ownership::Owned) {
             if (_fd >= 0)
@@ -220,10 +222,10 @@ public:
     std::optional<Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
         assert_owned();
 
-        if (::epoll_wait(_fd, events, maxevents, timeout) < 0) {
+        if (auto n = ::epoll_wait(_fd, events, maxevents, timeout) < 0) {
             return errno;
         } else {
-            return std::nullopt;
+            return n;
         }
     }
 };
