@@ -27,7 +27,7 @@ struct Events {
 class EventManager {
     using Callback = std::function<void(FileDescriptor&, Events)>;
 
-    EventLoopThread& _eventLoopThread;
+    std::shared_ptr<EventLoopThread> _eventLoopThread;
     FileDescriptor _fd;
     Callback _callback;
 
@@ -35,7 +35,7 @@ class EventManager {
     void removeFromEventLoop();
 
 public:
-    EventManager(EventLoopThread& thread, FileDescriptor&& fd, Callback callback)
+    EventManager(std::shared_ptr<EventLoopThread> thread, FileDescriptor&& fd, Callback callback)
         : _eventLoopThread(thread), _fd(std::move(fd)), _callback(std::move(callback)) {}
 
     ~EventManager() { removeFromEventLoop(); }

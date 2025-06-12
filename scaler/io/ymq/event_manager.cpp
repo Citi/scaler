@@ -1,9 +1,9 @@
 #include "scaler/io/ymq/event_manager.h"
 
 void EventManager::addToEventLoop() {
-    _eventLoopThread.getEventLoop().registerEventManager(*this);
+    _eventLoopThread->registerEventManager(*this);
 }
 
 void EventManager::removeFromEventLoop() {
-    _eventLoopThread.getEventLoop().removeEventManager(*this);
+    _eventLoopThread->removeEventManager(*this);
 }

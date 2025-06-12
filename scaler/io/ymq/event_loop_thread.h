@@ -6,6 +6,7 @@
 
 #include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/event_loop.h"
+#include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/typedefs.h"
 
 class IOSocket;
@@ -15,7 +16,7 @@ class EventLoopThread: public std::enable_shared_from_this<EventLoopThread> {
     using Identity       = Configuration::Identity;
     EventLoop<PollingContext>* _eventLoop;
     std::jthread _thread;
-    std::map<Identity, IOSocket> _identityToIOSocket;
+    std::map<Identity, std::shared_ptr<IOSocket>> _identityToIOSocket;
 
 public:
     // Why not make the class a friend class of IOContext?
@@ -24,7 +25,11 @@ public:
     // managed by it from the EventLoop, before it removes it self from ioSockets.
     // return eventLoop.executeNow(createIOSocket());
     void addIOSocket(std::shared_ptr<IOSocket>);
-    bool removeIOSocket(std::shared_ptr<IOSocket>);
+    void removeIOSocket(std::shared_ptr<IOSocket>);
+    void registerEventManager(EventManager& em) { _eventLoop->registerEventManager(em); }
+    void removeEventManager(EventManager& em) {
+        // todo
+    }
     std::shared_ptr<IOSocket> getIOSocketByIdentity(size_t identity);
 
     EventLoopThread(const EventLoopThread&)            = delete;

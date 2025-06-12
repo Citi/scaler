@@ -1,6 +1,7 @@
 #pragma once
 
 // System
+#include <__expected/unexpected.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
@@ -219,11 +220,11 @@ public:
         }
     }
 
-    std::optional<Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
+    std::expected<int, Errno> epoll_wait(epoll_event* events, int maxevents, int timeout) {
         assert_owned();
 
         if (auto n = ::epoll_wait(_fd, events, maxevents, timeout) < 0) {
-            return errno;
+            return std::unexpected {errno};
         } else {
             return n;
         }
