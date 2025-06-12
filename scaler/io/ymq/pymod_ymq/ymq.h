@@ -6,12 +6,12 @@
 #include <structmember.h>
 
 struct YmqState {
-    PyObject* enumModule;       // Reference to the enum module
+    PyObject* enumModule;        // Reference to the enum module
     PyObject* ioSocketTypeEnum;  // Reference to the IOSocketType enum
-    PyObject* PyBytesYmqType;  // Reference to the BytesYmq type
-    PyObject* PyMessageType;  // Reference to the Message type
-    PyObject* PyIOSocketType;  // Reference to the IOSocket type
-    PyObject* PyIOContextType;  // Reference to the IOContext type
+    PyObject* PyBytesYmqType;    // Reference to the BytesYmq type
+    PyObject* PyMessageType;     // Reference to the Message type
+    PyObject* PyIOSocketType;    // Reference to the IOSocket type
+    PyObject* PyIOContextType;   // Reference to the IOContext type
 };
 
 // C++
@@ -25,6 +25,36 @@ struct YmqState {
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/message.h"
 
+static void future_set_result(YmqState* state, PyObject* future) {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    // begin python critical section
+
+    {
+        PyObject* loop = PyObject_CallMethod(future, "get_loop", nullptr);
+
+        if (!loop) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to get future's loop");
+            goto cleanup;
+        }
+
+        PyObject* set_result = PyObject_GetAttrString(future, "set_result");
+
+        if (!set_result) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to get future's set_result() method");
+            goto cleanup;
+        }
+
+        Py_INCREF(Py_None);
+        PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", set_result, Py_None);
+    }
+
+cleanup:
+    Py_DECREF(future);
+
+    // end python critical section
+    PyGILState_Release(gstate);
+}
+
 extern "C" {
 
 static void ymq_free(YmqState* state) {
@@ -35,12 +65,12 @@ static void ymq_free(YmqState* state) {
     Py_XDECREF(state->PyIOSocketType);
     Py_XDECREF(state->PyIOContextType);
 
-    state->enumModule = nullptr;
+    state->enumModule       = nullptr;
     state->ioSocketTypeEnum = nullptr;
-    state->PyBytesYmqType = nullptr;
-    state->PyMessageType = nullptr;
-    state->PyIOSocketType = nullptr;
-    state->PyIOContextType = nullptr;
+    state->PyBytesYmqType   = nullptr;
+    state->PyMessageType    = nullptr;
+    state->PyIOSocketType   = nullptr;
+    state->PyIOContextType  = nullptr;
 }
 
 static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
