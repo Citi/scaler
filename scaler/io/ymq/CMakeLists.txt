@@ -16,6 +16,7 @@ target_sources(cc_ymq PRIVATE
   event_loop_thread.cpp
 
   event_manager.h
+  event_manager.cpp
   # file_descriptor.h 
 
   message_connection.h

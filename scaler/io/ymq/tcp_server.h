@@ -26,9 +26,13 @@ class TcpServer {
     // It will handle error it can handle. If it is unreasonable to
     // handle the error here, pass it to onAcceptReturn()
     void onRead();
+    void onWrite() {}
+    void onClose() {}
+    void onError() {}
 
     sockaddr _addr;
     socklen_t _addr_len;
+    std::string _IOSocketIdentity;
 
 public:
     TcpServer(const TcpServer&)            = delete;
@@ -39,5 +43,6 @@ public:
 
     using AcceptReturnCallback = std::function<void(FileDescriptor, sockaddr, int)>;
     AcceptReturnCallback onAcceptReturn;
-    void onCreated();
+    void onCreated(std::string identity);
+    ~TcpServer();
 };
