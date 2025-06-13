@@ -10,8 +10,6 @@
 #include <memory>
 #include <thread>
 
-using namespace std::chrono_literals;
-
 // First-party
 #include "scaler/io/ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/ymq.h"
@@ -70,6 +68,8 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
 
     // we absolutely cannot allow c++ exceptions to cross the ffi boundary
     try {
+        using namespace std::chrono_literals;
+
         // simulates an async call to the core
         std::thread thread([future]() {
             printf("thread waiting\n");
