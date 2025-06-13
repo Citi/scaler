@@ -2,21 +2,23 @@
 
 // C++
 #include <memory>
-#include <mutex>
-#include <string>
 #include <vector>
 
 // First-party
-#include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/configuration.h"
 #include "scaler/io/ymq/typedefs.h"
 
-using Identity = Configuration::Identity;
+// NOTE: Don't do this in a header file, it will pollute the env. - gxu
+// using Identity = Configuration::Identity;
 
 class IOSocket;
+class EventLoopThread;
 
 class IOContext {
     // This is a pointer, just for now
     std::vector<std::shared_ptr<EventLoopThread>> _threads;
+
+    using Identity = Configuration::Identity;
 
 public:
     IOContext(size_t threadCount = 1);
@@ -28,6 +30,7 @@ public:
 
     // These methods need to be thread-safe.
     std::shared_ptr<IOSocket> createIOSocket(Identity identity, IOSocketType socketType);
+
     bool removeIOSocket(std::shared_ptr<IOSocket>);
 
     size_t numThreads() const { return _threads.size(); }

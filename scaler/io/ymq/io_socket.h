@@ -1,24 +1,23 @@
 #pragma once
 
 // C++
-// #include <map>
-// #include <optional>
+#include <map>
 #include <memory>
 #include <optional>
 
 // First-party
 #include "scaler/io/ymq/configuration.h"
-#include "scaler/io/ymq/event_loop_thread.h"
+#include "scaler/io/ymq/message_connection_tcp.h"
 #include "scaler/io/ymq/tcp_client.h"
 #include "scaler/io/ymq/tcp_server.h"
 #include "scaler/io/ymq/typedefs.h"
 
+// NOTE: Don't do this. It pollutes the env. I tried to remove it, but it reports err
+// in pymod module. Consider include the corresponding file and define types there. - gxu
 using Identity = Configuration::Identity;
 
-class TCPClient;
-class TCPServer;
-
 class EventLoopThread;
+class MessageConnectionTCP;
 
 class IOSocket {
     std::shared_ptr<EventLoopThread> _eventLoopThread;
@@ -27,20 +26,30 @@ class IOSocket {
 
     std::optional<TcpClient> _tcpClient;
     std::optional<TcpServer> _tcpServer;
-    // std::map<int /* class FileDescriptor */, MessageConnectionTCP*> fdToConnection;
-    // std::map<std::string, MessageConnectionTCP*> identityToConnection;
+    // TODO: Figure out what this should do
+    std::map<std::string, MessageConnectionTCP*> _identityToConnection;
 
 public:
-    IOSocket(std::shared_ptr<EventLoopThread> eventLoopThread, Identity identity, IOSocketType socketType)
-        : _eventLoopThread(eventLoopThread), _identity(identity), _socketType(socketType) {}
+    std::map<int /* class FileDescriptor */, std::unique_ptr<MessageConnectionTCP>> _fdToConnection;
 
-    IOSocket(const IOSocket&)            = delete;
-    IOSocket& operator=(const IOSocket&) = delete;
-    IOSocket(IOSocket&&)                 = delete;
-    IOSocket& operator=(IOSocket&&)      = delete;
+    IOSocket(std::shared_ptr<EventLoopThread> eventLoopThread, Identity identity, IOSocketType socketType);
+
+    // TODO: Figure out what these should do
+    IOSocket();
+    IOSocket(const IOSocket&) {};
+    IOSocket& operator=(const IOSocket&) { return *this; };
+    // IOSocket(IOSocket&&)                 = delete;
+    // IOSocket& operator=(IOSocket&&)      = delete;
 
     Identity identity() const { return _identity; }
     IOSocketType socketType() const { return _socketType; }
+
+    // TODO: In the future, this will be Message
+    void sendMessage(const std::vector<char>& buf, std::function<void()> callback, std::string remoteIdentity);
+    void recvMessage(std::vector<char>& buf);
+
+    void sendMessage(
+        std::shared_ptr<std::vector<char>> buf, std::function<void()> callback, std::string remoteIdentity);
 
     // string -> connection mapping
     // and connection->string mapping
@@ -62,6 +71,8 @@ public:
     // }
 
     void onCreated();
+    // TODO: Think about what the destructor should do
+    ~IOSocket() {}
 
     // void recvMessage(Message* msg);
 };

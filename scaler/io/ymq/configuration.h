@@ -7,5 +7,5 @@ class EpollContext;
 
 struct Configuration {
     using PollingContext = EpollContext;
-    using Identity = std::string;
+    using Identity       = std::string;
 };
