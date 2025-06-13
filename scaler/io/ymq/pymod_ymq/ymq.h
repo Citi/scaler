@@ -12,20 +12,26 @@ struct YmqState {
     PyObject* PyMessageType;     // Reference to the Message type
     PyObject* PyIOSocketType;    // Reference to the IOSocket type
     PyObject* PyIOContextType;   // Reference to the IOContext type
+
+    PyObject* AwaitableType;  // Reference to the Awaitable type
+    PyObject* IterableType;   // Reference to the Iterable type
 };
 
 // C++
+#include <functional>
 #include <string>
 #include <utility>
 
 // First-Party
-#include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/pymod_ymq/async.h"
 #include "scaler/io/ymq/pymod_ymq/bytes.h"
 #include "scaler/io/ymq/pymod_ymq/io_context.h"
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
 #include "scaler/io/ymq/pymod_ymq/message.h"
 
-static void future_set_result(YmqState* state, PyObject* future) {
+// this function must be called from a C++ thread
+// it locks the GIL and completes a future
+static void future_set_result(PyObject* future, std::function<PyObject*()> fn) {
     PyGILState_STATE gstate = PyGILState_Ensure();
     // begin python critical section
 
@@ -45,7 +51,7 @@ static void future_set_result(YmqState* state, PyObject* future) {
         }
 
         Py_INCREF(Py_None);
-        PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", set_result, Py_None);
+        PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", set_result, fn());
     }
 
 cleanup:
@@ -146,7 +152,7 @@ static int ymq_createIOSocketTypeEnum(PyObject* module) {
     return 0;
 }
 
-static int ymq_createType(PyObject* module, PyObject** storage, PyType_Spec* spec, const char* name) {
+static int ymq_createType(PyObject* module, PyObject** storage, PyType_Spec* spec, const char* name, bool add = true) {
     *storage = PyType_FromModuleAndSpec(module, spec, nullptr);
 
     if (!*storage) {
@@ -154,11 +160,12 @@ static int ymq_createType(PyObject* module, PyObject** storage, PyType_Spec* spe
         return -1;
     }
 
-    if (PyModule_AddObjectRef(module, name, *storage) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to add type to module");
-        Py_DECREF(*storage);
-        return -1;
-    }
+    if (add)
+        if (PyModule_AddObjectRef(module, name, *storage) < 0) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to add type to module");
+            Py_DECREF(*storage);
+            return -1;
+        }
 
     return 0;
 }
@@ -191,6 +198,12 @@ static int ymq_exec(PyObject* module) {
         return -1;
 
     if (ymq_createType(module, &state->PyIOContextType, &PyIOContext_spec, "IOContext") < 0)
+        return -1;
+
+    if (ymq_createType(module, &state->AwaitableType, &Awaitable_spec, "Awaitable", false) < 0)
+        return -1;
+
+    if (ymq_createType(module, &state->IterableType, &Iterable_spec, "Iterable", false) < 0)
         return -1;
 
     return 0;
