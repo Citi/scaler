@@ -16,7 +16,6 @@
 #include <expected>
 #include <memory>
 #include <optional>
-#include <system_error>
 
 // First-party
 #include "scaler/io/ymq/common.h"
@@ -24,14 +23,12 @@
 class FileDescriptor {
     std::shared_ptr<int> _fd;
 
-    void close() {
-        if (auto err = ::close(*_fd) < 0)
-            throw std::system_error(err, std::system_category(), "Failed to close fd");
-    }
+    // note: not allowed to throw exceptions
+    static void deleter(int* fd) { ::close(*fd); }
 
     int fd() const { return *_fd; }
 
-    FileDescriptor(int fd): _fd(std::make_shared<int>(fd, &FileDescriptor::close)) {}
+    FileDescriptor(int fd): _fd(std::shared_ptr<int>(new int(fd), &FileDescriptor::deleter)) {}
 
 public:
     FileDescriptor(const FileDescriptor& other) { this->_fd = other._fd; }
