@@ -10,6 +10,10 @@
 #include "scaler/io/ymq/typedefs.h"
 
 class IOSocket;
+class EventManager;
+
+template <typename EventLoopBackend>
+class EventLoop;
 
 class EventLoopThread: public std::enable_shared_from_this<EventLoopThread> {
     using PollingContext = Configuration::PollingContext;
@@ -26,10 +30,8 @@ public:
     // return eventLoop.executeNow(createIOSocket());
     void addIOSocket(std::shared_ptr<IOSocket>);
     void removeIOSocket(std::shared_ptr<IOSocket>);
-    void registerEventManager(EventManager& em) { _eventLoop->registerEventManager(em); }
-    void removeEventManager(EventManager& em) {
-        // todo
-    }
+    void registerEventManager(EventManager& em);
+    void removeEventManager(EventManager& em);
     std::shared_ptr<IOSocket> getIOSocketByIdentity(size_t identity);
 
     EventLoopThread(const EventLoopThread&)            = delete;

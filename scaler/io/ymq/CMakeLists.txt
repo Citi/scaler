@@ -11,6 +11,7 @@ target_sources(cc_ymq PRIVATE
 
   event_loop_backend.h
   event_loop.h
+  event_loop.cpp
 
   event_loop_thread.h
   event_loop_thread.cpp

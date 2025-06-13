@@ -20,3 +20,10 @@ void EventLoopThread::removeIOSocket(std::shared_ptr<IOSocket> socket) {
 
     todo();
 }
+
+void EventLoopThread::registerEventManager(EventManager& em) {
+    _eventLoop->registerEventManager(em);
+}
+void EventLoopThread::removeEventManager(EventManager& em) {
+    // todo
+}
