@@ -31,9 +31,6 @@ static void PyIOSocket_dealloc(PyIOSocket* self) {
 }
 
 static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
-    // PyErr_SetString(PyExc_NotImplementedError, "send() is not implemented yet");
-    // return nullptr;
-
     // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
     // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
     PyObject* module = PyType_GetModule(Py_TYPE(self));
@@ -62,15 +59,16 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
         return nullptr;
     }
 
-    printf("spawning thread\n");
-
+    // borrow the future, we'll decref this after the C++ thread is done
     Py_INCREF(future);
 
     // we absolutely cannot allow c++ exceptions to cross the ffi boundary
     try {
         using namespace std::chrono_literals;
 
-        // simulates an async call to the core
+        printf("spawning thread\n");
+
+        // simulate an async call to the core for demonstration purposes
         std::thread thread([future]() {
             printf("thread waiting\n");
 
@@ -79,7 +77,10 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
             printf("thread done waiting\n");
 
             // notify python of completion
-            future_set_result(future, []() { Py_RETURN_NONE; });
+            future_set_result(future, []() {
+                // this is where we would return the result of the compution if we had any
+                Py_RETURN_NONE;
+            });
         });
 
         thread.detach();
