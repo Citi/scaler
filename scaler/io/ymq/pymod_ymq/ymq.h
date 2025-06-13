@@ -6,7 +6,9 @@
 #include <structmember.h>
 
 struct YmqState {
-    PyObject* enumModule;        // Reference to the enum module
+    PyObject* enumModule;     // Reference to the enum module
+    PyObject* asyncioModule;  // Reference to the asyncio module
+
     PyObject* ioSocketTypeEnum;  // Reference to the IOSocketType enum
     PyObject* PyBytesYmqType;    // Reference to the BytesYmq type
     PyObject* PyMessageType;     // Reference to the Message type
@@ -65,18 +67,24 @@ extern "C" {
 
 static void ymq_free(YmqState* state) {
     Py_XDECREF(state->enumModule);
+    Py_XDECREF(state->asyncioModule);
     Py_XDECREF(state->ioSocketTypeEnum);
     Py_XDECREF(state->PyBytesYmqType);
     Py_XDECREF(state->PyMessageType);
     Py_XDECREF(state->PyIOSocketType);
     Py_XDECREF(state->PyIOContextType);
+    Py_XDECREF(state->AwaitableType);
+    Py_XDECREF(state->IterableType);
 
+    state->asyncioModule    = nullptr;
     state->enumModule       = nullptr;
     state->ioSocketTypeEnum = nullptr;
     state->PyBytesYmqType   = nullptr;
     state->PyMessageType    = nullptr;
     state->PyIOSocketType   = nullptr;
     state->PyIOContextType  = nullptr;
+    state->AwaitableType    = nullptr;
+    state->IterableType     = nullptr;
 }
 
 static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
@@ -182,6 +190,13 @@ static int ymq_exec(PyObject* module) {
 
     if (!state->enumModule) {
         PyErr_SetString(PyExc_RuntimeError, "Failed to import enum module");
+        return -1;
+    }
+
+    state->asyncioModule = PyImport_ImportModule("asyncio");
+
+    if (!state->asyncioModule) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to import asyncio module");
         return -1;
     }
 
