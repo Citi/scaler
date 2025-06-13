@@ -71,7 +71,7 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
     // we absolutely cannot allow c++ exceptions to cross the ffi boundary
     try {
         // simulates an async call to the core
-        std::thread give_me_a_name([future]() {
+        std::thread thread([future]() {
             printf("thread waiting\n");
 
             // do some "work"
@@ -82,7 +82,7 @@ static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwa
             future_set_result(future, []() { Py_RETURN_NONE; });
         });
 
-        give_me_a_name.detach();
+        thread.detach();
     } catch (...) { printf("EXCEPTION!\n"); }
 
     return PyObject_CallFunction(state->AwaitableType, "O", future);
