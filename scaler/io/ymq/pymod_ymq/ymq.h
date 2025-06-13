@@ -34,21 +34,28 @@ static void future_set_result(PyObject* future, std::function<PyObject*()> fn) {
 
         if (!loop) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to get future's loop");
-            goto cleanup;
+            Py_DECREF(future);
+
+            // end python critical section
+            PyGILState_Release(gstate);
+            return;
         }
 
         PyObject* set_result = PyObject_GetAttrString(future, "set_result");
 
         if (!set_result) {
             PyErr_SetString(PyExc_RuntimeError, "Failed to get future's set_result() method");
-            goto cleanup;
+            Py_DECREF(future);
+
+            // end python critical section
+            PyGILState_Release(gstate);
+            return;
         }
 
         Py_INCREF(Py_None);
         PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", set_result, fn());
     }
 
-cleanup:
     Py_DECREF(future);
 
     // end python critical section
