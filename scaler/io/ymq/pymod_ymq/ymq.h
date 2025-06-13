@@ -16,7 +16,6 @@ struct YmqState {
     PyObject* PyIOContextType;   // Reference to the IOContext type
 
     PyObject* AwaitableType;  // Reference to the Awaitable type
-    PyObject* IterableType;   // Reference to the Iterable type
 };
 
 // C++
@@ -74,7 +73,6 @@ static void ymq_free(YmqState* state) {
     Py_XDECREF(state->PyIOSocketType);
     Py_XDECREF(state->PyIOContextType);
     Py_XDECREF(state->AwaitableType);
-    Py_XDECREF(state->IterableType);
 
     state->asyncioModule    = nullptr;
     state->enumModule       = nullptr;
@@ -84,7 +82,6 @@ static void ymq_free(YmqState* state) {
     state->PyIOSocketType   = nullptr;
     state->PyIOContextType  = nullptr;
     state->AwaitableType    = nullptr;
-    state->IterableType     = nullptr;
 }
 
 static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
@@ -216,9 +213,6 @@ static int ymq_exec(PyObject* module) {
         return -1;
 
     if (ymq_createType(module, &state->AwaitableType, &Awaitable_spec, "Awaitable", false) < 0)
-        return -1;
-
-    if (ymq_createType(module, &state->IterableType, &Iterable_spec, "Iterable", false) < 0)
         return -1;
 
     return 0;
