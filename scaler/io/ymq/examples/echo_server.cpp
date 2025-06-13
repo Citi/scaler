@@ -12,10 +12,10 @@
 // We should of course provide an echo client.
 
 int main() {
-    printf("Hello, world!\n");
-
     IOContext context;
     std::shared_ptr<IOSocket> socket = context.createIOSocket("ServerSocket", IOSocketType::Dealer);
+    sleep(10000);
+
     // char buf[8];
     // while (true) {
     //     socket.read("any_identity", buf, []() { printf("read completed\n"); });

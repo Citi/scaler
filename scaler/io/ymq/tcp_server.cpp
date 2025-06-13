@@ -51,7 +51,7 @@ TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoopThread)
 }
 
 void TcpServer::onCreated(std::string identity) {
-    printf("TcpServer::onAdded()\n");
+    printf("%s, %d\n", __PRETTY_FUNCTION__, __LINE__);
     // _eventLoopThread->eventLoop.registerEventManager(*this->_eventManager.get());
     // TODO: Think about this, maybe move this to ctor?
     this->_IOSocketIdentity = identity;
@@ -60,12 +60,14 @@ void TcpServer::onCreated(std::string identity) {
 
 void TcpServer::onRead() {
     printf("TcpServer::onRead()\n");
-    int fd         = accept4(_serverFd, &_addr, &_addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
-    std::string id = this->_IOSocketIdentity;
-    auto& sock     = this->_eventLoopThread->_identityToIOSocket.at(id);
-    // FIXME: the second _addr is not real
-    sock->_fdToConnection[fd] = std::make_unique<MessageConnectionTCP>(_eventLoopThread, fd, _addr, _addr);
-    sock->_fdToConnection[fd]->onCreated();
+    int fd = accept4(_serverFd, &_addr, &_addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    close(fd);
+    return;
+    // std::string id = this->_IOSocketIdentity;
+    // auto& sock     = this->_eventLoopThread->_identityToIOSocket.at(id);
+    // // FIXME: the second _addr is not real
+    // sock->_fdToConnection[fd] = std::make_unique<MessageConnectionTCP>(_eventLoopThread, fd, _addr, _addr);
+    // sock->_fdToConnection[fd]->onCreated();
 }
 
 TcpServer::~TcpServer() {}

@@ -12,4 +12,6 @@
 //     _eventLoopThread.getEventLoop().removeEventManager(*this);
 // }
 
-EventManager::EventManager(std::shared_ptr<EventLoopThread> eventLoopThread): _eventLoopThread(eventLoopThread) {}
+EventManager::EventManager(std::shared_ptr<EventLoopThread> eventLoopThread): _eventLoopThread(eventLoopThread) {
+    type = 114;
+}

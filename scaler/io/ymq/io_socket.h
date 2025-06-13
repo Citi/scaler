@@ -45,8 +45,11 @@ public:
     IOSocketType socketType() const { return _socketType; }
 
     // TODO: In the future, this will be Message
-    void sendMessage(const std::vector<char>& buf, std::function<void()> callback);
+    void sendMessage(const std::vector<char>& buf, std::function<void()> callback, std::string remoteIdentity);
     void recvMessage(std::vector<char>& buf);
+
+    void sendMessage(
+        std::shared_ptr<std::vector<char>> buf, std::function<void()> callback, std::string remoteIdentity);
 
     // string -> connection mapping
     // and connection->string mapping

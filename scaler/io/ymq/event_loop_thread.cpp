@@ -10,7 +10,10 @@
 std::shared_ptr<IOSocket> EventLoopThread::createIOSocket(std::string identity, IOSocketType socketType) {
     if (thread.get_id() == std::thread::id()) {
         thread = std::jthread([this](std::stop_token token) {
-            while (!token.stop_requested()) {
+            // while (!token.stop_requested()) {
+            while (true) {
+                printf("A loop starts\n");
+                sleep(10);
                 this->_eventLoop.loop();
             }
         });

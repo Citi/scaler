@@ -3,6 +3,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <queue>
 #include <tuple>
 #include <vector>
 
@@ -35,6 +36,9 @@ class MessageConnectionTCP: public MessageConnection {
     std::vector<char> _recvBuf;
     size_t _readCursor = 0;
 
+    std::queue<TcpWriteOperation> _writeOps;
+    std::queue<TcpReadOperation> _readOps;
+
     std::optional<TcpWriteOperation> _writeOp;
     std::optional<TcpReadOperation> _readOp;
 
@@ -53,6 +57,17 @@ public:
 
     void send(Bytes data, SendMessageContinuation k) { todo(); }
     void recv(RecvMessageContinuation k) { todo(); }
+
+    void send(std::shared_ptr<std::vector<char>> msg) {
+        if (!_writeOps.size()) {
+            int n = write(_connFd, msg->data(), msg->size());
+        } else {
+            TcpWriteOperation writeOp;
+            // writeOp._callback = [msg] {write() }
+        }
+    }
+
+    void recv(std::vector<char>& buf) {}
 
     void onCreated();
 };

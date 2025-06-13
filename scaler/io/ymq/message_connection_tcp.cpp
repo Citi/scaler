@@ -32,10 +32,9 @@ void MessageConnectionTCP::onRead() {
     // Find operation, if presents, do callback
     if (!_recvBuf.size())
         _recvBuf.resize(1024);
-    int n = read(this->_connFd, _recvBuf.data() + _readCursor, 1024);
-    _readCursor += n;
-
     if (_readOp) {
+        int n = read(this->_connFd, _recvBuf.data() + _readCursor, 1024);
+        _readCursor += n;
         _readOp->_libCallback(_recvBuf, _readCursor);
     }
 }

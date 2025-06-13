@@ -19,24 +19,25 @@ class EventManager {
     FileDescriptor _fd;
 
 public:
+    int type;
     int events;
     int revents;
     void updateEvents();
 
     void onEvents(uint64_t events) {
-        if constexpr (std::same_as<Configuration::PollingContext, EpollContext>) {
-            printf("WTF, I'M EPOLLCONTEXT!\n");
-            int realEvents = (int)events;
-            if ((realEvents & EPOLLIN) == EPOLLIN) {
-                onRead();
-            } else if ((realEvents & EPOLLOUT) == EPOLLOUT) {
-                onWrite();
-            } else if ((realEvents & EPOLLHUP) == EPOLLHUP) {
-                onClose();
-            } else if ((realEvents & EPOLLERR)) {
-                onError();
-            }
+        // if constexpr (std::same_as<Configuration::PollingContext, EpollContext>) {
+        printf("WTF, I'M EPOLLCONTEXT!\n");
+        int realEvents = (int)events;
+        if ((realEvents & EPOLLIN) == EPOLLIN) {
+            onRead();
+        } else if ((realEvents & EPOLLOUT) == EPOLLOUT) {
+            onWrite();
+        } else if ((realEvents & EPOLLHUP) == EPOLLHUP) {
+            onClose();
+        } else if ((realEvents & EPOLLERR)) {
+            onError();
         }
+        // }
     }
 
     // User that registered them should have everything they need

@@ -94,12 +94,12 @@
 // #include "common.h"
 
 // Third-party
+#include "scaler/io/ymq/event_manager.h"
 #include "third_party/concurrentqueue.h"
 
 using moodycamel::ConcurrentQueue;
 
 class EventManager;
-class EventLoopThread;
 
 template <typename T>
 class InterruptiveConcurrentQueue {
@@ -107,30 +107,45 @@ class InterruptiveConcurrentQueue {
     ConcurrentQueue<T> _queue;
 
 public:
-    InterruptiveConcurrentQueue(): _queue() { _eventFd = eventfd(0, EFD_SEMAPHORE); }
+    std::unique_ptr<EventManager> _eventManager;
+    InterruptiveConcurrentQueue(): _queue(), _eventManager(std::make_unique<EventManager>(nullptr)) {
+        _eventFd            = eventfd(0, EFD_SEMAPHORE);
+        _eventManager->type = 123;
+    }
 
-    void addToEventLoop(EventLoopThread& eventLoopThread) {}
+    int eventFd() { return _eventFd; }
 
     void enqueue(const T& item) {
+        printf("enqueue!\n");
         _queue.enqueue(item);
 
         uint64_t u = 1;
         if (::eventfd_write(_eventFd, u) < 0) {
+            printf("eventfd_write\n");
             exit(1);
         }
+        printf("enqueue u %lu\n", u);
     }
 
     // note: this method will block until an item is available
     void dequeue(T& item) {
         uint64_t u;
-        if (::eventfd_read(_eventFd, &u) < 0)
+        printf("dequee1\n");
+        if (::eventfd_read(_eventFd, &u) < 0) {
+            printf("eventfdread\n");
             exit(1);
-
-        for (;;) {
-            if (_queue.try_dequeue(item)) {
-                exit(1);
-            }
         }
+        printf("dequeue u %lu\n", u);
+
+        printf("dequee2\n");
+        _queue.try_dequeue(item);
+        printf("dequee3\n");
+        // for (;;) {
+        //     if (_queue.try_dequeue(item)) {
+        //         return;
+        //         // exit(1);
+        //     }
+        // }
     }
 
     // unmovable, uncopyable

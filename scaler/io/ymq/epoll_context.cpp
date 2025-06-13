@@ -1,6 +1,7 @@
 #include "scaler/io/ymq/epoll_context.h"
 
 #include <format>
+#include <functional>
 
 #include "scaler/io/ymq/common.h"
 #include "scaler/io/ymq/event_manager.h"
@@ -47,28 +48,51 @@ void EpollContext::execPendingFunctions() {
 // }
 
 void EpollContext::loop() {
+    printf("hereinloop\n");
     std::array<epoll_event, 1024> events;
     int n = epoll_wait(epfd, events.data(), 1024, -1);
     if (n < 0) {
-        // TODO: handle error
+        //     // TODO: handle error
         printf("?\n");
+    } else {
+        printf("n = %d\n", n);
+        sleep(1);
     }
 
-    for (auto it = events.begin(); it != events.begin() + n; ++it) {
-        epoll_event current_event = *it;
-
-        auto* event = (EventManager*)current_event.data.ptr;
-        event->onEvents(current_event.events);
+    for (int ii = 0; ii < n; ++ii) {
+        // epoll_event current_event = *it;
+        epoll_event current_event = events[ii];
+        auto* event               = (EventManager*)current_event.data.ptr;
+        printf("event->type = %d\n", event->type);
+        if (event->type == 123) {
+            printf("1\n");
+            std::function<void()> somefunc = [] { printf("SOMEFUNC\n"); };
+            printf("2\n");
+            interruptiveFunctions.dequeue(somefunc);
+            printf("3\n");
+            somefunc();
+            printf("4\n");
+            continue;
+        }
+        // } else {
+        //     printf("type != -1\n");
+        //     event->onEvents(current_event.events);
+        // }
     }
 
-    execPendingFunctions();
+    // execPendingFunctions();
 }
 
 void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager) {
     epoll_event event {};
     event.events   = (int)events & (EPOLLIN | EPOLLOUT | EPOLLET);
     event.data.ptr = (void*)manager;
-    epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &event);
+    int res        = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &event);
+
+    if (res < 0) {
+        printf("?\n");
+        exit(1);
+    }
 }
 
 // EXAMPLE

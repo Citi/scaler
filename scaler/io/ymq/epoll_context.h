@@ -78,10 +78,19 @@ struct EpollContext {
 
     TimedQueue timingFunctions;
     DelayedFunctionQueue delayedFunctions;
+    InterruptiveConcurrentQueue<std::function<void()>> interruptiveFunctions;
 
     using Identifier = int;  // TBD
 
-    EpollContext() { epfd = epoll_create1(0); }
+    EpollContext() {
+        epfd = epoll_create1(0);
+
+        epoll_event event;
+        event.events   = EPOLLIN | EPOLLOUT;
+        event.data.ptr = interruptiveFunctions._eventManager.get();
+
+        epoll_ctl(epfd, EPOLL_CTL_ADD, interruptiveFunctions.eventFd(), &event);
+    }
 
     void loop();
     void registerEventManager(EventManager& em);
@@ -89,9 +98,7 @@ struct EpollContext {
 
     void stop();
 
-    void executeNow(Function func) {
-        // TODO: Implement this function
-    }
+    void executeNow(Function func) { interruptiveFunctions.enqueue(func); }
 
     void executeLater(Function func, Identifier) { delayedFunctions.emplace(std::move(func)); }
 
