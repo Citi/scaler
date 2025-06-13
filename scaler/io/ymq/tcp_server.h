@@ -14,9 +14,8 @@ class EventManager;
 
 class TcpServer {
     // eventLoop thread will call onRead that is associated w/ the eventManager
-    std::shared_ptr<EventLoopThread> eventLoop;
-    std::unique_ptr<EventManager> eventManager;  // will copy the `onRead()` to itself
-    int serverFd;
+    std::shared_ptr<EventLoopThread> _eventLoopThread;
+    std::unique_ptr<EventManager> _eventManager;  // will copy the `onRead()` to itself
     // Implementation defined method. accept(3) should happen here.
     // This function will call user defined onAcceptReturn()
     // It will handle error it can handle. If it is unreasonable to

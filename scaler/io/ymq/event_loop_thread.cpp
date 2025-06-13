@@ -2,29 +2,28 @@
 #include "scaler/io/ymq/event_loop_thread.h"
 
 #include <cassert>
+#include <memory>
 
+#include "scaler/io/ymq/common.h"
 #include "scaler/io/ymq/io_socket.h"
 
-IOSocket* EventLoopThread::createIOSocket(std::string identity, IOSocketType socketType) {
-    if (thread.get_id() == std::thread::id()) {
-        thread = std::jthread([this](std::stop_token token) {
-            while (!token.stop_requested()) {
-                this->eventLoop.loop();
-            }
-        });
-    }
+void EventLoopThread::addIOSocket(std::shared_ptr<IOSocket> socket) {
+    _identityToIOSocket.emplace(socket->identity(), socket);
 
-    auto [iterator, inserted] = identityToIOSocket.try_emplace(identity, shared_from_this(), identity, socketType);
-    assert(inserted);
-    auto ptr = &iterator->second;
-
-    // TODO: Something happen with the running thread
-    eventLoop.executeNow([ptr] { ptr->onCreated(); });
-    return ptr;
+    todo();
 }
 
 // TODO: Think about non null pointer
-void EventLoopThread::removeIOSocket(IOSocket* target) {
+void EventLoopThread::removeIOSocket(std::shared_ptr<IOSocket> socket) {
     // TODO: Something happen with the running thread
-    identityToIOSocket.erase(target->identity());
+    _identityToIOSocket.erase(socket->identity());
+
+    todo();
+}
+
+void EventLoopThread::registerEventManager(EventManager& em) {
+    _eventLoop->registerEventManager(em);
+}
+void EventLoopThread::removeEventManager(EventManager& em) {
+    // todo
 }

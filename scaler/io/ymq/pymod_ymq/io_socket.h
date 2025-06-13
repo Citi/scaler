@@ -6,7 +6,9 @@
 #include <structmember.h>
 
 // C++
+#include <chrono>
 #include <memory>
+#include <thread>
 
 // First-party
 #include "scaler/io/ymq/io_socket.h"
@@ -29,17 +31,62 @@ static void PyIOSocket_dealloc(PyIOSocket* self) {
 }
 
 static PyObject* PyIOSocket_send(PyIOSocket* self, PyObject* args, PyObject* kwargs) {
-    PyErr_SetString(PyExc_NotImplementedError, "send() is not implemented yet");
-    return nullptr;
+    // replace with PyType_GetModuleByDef(Py_TYPE(self), &ymq_module) in a newer Python version
+    // https://docs.python.org/3/c-api/type.html#c.PyType_GetModuleByDef
+    PyObject* module = PyType_GetModule(Py_TYPE(self));
+    if (!module) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get module for Message type");
+        return nullptr;
+    }
 
-    // in this function we need to:
-    // 1. create an asyncio future (easy)
-    //    - should be pretty easy, just call standard methods
-    // 2. create a handle to that future that can be completed in a C++ callback (harder)
-    //    - how do we call Python from non-Python threads? where is the handle stored?
-    // 3. await the future (very hard)
-    //    - how do you await in a C extension module? is it even possible?
-    //    - might need to call into Python code to make this work
+    auto state = (YmqState*)PyModule_GetState(module);
+    if (!state) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get module state");
+        return nullptr;
+    }
+
+    PyObject* loop = PyObject_CallMethod(state->asyncioModule, "get_event_loop", nullptr);
+
+    if (!loop) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to get event loop");
+        return nullptr;
+    }
+
+    PyObject* future = PyObject_CallMethod(loop, "create_future", nullptr);
+
+    if (!future) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to create future");
+        return nullptr;
+    }
+
+    // borrow the future, we'll decref this after the C++ thread is done
+    Py_INCREF(future);
+
+    // we absolutely cannot allow c++ exceptions to cross the ffi boundary
+    try {
+        using namespace std::chrono_literals;
+
+        printf("spawning thread\n");
+
+        // simulate an async call to the core for demonstration purposes
+        std::thread thread([future]() {
+            printf("thread waiting\n");
+
+            // do some "work"
+            std::this_thread::sleep_for(std::chrono::duration(3000ms));
+            printf("thread done waiting\n");
+
+            // notify python of completion
+            future_set_result(future, []() {
+                // this is where we would return the result of the compution if we had any
+                Py_RETURN_NONE;
+            });
+        });
+
+        thread.detach();
+    } catch (...) { printf("EXCEPTION!\n"); }
+
+    return PyObject_CallFunction(state->AwaitableType, "O", future);
 }
 
 static PyObject* PyIOSocket_repr(PyIOSocket* self) {

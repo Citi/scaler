@@ -6,8 +6,10 @@
 #include <unistd.h>
 
 #include <memory>
+#include <system_error>
 
 #include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/file_descriptor.h"
 
 static int create_and_bind_socket() {
     int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
@@ -36,12 +38,32 @@ static int create_and_bind_socket() {
     return server_fd;
 }
 
-TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoop): eventLoop(eventLoop) {
-    eventManager = std::make_unique<EventManager>(EventManager());
-    serverFd     = create_and_bind_socket();
+TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoop): _eventLoopThread(eventLoop) {
+    auto fd = FileDescriptor::socket(AF_INET, SOCK_STREAM, 0);
+
+    if (!fd) {
+        throw std::system_error(fd.error(), std::system_category(), "Failed to create socket");
+    }
+
+    const sockaddr_in addr {
+        .sin_family = AF_INET,
+        .sin_port   = htons(8080),
+        .sin_addr   = {.s_addr = INADDR_ANY},
+    };
+
+    if (auto err = fd->bind((const sockaddr&)addr, sizeof(addr)); err) {
+        throw std::system_error(*err, std::system_category(), "Failed to bind socket");
+    }
+
+    if (auto err = fd->listen(SOMAXCONN); err) {
+        throw std::system_error(*err, std::system_category(), "Failed to listen on socket");
+    }
+
+    _eventManager = std::make_unique<EventManager>(
+        eventLoop, std::move(*fd), [this](FileDescriptor& fd, Events events) { this->onCreated(); });
 }
 
 void TcpServer::onCreated() {
     printf("TcpServer::onAdded()\n");
-    eventLoop->eventLoop.registerEventManager(*this->eventManager.get());
+    _eventLoopThread->registerEventManager(*this->_eventManager.get());
 }

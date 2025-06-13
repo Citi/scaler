@@ -11,12 +11,15 @@ target_sources(cc_ymq PRIVATE
 
   event_loop_backend.h
   event_loop.h
+  event_loop.cpp
 
   event_loop_thread.h
   event_loop_thread.cpp
 
   event_manager.h
-  # file_descriptor.h 
+  event_manager.cpp
+  
+  file_descriptor.h 
 
   message_connection.h
   message_connection_tcp.h
@@ -54,7 +57,8 @@ add_library(ymq SHARED)
 set_target_properties(ymq PROPERTIES  PREFIX "")
 set_target_properties(ymq PROPERTIES LINKER_LANGUAGE CXX)
 
-target_sources(ymq PRIVATE pymod_ymq/bytes.h
+target_sources(ymq PRIVATE pymod_ymq/async.h
+                           pymod_ymq/bytes.h
                            pymod_ymq/message.h
                            pymod_ymq/io_context.h
                            pymod_ymq/io_socket.h

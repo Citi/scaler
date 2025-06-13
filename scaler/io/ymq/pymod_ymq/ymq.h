@@ -6,20 +6,64 @@
 #include <structmember.h>
 
 struct YmqState {
-    PyObject* enumModule;       // Reference to the enum module
+    PyObject* enumModule;     // Reference to the enum module
+    PyObject* asyncioModule;  // Reference to the asyncio module
+
     PyObject* ioSocketTypeEnum;  // Reference to the IOSocketType enum
-    PyObject* PyBytesYmqType;  // Reference to the BytesYmq type
-    PyObject* PyMessageType;  // Reference to the Message type
-    PyObject* PyIOSocketType;  // Reference to the IOSocket type
-    PyObject* PyIOContextType;  // Reference to the IOContext type
+    PyObject* PyBytesYmqType;    // Reference to the BytesYmq type
+    PyObject* PyMessageType;     // Reference to the Message type
+    PyObject* PyIOSocketType;    // Reference to the IOSocket type
+    PyObject* PyIOContextType;   // Reference to the IOContext type
+
+    PyObject* AwaitableType;  // Reference to the Awaitable type
 };
 
 // C++
+#include <functional>
 #include <string>
 #include <utility>
 
+// this function must be called from a C++ thread
+// it locks the GIL and completes a future
+static void future_set_result(PyObject* future, std::function<PyObject*()> fn) {
+    PyGILState_STATE gstate = PyGILState_Ensure();
+    // begin python critical section
+
+    {
+        PyObject* loop = PyObject_CallMethod(future, "get_loop", nullptr);
+
+        if (!loop) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to get future's loop");
+            Py_DECREF(future);
+
+            // end python critical section
+            PyGILState_Release(gstate);
+            return;
+        }
+
+        PyObject* set_result = PyObject_GetAttrString(future, "set_result");
+
+        if (!set_result) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to get future's set_result() method");
+            Py_DECREF(future);
+
+            // end python critical section
+            PyGILState_Release(gstate);
+            return;
+        }
+
+        Py_INCREF(Py_None);
+        PyObject_CallMethod(loop, "call_soon_threadsafe", "OO", set_result, fn());
+    }
+
+    Py_DECREF(future);
+
+    // end python critical section
+    PyGILState_Release(gstate);
+}
+
 // First-Party
-#include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/pymod_ymq/async.h"
 #include "scaler/io/ymq/pymod_ymq/bytes.h"
 #include "scaler/io/ymq/pymod_ymq/io_context.h"
 #include "scaler/io/ymq/pymod_ymq/io_socket.h"
@@ -29,18 +73,22 @@ extern "C" {
 
 static void ymq_free(YmqState* state) {
     Py_XDECREF(state->enumModule);
+    Py_XDECREF(state->asyncioModule);
     Py_XDECREF(state->ioSocketTypeEnum);
     Py_XDECREF(state->PyBytesYmqType);
     Py_XDECREF(state->PyMessageType);
     Py_XDECREF(state->PyIOSocketType);
     Py_XDECREF(state->PyIOContextType);
+    Py_XDECREF(state->AwaitableType);
 
-    state->enumModule = nullptr;
+    state->asyncioModule    = nullptr;
+    state->enumModule       = nullptr;
     state->ioSocketTypeEnum = nullptr;
-    state->PyBytesYmqType = nullptr;
-    state->PyMessageType = nullptr;
-    state->PyIOSocketType = nullptr;
-    state->PyIOContextType = nullptr;
+    state->PyBytesYmqType   = nullptr;
+    state->PyMessageType    = nullptr;
+    state->PyIOSocketType   = nullptr;
+    state->PyIOContextType  = nullptr;
+    state->AwaitableType    = nullptr;
 }
 
 static int ymq_createIntEnum(PyObject* module, std::string enumName, std::vector<std::pair<std::string, int>> entries) {
@@ -116,7 +164,7 @@ static int ymq_createIOSocketTypeEnum(PyObject* module) {
     return 0;
 }
 
-static int ymq_createType(PyObject* module, PyObject** storage, PyType_Spec* spec, const char* name) {
+static int ymq_createType(PyObject* module, PyObject** storage, PyType_Spec* spec, const char* name, bool add = true) {
     *storage = PyType_FromModuleAndSpec(module, spec, nullptr);
 
     if (!*storage) {
@@ -124,11 +172,12 @@ static int ymq_createType(PyObject* module, PyObject** storage, PyType_Spec* spe
         return -1;
     }
 
-    if (PyModule_AddObjectRef(module, name, *storage) < 0) {
-        PyErr_SetString(PyExc_RuntimeError, "Failed to add type to module");
-        Py_DECREF(*storage);
-        return -1;
-    }
+    if (add)
+        if (PyModule_AddObjectRef(module, name, *storage) < 0) {
+            PyErr_SetString(PyExc_RuntimeError, "Failed to add type to module");
+            Py_DECREF(*storage);
+            return -1;
+        }
 
     return 0;
 }
@@ -148,6 +197,13 @@ static int ymq_exec(PyObject* module) {
         return -1;
     }
 
+    state->asyncioModule = PyImport_ImportModule("asyncio");
+
+    if (!state->asyncioModule) {
+        PyErr_SetString(PyExc_RuntimeError, "Failed to import asyncio module");
+        return -1;
+    }
+
     if (ymq_createIOSocketTypeEnum(module) < 0)
         return -1;
 
@@ -161,6 +217,9 @@ static int ymq_exec(PyObject* module) {
         return -1;
 
     if (ymq_createType(module, &state->PyIOContextType, &PyIOContext_spec, "IOContext") < 0)
+        return -1;
+
+    if (ymq_createType(module, &state->AwaitableType, &Awaitable_spec, "Awaitable", false) < 0)
         return -1;
 
     return 0;
