@@ -87,51 +87,20 @@ static int Iterable_init(Iterable* self, PyObject* args, PyObject* kwds) {
 }
 
 static PyObject* Iterable_iternext(Iterable* self) {
-    if (self->state == Polling) {
-        PyObject* result = PyObject_CallMethod(self->future, "done", nullptr);
+    // return Py_TYPE(self->future)->tp_iternext(self->future);
 
-        if (!result)
-            Py_RETURN_NONE;
+    PyObject* iter = PyObject_GetIter(self->future);
 
-        if (!PyBool_Check(result)) {
-            Py_DECREF(result);
-            PyErr_SetString(PyExc_RuntimeError, "Expected future.done() to return a boolean");
-            Py_RETURN_NONE;
-        }
-
-        if (result == Py_False) {
-            Py_DECREF(result);
-
-            PyObject* iter = PyObject_GetIter(self->future);
-
-            if (!iter) {
-                Py_DECREF(iter);
-                PyErr_SetString(PyExc_RuntimeError, "Failed to call iter() on future");
-                Py_RETURN_NONE;
-            }
-
-            PyObject* next = PyIter_Next(iter);
-            Py_DECREF(iter);
-
-            if (!next) {
-                PyErr_SetString(PyExc_RuntimeError, "Failed to call next() on iterator");
-                Py_RETURN_NONE;
-            }
-
-            return next;
-        }
-
-        Py_DECREF(result);
-        self->state = Done;
-    }
-
-    if (self->state == Done) {
-        PyErr_SetNone(PyExc_StopIteration);
+    if (!iter) {
+        Py_DECREF(iter);
+        PyErr_SetString(PyExc_RuntimeError, "Failed to call iter() on future");
         Py_RETURN_NONE;
     }
 
-    PyErr_SetString(PyExc_RuntimeError, "Unknown iterator state");
-    Py_RETURN_NONE;
+    PyObject* next = PyIter_Next(iter);
+    Py_DECREF(iter);
+
+    return next;
 }
 }
 

@@ -24,13 +24,6 @@ struct YmqState {
 #include <string>
 #include <utility>
 
-// First-Party
-#include "scaler/io/ymq/pymod_ymq/async.h"
-#include "scaler/io/ymq/pymod_ymq/bytes.h"
-#include "scaler/io/ymq/pymod_ymq/io_context.h"
-#include "scaler/io/ymq/pymod_ymq/io_socket.h"
-#include "scaler/io/ymq/pymod_ymq/message.h"
-
 // this function must be called from a C++ thread
 // it locks the GIL and completes a future
 static void future_set_result(PyObject* future, std::function<PyObject*()> fn) {
@@ -62,6 +55,13 @@ cleanup:
     // end python critical section
     PyGILState_Release(gstate);
 }
+
+// First-Party
+#include "scaler/io/ymq/pymod_ymq/async.h"
+#include "scaler/io/ymq/pymod_ymq/bytes.h"
+#include "scaler/io/ymq/pymod_ymq/io_context.h"
+#include "scaler/io/ymq/pymod_ymq/io_socket.h"
+#include "scaler/io/ymq/pymod_ymq/message.h"
 
 extern "C" {
 
