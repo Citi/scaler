@@ -1,6 +1,8 @@
 #pragma once
 
 // C++
+#include <sys/socket.h>
+
 #include <functional>
 #include <memory>
 
@@ -15,12 +17,13 @@ class EventManager;
 class TcpClient {
     std::shared_ptr<EventLoopThread> _eventLoopThread; /* shared ownership */
     std::unique_ptr<EventManager> _eventManager;
+    int _connFd;
     // Implementation defined method. connect(3) should happen here.
     // This function will call user defined onConnectReturn()
     // It will handle error it can handle. If it is unreasonable to
     // handle the error here, pass it to onConnectReturn()
     void onRead();
-    void onWrite() {}
+    void onWrite();
     void onClose() {}
     void onError() {}
 
@@ -35,6 +38,7 @@ public:
     ConnectReturnCallback onConnectReturn;
 
     void onCreated(std::string identity);
+    void onCreated(std::string identity, sockaddr addr);
 
     void retry(/* Arguments */);
     ~TcpClient();

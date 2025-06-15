@@ -31,7 +31,9 @@ class MessageConnectionTCP: public MessageConnection {
     sockaddr _localAddr;
     sockaddr _remoteAddr;
     std::string _localIOSocketIdentity;
-    std::string _remoteIOSocketIdentity;
+    // TODO: think about whether we have to have this _sendLocalIdnetity
+    std::optional<std::string> _remoteIOSocketIdentity;
+    bool _sendLocalIdentity = false;
 
     std::vector<char> _recvBuf;
     size_t _readCursor = 0;
@@ -47,17 +49,22 @@ class MessageConnectionTCP: public MessageConnection {
 
     void onRead();
     void onWrite();
-    void onClose() {};
+    void onClose() { printf("onClose\n"); };
     void onError() {};
 
 public:
     ~MessageConnectionTCP();
     MessageConnectionTCP(
-        std::shared_ptr<EventLoopThread> eventLoopThread, int connFd, sockaddr localAddr, sockaddr remoteAddr);
+        std::shared_ptr<EventLoopThread> eventLoopThread,
+        int connFd,
+        sockaddr localAddr,
+        sockaddr remoteAddr,
+        std::string localIOSocketIdentity);
 
     void send(Bytes data, SendMessageContinuation k) { todo(); }
     void recv(RecvMessageContinuation k) { todo(); }
 
+    // TODO: Think about writeOps and readOps in general
     void send(std::shared_ptr<std::vector<char>> msg) {
         if (!_writeOps.size()) {
             int n = write(_connFd, msg->data(), msg->size());

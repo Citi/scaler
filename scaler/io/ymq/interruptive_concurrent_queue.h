@@ -107,6 +107,8 @@ class InterruptiveConcurrentQueue {
     ConcurrentQueue<T> _queue;
 
 public:
+    // TODO: Think about a better way of constructing event manager
+    // In general, think about what should we do with this bizzard thing
     std::unique_ptr<EventManager> _eventManager;
     InterruptiveConcurrentQueue(): _queue(), _eventManager(std::make_unique<EventManager>(nullptr)) {
         _eventFd            = eventfd(0, EFD_SEMAPHORE);
@@ -115,31 +117,27 @@ public:
 
     int eventFd() { return _eventFd; }
 
+    // TODO: Think about a better way of handling error message
     void enqueue(const T& item) {
-        printf("enqueue!\n");
         _queue.enqueue(item);
 
         uint64_t u = 1;
         if (::eventfd_write(_eventFd, u) < 0) {
-            printf("eventfd_write\n");
+            printf("eventfd_write goes wrong\n");
             exit(1);
         }
-        printf("enqueue u %lu\n", u);
     }
 
+    // TODO: Change the behavior according to the original version
     // note: this method will block until an item is available
     void dequeue(T& item) {
         uint64_t u;
-        printf("dequee1\n");
         if (::eventfd_read(_eventFd, &u) < 0) {
-            printf("eventfdread\n");
+            printf("eventfd_read goes wrong\n");
             exit(1);
         }
-        printf("dequeue u %lu\n", u);
 
-        printf("dequee2\n");
         _queue.try_dequeue(item);
-        printf("dequee3\n");
         // for (;;) {
         //     if (_queue.try_dequeue(item)) {
         //         return;

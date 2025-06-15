@@ -17,7 +17,6 @@
 
 class EventManager;
 
-// TODO: Change struct to class -> some of them are private.
 // struct EpollContext {
 //     FileDescriptor epoll_fd;
 //     TimedQueue timingFunctions;
@@ -47,14 +46,12 @@ class EventManager;
 //     void stop();
 //
 //     void executeNow(Function func) {
-//         // TODO: Implement this function
 //     }
 //
 //     void executeLater(Function func, Identifier) { delayedFunctions.emplace(std::move(func)); }
 //
 //     void executeAt(Timestamp timestamp, Function callback) { timingFunctions.push(timestamp, callback); }
 //
-//     // TODO: figure out how this work with existing util
 //     bool cancelExecution(Identifier identifier);
 //
 //     void execPendingFunctions();
@@ -73,49 +70,39 @@ class EventManager;
 using DelayedFunctionQueue = std::queue<std::function<void()>>;
 using Function             = std::function<void()>;
 
-struct EpollContext {
-    int epfd;
+class EpollContext {
+    int _epfd;
+    TimedQueue _timingFunctions;
+    DelayedFunctionQueue _delayedFunctions;
+    InterruptiveConcurrentQueue<std::function<void()>> _interruptiveFunctions;
 
-    TimedQueue timingFunctions;
-    DelayedFunctionQueue delayedFunctions;
-    InterruptiveConcurrentQueue<std::function<void()>> interruptiveFunctions;
-
+public:
     using Identifier = int;  // TBD
 
+    // TODO: This is obviously not the right way of doing it
     EpollContext() {
-        epfd = epoll_create1(0);
+        _epfd = epoll_create1(0);
 
         epoll_event event;
-        event.events   = EPOLLIN | EPOLLOUT;
-        event.data.ptr = interruptiveFunctions._eventManager.get();
+        event.events   = EPOLLIN | EPOLLET;
+        event.data.ptr = _interruptiveFunctions._eventManager.get();
 
-        epoll_ctl(epfd, EPOLL_CTL_ADD, interruptiveFunctions.eventFd(), &event);
+        epoll_ctl(_epfd, EPOLL_CTL_ADD, _interruptiveFunctions.eventFd(), &event);
     }
 
     void loop();
+    void stop();
+
     void registerEventManager(EventManager& em);
     void removeEventManager(EventManager& em);
 
-    void stop();
-
-    void executeNow(Function func) { interruptiveFunctions.enqueue(func); }
-
-    void executeLater(Function func, Identifier) { delayedFunctions.emplace(std::move(func)); }
-
-    void executeAt(Timestamp timestamp, Function callback) { timingFunctions.push(timestamp, callback); }
-
+    void executeNow(Function func) { _interruptiveFunctions.enqueue(func); }
+    void executeLater(Function func, Identifier) { _delayedFunctions.emplace(std::move(func)); }
+    void executeAt(Timestamp timestamp, Function callback) { _timingFunctions.push(timestamp, callback); }
     // TODO: figure out how this work with existing util
     bool cancelExecution(Identifier identifier);
 
     void execPendingFunctions();
 
     void addFdToLoop(int fd, uint64_t events, EventManager* manager);
-
-    // int connect_timer_tfd;
-    // std::map<int, EventManager*> monitoringEvent;
-    // bool timer_armed;
-    // // NOTE: Utility functions, may be defined otherwise
-    // void ensure_timer_armed();
-    // void remove_epoll(int fd);
-    // EpollData* epoll_by_fd(int fd);
 };

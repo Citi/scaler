@@ -10,17 +10,13 @@
 #include "scaler/io/ymq/event_manager.h"
 #include "scaler/io/ymq/message_connection_tcp.h"
 
+// TODO: Think about this function
 void IOSocket::onCreated() {
-    printf("%s, %d\n", __PRETTY_FUNCTION__, __LINE__);
-    // Detect if we need to initialize tcpClient and/or tcpServer
-    // If so, initialize it, and then call their onAdd();
-    // assert(!tcpClient);
-    _tcpClient.emplace(_eventLoopThread);
-    // assert(!tcpServer);
-    _tcpServer.emplace(_eventLoopThread);
-    _tcpClient->onCreated(this->identity());
-    _tcpServer->onCreated(this->identity());
     // Different SocketType might have different rules
+    if (_socketType == IOSocketType::Dealer) {
+        _tcpServer.emplace(_eventLoopThread);
+        _tcpServer->onCreated(this->identity());
+    }
 }
 
 IOSocket::IOSocket(std::shared_ptr<EventLoopThread> eventLoopThread, Identity identity, IOSocketType socketType)
@@ -39,3 +35,11 @@ void IOSocket::sendMessage(
 }
 
 void IOSocket::recvMessage(std::vector<char>& buf) {}
+
+// TODO: This only pass in sockaddr is certainly not correct.
+void IOSocket::connectTo(sockaddr addr) {
+    _eventLoopThread->_eventLoop.executeNow([this, addr] {
+        _tcpClient.emplace(_eventLoopThread);
+        _tcpClient->onCreated(this->identity(), addr);
+    });
+}

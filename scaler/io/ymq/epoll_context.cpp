@@ -1,5 +1,6 @@
 #include "scaler/io/ymq/epoll_context.h"
 
+#include <cerrno>
 #include <format>
 #include <functional>
 
@@ -20,10 +21,10 @@
 // }
 
 void EpollContext::execPendingFunctions() {
-    while (delayedFunctions.size()) {
-        auto top = delayedFunctions.front();
+    while (_delayedFunctions.size()) {
+        auto top = _delayedFunctions.front();
         top();
-        delayedFunctions.pop();
+        _delayedFunctions.pop();
     }
 }
 
@@ -48,88 +49,43 @@ void EpollContext::execPendingFunctions() {
 // }
 
 void EpollContext::loop() {
-    printf("hereinloop\n");
     std::array<epoll_event, 1024> events;
-    int n = epoll_wait(epfd, events.data(), 1024, -1);
-    if (n < 0) {
-        //     // TODO: handle error
-        printf("?\n");
-    } else {
-        printf("n = %d\n", n);
-        sleep(1);
-    }
+    int n = epoll_wait(_epfd, events.data(), 1024, -1);
 
-    for (int ii = 0; ii < n; ++ii) {
-        // epoll_event current_event = *it;
-        epoll_event current_event = events[ii];
+    for (auto it = events.begin(); it != events.begin() + n; ++it) {
+        epoll_event current_event = *it;
         auto* event               = (EventManager*)current_event.data.ptr;
-        printf("event->type = %d\n", event->type);
+        // TODO: Change the event type to more meaningful stuff
         if (event->type == 123) {
-            printf("1\n");
-            std::function<void()> somefunc = [] { printf("SOMEFUNC\n"); };
-            printf("2\n");
-            interruptiveFunctions.dequeue(somefunc);
-            printf("3\n");
-            somefunc();
-            printf("4\n");
+            // Handle where f is empty
+            std::function<void()> f;
+            _interruptiveFunctions.dequeue(f);
+            f();
             continue;
+        } else {
+            event->onEvents(current_event.events);
         }
-        // } else {
-        //     printf("type != -1\n");
-        //     event->onEvents(current_event.events);
-        // }
     }
 
-    // execPendingFunctions();
+    execPendingFunctions();
 }
 
 void EpollContext::addFdToLoop(int fd, uint64_t events, EventManager* manager) {
     epoll_event event {};
     event.events   = (int)events & (EPOLLIN | EPOLLOUT | EPOLLET);
     event.data.ptr = (void*)manager;
-    int res        = epoll_ctl(epfd, EPOLL_CTL_ADD, fd, &event);
+    int res        = epoll_ctl(_epfd, EPOLL_CTL_ADD, fd, &event);
 
+    // TODO: This epoll_ctl_mod ideally should not happen here.
     if (res < 0) {
-        printf("?\n");
-        exit(1);
+        if (errno == EEXIST) {
+            if (epoll_ctl(_epfd, EPOLL_CTL_MOD, fd, &event) < 0) {
+                printf("epoll ctl goes wrong\n");
+                exit(1);
+            }
+        } else {
+            printf("epoll ctl goes wrong\n");
+            exit(1);
+        }
     }
 }
-
-// EXAMPLE
-// epoll_wait;
-// for each event that is returned to the caller {
-//     cast the event back to EventManager
-//     if this event is an eventfd {
-//         func = queue front
-//         func()
-//     } else if this event is an timerfd {
-//         if it is oneshot then execute once
-//         if it is multishot then execute and rearm timer
-//     } else {
-//         eventmanager.revent = events return by epoll
-//         eventmanager.on_event() ,
-//         where as on_event is set differently for tcpserver, tcpclient, and tcpconn
-
-//         they are defined something like:
-//         tcpserver.on_event() {
-//             accept the socket and generate a new tcpConn or handle err
-//             this.ioSocket.addNewConn(tcpConn)
-//         }
-//         tcpclient.on_event() {
-//             connect the socket and generate a new tcpConn
-//             this.ioSocket.addNewConn(tcpConn)
-//             if there need retry {
-//                 close this socket
-//                 this.eventloop.executeAfter(the time you want from now)
-//             }
-//         }
-//         tcpConn.on_event() {
-//             read everything you can to the buffer
-//             write everything you can to write the remote end
-//             if tcpconn.ioSocket is something special, for example dealer
-//             tcpConn.ioSocket.route to corresponding tcpConn
-//         }
-//
-//     }
-
-// }

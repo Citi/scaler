@@ -23,7 +23,7 @@ Each person maintains a todo and done list.
  - Start organize files that they can be compiled in one go
  - Write delayed execution utility
  - Write timed execution utility
- -
+ - IOSocket exchange identity on connected
  -
  -
  -

@@ -15,7 +15,6 @@ class IOSocket;
 class EventLoopThread;
 
 class IOContext {
-    // This is a pointer, just for now
     std::vector<std::shared_ptr<EventLoopThread>> _threads;
 
     using Identity = Configuration::Identity;

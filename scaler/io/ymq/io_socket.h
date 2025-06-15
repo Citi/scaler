@@ -26,7 +26,7 @@ class IOSocket {
 
     std::optional<TcpClient> _tcpClient;
     std::optional<TcpServer> _tcpServer;
-    // TODO: Figure out what this should do
+    // TODO: add identity to connection on connection created
     std::map<std::string, MessageConnectionTCP*> _identityToConnection;
 
 public:
@@ -69,6 +69,9 @@ public:
     // }
     // )
     // }
+
+    // TODO: Think more about this function
+    void connectTo(sockaddr addr);
 
     void onCreated();
     // TODO: Think about what the destructor should do
