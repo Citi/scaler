@@ -93,30 +93,12 @@ awaitable<void> read_request_payload(tcp::socket& socket, ObjectRequestHeader& h
     }
 }
 
-boost::asio::awaitable<void> write_response_payload(
-    boost::asio::ip::tcp::socket& socket, std::span<const unsigned char> payloadView) {
-    try {
-        co_await async_write(socket, boost::asio::buffer(payloadView.data(), payloadView.size()), use_awaitable);
-    } catch (boost::system::system_error& e) {
-        if (e.code() == boost::asio::error::broken_pipe) {
-            std::cerr << "Remote end closed, nothing to write.\n";
-            std::cerr << "This should never happen as the client is expected "
-                      << "to get every and all response. Terminating now...\n";
-
-            std::terminate();
-        } else {
-            std::cerr << "write error e.what() = " << e.what() << '\n';
-        }
-        throw e;
-    }
-}
-
-boost::asio::awaitable<void> write_response_header(
-    boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, uint64_t payloadLength) {
+boost::asio::awaitable<void> write_response(
+    boost::asio::ip::tcp::socket& socket, ObjectResponseHeader& header, std::span<const unsigned char> payload) {
     capnp::MallocMessageBuilder returnMsg;
     auto respRoot = returnMsg.initRoot<::ObjectResponseHeader>();
     respRoot.setResponseType(header.respType);
-    respRoot.setPayloadLength(payloadLength);
+    respRoot.setPayloadLength(payload.size());
     respRoot.setResponseID(header.responseID);
     auto respRootObjectID = respRoot.initObjectID();
     respRootObjectID.setField0(header.objectID[0]);
@@ -124,9 +106,15 @@ boost::asio::awaitable<void> write_response_header(
     respRootObjectID.setField2(header.objectID[2]);
     respRootObjectID.setField3(header.objectID[3]);
 
-    auto buf = capnp::messageToFlatArray(returnMsg);
+    auto msgBuf = capnp::messageToFlatArray(returnMsg);
+
+    std::array<boost::asio::const_buffer, 2> buffers {
+        boost::asio::buffer(msgBuf.asBytes().begin(), msgBuf.asBytes().size()),
+        boost::asio::buffer(payload),
+    };
+
     try {
-        co_await async_write(socket, boost::asio::buffer(buf.asBytes().begin(), buf.asBytes().size()), use_awaitable);
+        co_await async_write(socket, buffers, use_awaitable);
     } catch (boost::system::system_error& e) {
         // TODO: Log support
         if (e.code() == boost::asio::error::broken_pipe) {
