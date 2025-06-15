@@ -7,7 +7,10 @@
 
 #include <memory>
 
+#include "scaler/io/ymq/event_loop_thread.h"
 #include "scaler/io/ymq/event_manager.h"
+#include "scaler/io/ymq/io_socket.h"
+#include "scaler/io/ymq/message_connection_tcp.h"
 
 static int create_and_bind_socket() {
     int server_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
@@ -36,12 +39,34 @@ static int create_and_bind_socket() {
     return server_fd;
 }
 
-TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoop): eventLoop(eventLoop) {
-    eventManager = std::make_unique<EventManager>(EventManager());
-    serverFd     = create_and_bind_socket();
+// TODO: Allow user to specify port/addr
+TcpServer::TcpServer(std::shared_ptr<EventLoopThread> eventLoopThread)
+    : _eventLoopThread(eventLoopThread), _eventManager(std::make_unique<EventManager>(_eventLoopThread)) {
+    _serverFd = create_and_bind_socket();
+
+    _eventManager->onRead  = [this] { this->onRead(); };
+    _eventManager->onWrite = [this] { this->onWrite(); };
+    _eventManager->onClose = [this] { this->onClose(); };
+    _eventManager->onError = [this] { this->onError(); };
 }
 
-void TcpServer::onCreated() {
-    printf("TcpServer::onAdded()\n");
-    eventLoop->eventLoop.registerEventManager(*this->eventManager.get());
+void TcpServer::onCreated(std::string identity) {
+    printf("%s, %d\n", __PRETTY_FUNCTION__, __LINE__);
+    // _eventLoopThread->eventLoop.registerEventManager(*this->_eventManager.get());
+    // TODO: Think about this, maybe move this to ctor?
+    this->_IOSocketIdentity = identity;
+    _eventLoopThread->_eventLoop.addFdToLoop(_serverFd, EPOLLIN | EPOLLET, this->_eventManager.get());
 }
+
+void TcpServer::onRead() {
+    printf("TcpServer::onRead()\n");
+    int fd         = accept4(_serverFd, &_addr, &_addr_len, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    std::string id = this->_IOSocketIdentity;
+    auto& sock     = this->_eventLoopThread->_identityToIOSocket.at(id);
+    // FIXME: the second _addr is not real
+    sock->_fdToConnection[fd] =
+        std::make_unique<MessageConnectionTCP>(_eventLoopThread, fd, _addr, _addr, sock->identity());
+    sock->_fdToConnection[fd]->onCreated();
+}
+
+TcpServer::~TcpServer() {}

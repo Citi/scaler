@@ -1,9 +1,17 @@
 #include "scaler/io/ymq/event_manager.h"
 
-void EventManager::addToEventLoop() {
-    _eventLoopThread.getEventLoop().registerEventManager(*this);
-}
+#include <memory>
 
-void EventManager::removeFromEventLoop() {
-    _eventLoopThread.getEventLoop().removeEventManager(*this);
+#include "scaler/io/ymq/event_loop_thread.h"
+
+// void EventManager::addToEventLoop() {
+//     _eventLoopThread.getEventLoop().registerEventManager(*this);
+// }
+//
+// void EventManager::removeFromEventLoop() {
+//     _eventLoopThread.getEventLoop().removeEventManager(*this);
+// }
+
+EventManager::EventManager(std::shared_ptr<EventLoopThread> eventLoopThread): _eventLoopThread(eventLoopThread) {
+    type = 114;
 }

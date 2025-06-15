@@ -25,16 +25,9 @@ struct TimedQueue {
 
     std::priority_queue<timed_fn, std::vector<timed_fn>, cmp> pq;
 
-    TimedQueue(): timer_fd(createTimerfd()) {}
+    TimedQueue();
 
-    void push(Timestamp timestamp, callback_t cb) {
-        if (pq.size() && timestamp < pq.top().first) {
-            auto ts = convertToItimerspec(timestamp);
-            int ret = timerfd_settime(timer_fd, 0, &ts, nullptr);
-        }
-
-        pq.push({timestamp, cb});
-    }
+    void push(Timestamp timestamp, callback_t cb);
 
     void onRead() {
         uint64_t numItems;
@@ -50,4 +43,6 @@ struct TimedQueue {
                 break;
         }
     }
+
+    void onCreated();
 };
