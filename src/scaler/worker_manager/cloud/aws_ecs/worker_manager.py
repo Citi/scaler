@@ -1,26 +1,27 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import shlex
-from typing import TYPE_CHECKING, List
+from typing import Set
 
 import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
-from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
 from scaler.worker_manager.cloud.child_command import format_capabilities
-from scaler.worker_manager.desired_concurrency import extract_desired_count
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
-
-if TYPE_CHECKING:
-    from scaler.protocol.capnp import WorkerManagerCommand
 
 logger = logging.getLogger(__name__)
 
+ECS_POLL_INTERVAL_SECONDS = 10
 
-class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
+# describe_tasks accepts at most this many task ARNs per call
+ECS_DESCRIBE_TASKS_BATCH_SIZE = 100
+
+
+class ECSWorkerProvisioner(UnitProvisioner):
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
@@ -49,14 +50,6 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
         self._ecs_task_memory = config.ecs_task_memory
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
-        self._units: List[str] = []  # ECS task ARNs of active units
-        self._capacity_coordinator = CapacityCoordinator(
-            start_units=self.start_units,
-            stop_units=self.stop_units,
-            active_unit_count=self.active_unit_count,
-            max_unit_count=self._max_instances,
-            scale_down_cooldown_seconds=config.worker_manager_config.scale_down_cooldown_seconds,
-        )
 
         aws_session = boto3.Session(
             aws_access_key_id=config.aws_access_key_id,
@@ -138,17 +131,9 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
 
         return command
 
-    def active_unit_count(self) -> int:
-        return len(self._units)
-
-    async def set_desired_task_concurrency(
-        self, requests: List[WorkerManagerCommand.DesiredTaskConcurrencyRequest]
-    ) -> None:
-        task_concurrency = extract_desired_count(requests, self._capabilities)
-        await self._capacity_coordinator.set_desired_unit_count(math.ceil(task_concurrency / self._ecs_task_cpu))
-
-    async def _start_unit(self, command: str) -> None:
-        resp = self._ecs_client.run_task(
+    async def create_unit(self, unit_id: str) -> UnitHandle:
+        resp = await asyncio.to_thread(
+            self._ecs_client.run_task,
             cluster=self._ecs_cluster,
             taskDefinition=self._ecs_task_definition,
             launchType="FARGATE",
@@ -157,7 +142,7 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
                     {
                         "name": "scaler-container",
                         "environment": [
-                            {"name": "COMMAND", "value": command},
+                            {"name": "COMMAND", "value": self._build_task_command()},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
                         ],
@@ -172,55 +157,54 @@ class ECSWorkerProvisioner(DeclarativeWorkerProvisioner):
             raise RuntimeError(f"ECS run task failed: {failures}")
 
         tasks = resp.get("tasks") or []
-        if not tasks:
-            raise RuntimeError("ECS run task returned no tasks")
-        if len(tasks) > 1:
-            raise RuntimeError("ECS run task returned multiple tasks, expected only one")
+        if len(tasks) != 1:
+            raise RuntimeError(f"ECS run task returned {len(tasks)} tasks, expected one")
 
         task_arn = tasks[0]["taskArn"]
-        self._units.append(task_arn)
-        logger.info(f"Started ECS task {task_arn!r}")
+        logger.info(f"started ECS task {task_arn!r}")
+        return task_arn
 
-    async def start_units(self, count: int) -> None:
-        command = self._build_task_command()
-        for _ in range(count):
-            await self._start_unit(command)
+    async def destroy_unit(self, handle: UnitHandle) -> None:
+        resp = await asyncio.to_thread(
+            self._ecs_client.stop_task,
+            cluster=self._ecs_cluster,
+            task=handle,
+            reason="Shutdown requested by ECS worker manager",
+        )
+        failures = resp.get("failures") or []
+        if failures:
+            raise RuntimeError(f"ECS stop task {handle!r} failed: {failures}")
+        logger.info(f"stopped ECS task {handle!r}")
 
-    async def stop_units(self, count: int) -> None:
-        to_stop = self._units[:count]
-        if len(to_stop) < count:
-            logger.warning(f"Requested to stop {count} ECS task(s) but only {len(to_stop)} available.")
-        for task_arn in to_stop:
-            resp = self._ecs_client.stop_task(
-                cluster=self._ecs_cluster, task=task_arn, reason="Shutdown requested by ECS worker manager"
-            )
-            failures = resp.get("failures") or []
-            if failures:
-                logger.error(f"ECS stop task {task_arn!r} failed: {failures}")
-            else:
-                self._units.remove(task_arn)
-                logger.info(f"Stopped ECS task {task_arn!r}")
+    async def poll_units(self, handles: Set[UnitHandle]) -> Set[UnitHandle]:
+        task_arns = sorted(str(handle) for handle in handles)
+        alive: Set[UnitHandle] = set()
+        for batch_i in range(0, len(task_arns), ECS_DESCRIBE_TASKS_BATCH_SIZE):
+            batch = task_arns[batch_i : batch_i + ECS_DESCRIBE_TASKS_BATCH_SIZE]
+            resp = await asyncio.to_thread(self._ecs_client.describe_tasks, cluster=self._ecs_cluster, tasks=batch)
+            # a task ECS no longer knows comes back under "failures", and counts as gone
+            alive.update(task["taskArn"] for task in resp.get("tasks") or [] if task.get("lastStatus") != "STOPPED")
+        return alive
 
-    async def terminate(self) -> None:
-        self._capacity_coordinator.cancel()
-        await self.stop_units(len(self._units))
+    def max_units(self) -> int:
+        return self._max_instances
+
+    def task_concurrency_per_unit(self) -> int:
+        return self._ecs_task_cpu
+
+    def poll_interval_seconds(self) -> int:
+        return ECS_POLL_INTERVAL_SECONDS
 
 
 class ECSWorkerManager:
     def __init__(self, config: ECSWorkerManagerConfig) -> None:
-        provisioner = ECSWorkerProvisioner(config)
-        mtc = config.worker_manager_config.max_task_concurrency
-        max_instances = math.ceil(mtc / config.ecs_task_cpu) if mtc != -1 else -1
         self._runner = WorkerManagerRunner(
-            address=config.worker_manager_config.scheduler_address,
             name="worker_manager_ecs",
+            worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
-            max_provisioner_units=max_instances,
-            worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
-            worker_provisioner=provisioner,
+            provisioner=ECSWorkerProvisioner(config),
             io_threads=config.worker_config.io_threads,
-            workers_per_provisioner_unit=config.ecs_task_cpu,
         )
 
     def run(self) -> None:

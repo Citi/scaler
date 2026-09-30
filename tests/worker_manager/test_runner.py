@@ -3,12 +3,15 @@ import unittest
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
 
+from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
     ClientDisconnect,
     ObjectInstruction,
     ObjectMetadata,
     Task,
     TaskCancel,
+    TaskCapability,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
 )
@@ -16,7 +19,7 @@ from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
 from tests.utility.utility import logging_test_name
@@ -26,30 +29,36 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
         setup_logger()
         logging_test_name(self)
-        self.provisioner = MagicMock(spec=DeclarativeWorkerProvisioner)
-        self.provisioner.set_desired_task_concurrency = AsyncMock()
+        self.provisioner = MagicMock(spec=UnitProvisioner)
+        self.provisioner.max_units.return_value = 4
+        self.provisioner.task_concurrency_per_unit.return_value = 1
         self.send_mock = AsyncMock()
         self.runner = WorkerManagerRunner(
-            address=MagicMock(),
             name="test_runner",
+            worker_manager_config=WorkerManagerConfig(
+                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"), worker_manager_id="mgr"
+            ),
             heartbeat_interval_seconds=5,
             capabilities={"cpu": 4},
-            max_provisioner_units=4,
-            worker_manager_id=b"mgr",
-            worker_provisioner=self.provisioner,
+            provisioner=self.provisioner,
         )
         connector = AsyncMock()
         connector.send = self.send_mock
         self.runner._connector_external = connector
 
-    async def test_set_desired_task_concurrency_calls_declarative_provisioner(self) -> None:
-        requests = [MagicMock()]
-        cmd = MagicMock(spec=WorkerManagerCommand)
-        cmd.setDesiredTaskConcurrencyRequests = requests
+    async def test_command_sets_the_matching_desired_task_concurrency(self) -> None:
+        cmd = WorkerManagerCommand(
+            setDesiredTaskConcurrencyRequests=[
+                WorkerManagerCommand.DesiredTaskConcurrencyRequest(taskConcurrency=3, capabilities=[]),
+                WorkerManagerCommand.DesiredTaskConcurrencyRequest(
+                    taskConcurrency=5, capabilities=[TaskCapability(name="gpu", value=-1)]
+                ),
+            ]
+        )
 
         await self.runner._handle_command(cmd)
 
-        self.provisioner.set_desired_task_concurrency.assert_called_once_with(requests)
+        self.assertEqual(self.runner._unit_controller._desired_task_concurrency, 3)
         self.send_mock.assert_not_called()
 
     async def test_unknown_command_payload_logs_warning_without_crashing(self) -> None:
@@ -62,7 +71,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             await self.runner._handle_command(cmd)
 
         self.assertTrue(any("Unknown action" in m for m in captured.output))
-        self.provisioner.set_desired_task_concurrency.assert_not_called()
+        self.assertEqual(self.runner._unit_controller._desired_task_concurrency, 0)
         self.send_mock.assert_not_called()
 
     async def test_unknown_message_type_logs_warning_without_crashing(self) -> None:

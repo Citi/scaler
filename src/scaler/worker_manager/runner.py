@@ -3,7 +3,8 @@ import logging
 from typing import Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
-from scaler.config.types.address import AddressConfig
+from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.defaults import DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS
 from scaler.io import ymq
 from scaler.io.mixins import AsyncConnector, ConnectorRemoteType, NetworkBackend
 from scaler.io.network_backends import get_network_backend_from_env
@@ -12,7 +13,9 @@ from scaler.protocol.capnp import BaseMessage, WorkerManagerCommand, WorkerManag
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
 from scaler.utility.signal_handler import install_async_shutdown_handler
-from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
+from scaler.worker_manager.desired_concurrency import extract_desired_count
+from scaler.worker_manager.mixins import UnitProvisioner
+from scaler.worker_manager.unit_controller import UnitController
 
 logger = logging.getLogger(__name__)
 
@@ -20,27 +23,28 @@ logger = logging.getLogger(__name__)
 class WorkerManagerRunner:
     def __init__(
         self,
-        address: AddressConfig,
         name: str,
+        worker_manager_config: WorkerManagerConfig,
         heartbeat_interval_seconds: int,
         capabilities: Dict[str, int],
-        max_provisioner_units: int,
-        worker_manager_id: bytes,
-        worker_provisioner: DeclarativeWorkerProvisioner,
+        provisioner: UnitProvisioner,
         io_threads: int = 1,
-        workers_per_provisioner_unit: int = 1,
         security_config: Optional[SecurityConfig] = None,
     ) -> None:
-        self._address = address
+        self._address = worker_manager_config.scheduler_address
         self._name = name
         self._heartbeat_interval_seconds = heartbeat_interval_seconds
         self._capabilities = capabilities
-        self._max_provisioner_units = max_provisioner_units
-        self._worker_manager_id = worker_manager_id
-        self._worker_provisioner = worker_provisioner
+        self._worker_manager_id = worker_manager_config.worker_manager_id.encode()
+        self._provisioner = provisioner
         self._io_threads = io_threads
-        self._workers_per_provisioner_unit = workers_per_provisioner_unit
         self._security_config = security_config
+
+        self._unit_controller = UnitController(
+            provisioner,
+            scale_down_cooldown_seconds=worker_manager_config.scale_down_cooldown_seconds,
+            restart_backoff_seconds=DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
+        )
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
@@ -81,7 +85,7 @@ class WorkerManagerRunner:
     async def _send_heartbeat(self) -> None:
         await self._connector_external.send(
             WorkerManagerHeartbeat(
-                maxTaskConcurrency=self._max_provisioner_units * self._workers_per_provisioner_unit,
+                maxTaskConcurrency=self._provisioner.max_units() * self._provisioner.task_concurrency_per_unit(),
                 capabilities=dict_to_capabilities(self._capabilities),
                 workerManagerID=self._worker_manager_id,
             ),
@@ -98,6 +102,10 @@ class WorkerManagerRunner:
         loops = [
             create_async_loop_routine(self._connector_external.routine, 0),
             create_async_loop_routine(self._send_heartbeat, self._heartbeat_interval_seconds),
+            # A defect in one reconcile must not take the fleet down with the manager.
+            create_async_loop_routine(
+                self._unit_controller.routine, self._provisioner.poll_interval_seconds(), swallow_routine_errors=True
+            ),
         ]
 
         try:
@@ -112,7 +120,7 @@ class WorkerManagerRunner:
         except Exception:
             logger.exception(f"{self._ident!r}: failed with unhandled exception")
 
-        await self._worker_provisioner.terminate()
+        await self._unit_controller.terminate()
 
     async def _on_receive_external(self, message: BaseMessage) -> None:
         try:
@@ -130,4 +138,4 @@ class WorkerManagerRunner:
         if requests is None:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
-        await self._worker_provisioner.set_desired_task_concurrency(list(requests))
+        self._unit_controller.set_desired_task_concurrency(extract_desired_count(list(requests), self._capabilities))
