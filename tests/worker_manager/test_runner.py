@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.protocol.capnp import (
-    ClientDisconnect,
     ObjectInstruction,
     ObjectMetadata,
     Task,
@@ -15,7 +14,6 @@ from scaler.protocol.capnp import (
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
 )
-from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
@@ -170,12 +168,6 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
         instruction = _make_object_instruction()
         await self._dispatch(instruction)
         self.on_object_instruction.assert_called_once_with(instruction)
-
-    async def test_client_disconnect_shutdown_raises_client_shutdown_exception(self) -> None:
-        self.wp._heartbeat_received = True
-        msg = ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown)
-        with self.assertRaises(ClientShutdownException):
-            await self._dispatch(msg)
 
     async def test_unknown_message_type_raises_type_error(self) -> None:
         self.wp._heartbeat_received = True

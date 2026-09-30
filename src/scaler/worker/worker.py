@@ -20,7 +20,6 @@ from scaler.io.mixins import (
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
-    ClientDisconnect,
     ObjectInstruction,
     ProcessorInitialized,
     Task,
@@ -32,7 +31,7 @@ from scaler.protocol.capnp import (
     WorkerShutdown,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
-from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
+from scaler.utility.exceptions import ObjectStorageException
 from scaler.utility.identifiers import ProcessorID, WorkerID
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
@@ -171,8 +170,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             else:
                 logger.exception(f"{self.identity!r}: failed with unhandled exception:\n{e}")
                 exit_code = 1
-        except ClientShutdownException as e:
-            logger.info(f"{self.identity!r}: {str(e)}")
         except TimeoutError as e:
             # The worker decided on its own that it is orphaned (no heartbeat from the scheduler
             # within death_timeout_seconds), not that anyone asked it to stop: an anomaly worth a
@@ -289,12 +286,6 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         if isinstance(message, ObjectInstruction):
             await self._processor_manager.on_external_object_instruction(message)
-            return
-
-        if isinstance(message, ClientDisconnect):
-            if message.disconnectType == ClientDisconnect.DisconnectType.shutdown:
-                raise ClientShutdownException("received client shutdown, quitting")
-            logger.error(f"Worker received invalid ClientDisconnect type, ignoring {message=}")
             return
 
         raise TypeError(f"Unknown {message=}")

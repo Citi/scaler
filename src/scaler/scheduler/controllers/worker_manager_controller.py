@@ -9,6 +9,7 @@ from scaler.protocol.capnp import (
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
+    WorkerManagerShutdown,
 )
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -79,6 +80,11 @@ class WorkerManagerController(Looper, Reporter):
             await self._send_command(source, command)
 
         self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
+
+    async def on_client_shutdown(self) -> None:
+        """Ask every worker manager to drain its fleet and exit. The scheduler owns no worker's lifecycle."""
+        for source in self._manager_alive_since:
+            await self._binder.send(source, WorkerManagerShutdown(), detached=True)
 
     async def routine(self):
         await self._clean_managers()
