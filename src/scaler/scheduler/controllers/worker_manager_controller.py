@@ -107,6 +107,9 @@ class WorkerManagerController(Looper, Reporter):
                     "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
+                    "active_units": heartbeat.activeUnits,
+                    "pending_units": heartbeat.pendingUnits,
+                    "draining_units": heartbeat.drainingUnits,
                 }
             )
 
