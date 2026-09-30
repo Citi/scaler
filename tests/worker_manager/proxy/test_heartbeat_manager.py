@@ -29,11 +29,19 @@ class TestHeartbeatManagerTaskLock(unittest.IsolatedAsyncioTestCase):
         logging_test_name(self)
         self.hm = _make_heartbeat_manager()
         self.connector_external = AsyncMock(spec=AsyncConnector)
+        self.connector_manager = AsyncMock(spec=AsyncConnector)
         self.connector_storage = AsyncMock(spec=AsyncObjectStorageConnector)
         self.task_manager = MagicMock(spec=TaskManager)
         self.task_manager.get_queued_size.return_value = 0
         self.timeout_manager = MagicMock(spec=TimeoutManager)
-        self.hm.register(self.connector_external, self.connector_storage, self.task_manager, self.timeout_manager)
+        self.task_manager.is_draining.return_value = False
+        self.hm.register(
+            self.connector_external,
+            self.connector_manager,
+            self.connector_storage,
+            self.task_manager,
+            self.timeout_manager,
+        )
 
     async def test_task_lock_false_when_semaphore_free(self) -> None:
         self.task_manager.can_accept_task.return_value = True

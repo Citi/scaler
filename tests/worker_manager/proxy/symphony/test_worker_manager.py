@@ -17,6 +17,6 @@ class TestSymphonyWorkerProvisioner(unittest.TestCase):
         config = MagicMock()
         config.worker_manager_config.max_task_concurrency = 4
         config.worker_manager_config.worker_manager_id = "test-wm"
-        provisioner = SymphonyWorkerProvisioner(config)
+        provisioner = SymphonyWorkerProvisioner(config, MagicMock())
         self.assertEqual(provisioner.task_concurrency_per_unit(), 1)
         self.assertEqual(provisioner.max_units(), 4)

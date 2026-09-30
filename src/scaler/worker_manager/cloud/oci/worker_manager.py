@@ -12,7 +12,12 @@ import oci
 
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
-from scaler.worker_manager.cloud.child_command import format_capabilities, load_requirements_content
+from scaler.worker_manager.cloud.child_command import (
+    child_link_arguments,
+    cloud_children_address,
+    format_capabilities,
+    load_requirements_content,
+)
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
 
@@ -46,7 +51,7 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
             self._container_instances_client = oci.container_instances.ContainerInstanceClient(oci_config)
 
     async def create_unit(self, unit_id: str) -> UnitHandle:
-        instance_id = await self._start_instance()
+        instance_id = await self._start_instance(unit_id)
         if instance_id is None:
             raise RuntimeError("OCI Container Instance did not become ACTIVE")
         return instance_id
@@ -69,7 +74,7 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
     def poll_interval_seconds(self) -> int:
         return _OCI_POLL_INTERVAL_SECONDS
 
-    async def _start_instance(self) -> Optional[str]:
+    async def _start_instance(self, unit_id: str) -> Optional[str]:
         config = self._config
         container_instance_config = config.container_instance_config
         num_workers = max(1, int(config.instance_ocpus))
@@ -78,9 +83,8 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
         requirements_content = load_requirements_content(config.python_worker_environment.requirements_txt)
 
         command = f"""scaler_worker_manager baremetal_native {scheduler_address!r} \
---mode fixed \
+{child_link_arguments(config.worker_manager_config, unit_id, num_workers)} \
 --worker-type OCI_RAW \
---max-task-concurrency {num_workers} \
 --worker-manager-id {config.worker_manager_config.worker_manager_id} \
 --per-worker-task-queue-size {worker_config.per_worker_task_queue_size} \
 --heartbeat-interval-seconds {worker_config.heartbeat_interval_seconds} \
@@ -222,6 +226,7 @@ class OCIInstancesWorkerManager:
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             provisioner=provisioner,
+            children_address=cloud_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
         )
 

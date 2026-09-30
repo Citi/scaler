@@ -4,8 +4,10 @@ import logging
 from typing import Set
 
 from scaler.config.section.symphony_worker_manager import SymphonyWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.local_process import (
     LOCAL_PROCESS_POLL_INTERVAL_SECONDS,
+    local_children_address,
     poll_local_processes,
     stop_local_process,
 )
@@ -18,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class SymphonyWorkerProvisioner(UnitProvisioner):
-    def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
+    def __init__(self, config: SymphonyWorkerManagerConfig, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._worker_scheduler_address = config.worker_manager_config.effective_worker_scheduler_address
         self._object_storage_address = config.worker_manager_config.object_storage_address
         self._service_name = config.service_name
@@ -44,6 +47,8 @@ class SymphonyWorkerProvisioner(UnitProvisioner):
             io_threads=self._io_threads,
             event_loop=self._event_loop,
             worker_manager_id=self._worker_manager_id,
+            worker_manager_address=self._children_address,
+            unit_id=unit_id,
         )
         worker.start()
         logger.info(f"started Symphony worker {worker.identity!r}")
@@ -69,13 +74,15 @@ class SymphonyWorkerProvisioner(UnitProvisioner):
 
 class SymphonyWorkerManager:
     def __init__(self, config: SymphonyWorkerManagerConfig) -> None:
-        provisioner = SymphonyWorkerProvisioner(config)
+        children_address = local_children_address(config.worker_manager_config)
+        provisioner = SymphonyWorkerProvisioner(config, children_address)
         self._runner = WorkerManagerRunner(
             name="worker_manager_symphony",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             provisioner=provisioner,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
         )
 

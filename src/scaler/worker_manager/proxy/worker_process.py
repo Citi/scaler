@@ -20,6 +20,7 @@ from scaler.protocol.capnp import (
     TaskCancel,
     WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
+    WorkerShutdown,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
@@ -39,6 +40,9 @@ _EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
 
 _SpawnProcess = multiprocessing.get_context("spawn").Process
 
+# How often a draining worker checks whether its last task finished.
+DRAIN_CHECK_INTERVAL_SECONDS = 1
+
 
 class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
     def __init__(
@@ -54,6 +58,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         io_threads: int,
         event_loop: str,
         worker_manager_id: bytes,
+        worker_manager_address: AddressConfig,
+        unit_id: str,
         processor_status_provider_factory: Callable[[], ProcessorStatusProvider],
         execution_backend_factory: Callable[[], ExecutionBackend],
         idle_sleep_seconds: float = 0.0,
@@ -77,6 +83,8 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         self._death_timeout_seconds = death_timeout_seconds
         self._task_queue_size = task_queue_size
         self._worker_manager_id = worker_manager_id
+        self._worker_manager_address = worker_manager_address
+        self._unit_id = unit_id
 
         self._processor_status_provider_factory = processor_status_provider_factory
         self._execution_backend_factory = execution_backend_factory
@@ -84,6 +92,7 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_manager: Optional[AsyncConnector] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._execution_backend: Optional[ExecutionBackend] = None
         self._task_manager: Optional[TaskManager] = None
@@ -162,6 +171,9 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
         if self._connector_external is not None:
             self._connector_external.destroy()
 
+        if self._connector_manager is not None:
+            self._connector_manager.destroy()
+
         if self._connector_storage is not None:
             self._connector_storage.destroy()
 
@@ -173,6 +185,11 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
         self._connector_external = self._backend.create_async_connector(
             identity=self._ident, callback=self.__on_receive_external
+        )
+
+        # The manager knows this worker by the unit id it chose, not by the worker id the scheduler sees.
+        self._connector_manager = self._backend.create_async_connector(
+            identity=self._unit_id.encode(), callback=self.__on_receive_manager
         )
 
         self._connector_storage = self._backend.create_async_object_storage_connector(identity=self._ident)
@@ -193,10 +210,16 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
             execution_backend=self._execution_backend,
             idle_sleep_seconds=self._idle_sleep_seconds,
         )
-        self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
+        self._timeout_manager = VanillaTimeoutManager(
+            death_timeout_seconds=self._death_timeout_seconds, on_timeout=self.__on_scheduler_timeout
+        )
+        self._manager_timeout_manager = VanillaTimeoutManager(
+            death_timeout_seconds=self._death_timeout_seconds, on_timeout=self.__on_manager_timeout
+        )
 
         self._heartbeat_manager.register(
             connector_external=self._connector_external,
+            connector_manager=self._connector_manager,
             connector_storage=self._connector_storage,
             worker_task_manager=self._task_manager,
             timeout_manager=self._timeout_manager,
@@ -242,9 +265,44 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
         raise TypeError(f"Unknown {message=}")
 
+    async def __on_receive_manager(self, message: BaseMessage) -> None:
+        if isinstance(message, WorkerHeartbeatEcho):
+            self._manager_timeout_manager.update_last_seen_time()
+            return
+
+        if isinstance(message, WorkerShutdown):
+            self.__drain("the worker manager asked")
+            return
+
+        logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
+
+    def __on_scheduler_timeout(self) -> None:
+        raise TimeoutError("timeout when connect to scheduler, quitting")
+
+    def __on_manager_timeout(self) -> None:
+        self.__drain("no heartbeat echo from the worker manager")
+
+    def __drain(self, reason: str) -> None:
+        if self._task_manager.is_draining():
+            return
+
+        logger.info(f"{self.identity!r}: draining: {reason}")
+        self._task_manager.drain()
+
+    async def __quit_when_drained(self) -> None:
+        if not self._task_manager.is_draining() or not self._task_manager.is_idle():
+            return
+
+        logger.info(f"{self.identity!r}: drained, quitting")
+        self._task.cancel()
+
     async def __main_loop(self) -> None:
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
+        )
+
+        await self._connector_manager.connect(
+            self._worker_manager_address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
 
         if self._object_storage_address is not None:
@@ -252,9 +310,12 @@ class WorkerProcess(_SpawnProcess):  # type: ignore[valid-type, misc]
 
         await asyncio.gather(
             create_async_loop_routine(self._connector_external.routine, 0),
+            create_async_loop_routine(self._connector_manager.routine, 0),
             create_async_loop_routine(self._connector_storage.routine, 0),
             create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
             create_async_loop_routine(self._timeout_manager.routine, 1),
+            create_async_loop_routine(self._manager_timeout_manager.routine, 1),
+            create_async_loop_routine(self.__quit_when_drained, DRAIN_CHECK_INTERVAL_SECONDS),
             create_async_loop_routine(self._execution_backend.routine, 0),
             create_async_loop_routine(self._task_manager.process_task, 0),
             create_async_loop_routine(self._task_manager.resolve_tasks, 0),

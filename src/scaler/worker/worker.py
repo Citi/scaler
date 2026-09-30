@@ -29,6 +29,7 @@ from scaler.protocol.capnp import (
     TaskResult,
     WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
+    WorkerShutdown,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
@@ -42,6 +43,9 @@ from scaler.worker.agent.task_manager import VanillaTaskManager
 from scaler.worker.agent.timeout_manager import VanillaTimeoutManager
 
 logger = logging.getLogger(__name__)
+
+# How often a draining worker checks whether its last task finished.
+DRAIN_CHECK_INTERVAL_SECONDS = 1
 
 # YMQ errors that mean the scheduler connection is already gone.
 _EXPECTED_TEARDOWN_ERROR_CODES = frozenset(
@@ -69,6 +73,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         logging_paths: Tuple[str, ...],
         logging_level: str,
         worker_manager_id: bytes,
+        worker_manager_address: AddressConfig,
+        unit_id: str,
         deterministic_worker_ids: bool = False,
         security_config: Optional[SecurityConfig] = None,
     ):
@@ -102,9 +108,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._logging_paths = logging_paths
         self._logging_level = logging_level
         self._worker_manager_id = worker_manager_id
+        self._worker_manager_address = worker_manager_address
+        self._unit_id = unit_id
 
         self._backend: Optional[NetworkBackend] = None
         self._connector_external: Optional[AsyncConnector] = None
+        self._connector_manager: Optional[AsyncConnector] = None
         self._binder_internal: Optional[AsyncBinder] = None
         self._connector_storage: Optional[AsyncObjectStorageConnector] = None
         self._task_manager: Optional[VanillaTaskManager] = None
@@ -204,6 +213,11 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             identity=self._ident, callback=self.__on_receive_external
         )
 
+        # The manager knows this worker by the unit id it chose, not by the worker id the scheduler sees.
+        self._connector_manager = self._backend.create_async_connector(
+            identity=self._unit_id.encode(), callback=self.__on_receive_manager
+        )
+
         self._binder_internal = self._backend.create_async_binder(
             identity=self._ident, callback=self.__on_receive_internal
         )
@@ -220,7 +234,12 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         self._profiling_manager = VanillaProfilingManager()
         self._task_manager = VanillaTaskManager(task_timeout_seconds=self._task_timeout_seconds)
-        self._timeout_manager = VanillaTimeoutManager(death_timeout_seconds=self._death_timeout_seconds)
+        self._timeout_manager = VanillaTimeoutManager(
+            death_timeout_seconds=self._death_timeout_seconds, on_timeout=self.__on_scheduler_timeout
+        )
+        self._manager_timeout_manager = VanillaTimeoutManager(
+            death_timeout_seconds=self._death_timeout_seconds, on_timeout=self.__on_manager_timeout
+        )
         self._processor_manager = VanillaProcessorManager(
             identity=self._ident,
             event_loop=self._event_loop,
@@ -239,6 +258,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         self._task_manager.register(connector=self._connector_external, processor_manager=self._processor_manager)
         self._heartbeat_manager.register(
             connector_external=self._connector_external,
+            connector_manager=self._connector_manager,
             connector_storage=self._connector_storage,
             worker_task_manager=self._task_manager,
             timeout_manager=self._timeout_manager,
@@ -279,6 +299,37 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
 
         raise TypeError(f"Unknown {message=}")
 
+    async def __on_receive_manager(self, message: BaseMessage) -> None:
+        if isinstance(message, WorkerHeartbeatEcho):
+            self._manager_timeout_manager.update_last_seen_time()
+            return
+
+        if isinstance(message, WorkerShutdown):
+            self.__drain("the worker manager asked")
+            return
+
+        logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
+
+    def __on_scheduler_timeout(self) -> None:
+        raise TimeoutError("timeout when connect to scheduler, quitting")
+
+    def __on_manager_timeout(self) -> None:
+        self.__drain("no heartbeat echo from the worker manager")
+
+    def __drain(self, reason: str) -> None:
+        if self._task_manager.is_draining():
+            return
+
+        logger.info(f"{self.identity!r}: draining: {reason}")
+        self._task_manager.drain()
+
+    async def __quit_when_drained(self) -> None:
+        if not self._task_manager.is_draining() or not self._task_manager.is_idle():
+            return
+
+        logger.info(f"{self.identity!r}: drained, quitting")
+        self._task.cancel()
+
     async def __on_receive_internal(self, processor_id_bytes: bytes, message: BaseMessage):
         processor_id = ProcessorID(processor_id_bytes)
 
@@ -304,6 +355,9 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         await self._connector_external.connect(
             self._address, ConnectorRemoteType.Binder, security_config=self._security_config
         )
+        await self._connector_manager.connect(
+            self._worker_manager_address, ConnectorRemoteType.Binder, security_config=self._security_config
+        )
         await self._binder_internal.bind(self._address_internal)
 
         if self._object_storage_address is not None:
@@ -313,10 +367,13 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         await asyncio.gather(
             self._processor_manager.initialize(),
             create_async_loop_routine(self._connector_external.routine, 0),
+            create_async_loop_routine(self._connector_manager.routine, 0),
             create_async_loop_routine(self._connector_storage.routine, 0),
             create_async_loop_routine(self._binder_internal.routine, 0),
             create_async_loop_routine(self._heartbeat_manager.routine, self._heartbeat_interval_seconds),
             create_async_loop_routine(self._timeout_manager.routine, 1),
+            create_async_loop_routine(self._manager_timeout_manager.routine, 1),
+            create_async_loop_routine(self.__quit_when_drained, DRAIN_CHECK_INTERVAL_SECONDS),
             create_async_loop_routine(self._task_manager.routine, 0),
             create_async_loop_routine(self._profiling_manager.routine, PROFILING_INTERVAL_SECONDS),
         )
@@ -329,6 +386,8 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
         destroyables: List[Tuple[str, Callable[[], None]]] = []
         if self._connector_external is not None:
             destroyables.append(("connector_external", self._connector_external.destroy))
+        if self._connector_manager is not None:
+            destroyables.append(("connector_manager", self._connector_manager.destroy))
         if self._processor_manager is not None:
             destroyables.append(("processor_manager", lambda: self._processor_manager.destroy("quit")))
         if self._binder_internal is not None:

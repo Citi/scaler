@@ -9,7 +9,7 @@ from typing import Set
 import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
-from scaler.worker_manager.cloud.child_command import format_capabilities
+from scaler.worker_manager.cloud.child_command import child_link_arguments, cloud_children_address, format_capabilities
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
 
@@ -50,6 +50,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
         self._ecs_task_memory = config.ecs_task_memory
         self._ecs_subnets = config.ecs_subnets
         self._worker_manager_id = config.worker_manager_config.worker_manager_id.encode()
+        self._worker_manager_config = config.worker_manager_config
 
         aws_session = boto3.Session(
             aws_access_key_id=config.aws_access_key_id,
@@ -99,12 +100,11 @@ class ECSWorkerProvisioner(UnitProvisioner):
             )
         self._ecs_task_definition = resp["taskDefinition"]["taskDefinitionArn"]
 
-    def _build_task_command(self) -> str:
+    def _build_task_command(self, unit_id: str) -> str:
         command = (
             f"scaler_worker_manager baremetal_native {self._worker_scheduler_address!r} "
-            f"--mode fixed "
+            f"{child_link_arguments(self._worker_manager_config, unit_id, self._ecs_task_cpu)} "
             f"--worker-type ECS "
-            f"--max-task-concurrency {self._ecs_task_cpu} "
             f"--per-worker-task-queue-size {self._per_worker_task_queue_size} "
             f"--heartbeat-interval-seconds {self._heartbeat_interval_seconds} "
             f"--task-timeout-seconds {self._task_timeout_seconds} "
@@ -142,7 +142,7 @@ class ECSWorkerProvisioner(UnitProvisioner):
                     {
                         "name": "scaler-container",
                         "environment": [
-                            {"name": "COMMAND", "value": self._build_task_command()},
+                            {"name": "COMMAND", "value": self._build_task_command(unit_id)},
                             {"name": "PYTHON_REQUIREMENTS", "value": self._ecs_python_requirements},
                             {"name": "PYTHON_VERSION", "value": self._ecs_python_version},
                         ],
@@ -204,6 +204,7 @@ class ECSWorkerManager:
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             provisioner=ECSWorkerProvisioner(config),
+            children_address=cloud_children_address(config.worker_manager_config),
             io_threads=config.worker_config.io_threads,
         )
 

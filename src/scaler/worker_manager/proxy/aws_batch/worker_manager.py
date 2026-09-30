@@ -4,8 +4,10 @@ import logging
 from typing import Set
 
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.local_process import (
     LOCAL_PROCESS_POLL_INTERVAL_SECONDS,
+    local_children_address,
     poll_local_processes,
     stop_local_process,
 )
@@ -18,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class AWSBatchWorkerProvisioner(UnitProvisioner):
-    def __init__(self, config: AWSBatchWorkerManagerConfig) -> None:
+    def __init__(self, config: AWSBatchWorkerManagerConfig, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._config = config
         self._base_concurrency = config.max_concurrent_jobs
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -43,6 +46,8 @@ class AWSBatchWorkerProvisioner(UnitProvisioner):
             event_loop=config.worker_config.event_loop,
             job_timeout_seconds=config.job_timeout_minutes * 60,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
+            worker_manager_address=self._children_address,
+            unit_id=unit_id,
         )
         worker.start()
         logger.info(f"started Batch worker process {worker.name!r}")
@@ -76,13 +81,16 @@ class AWSBatchWorkerManager:
         if config.backend != AWSHPCBackend.batch:
             raise NotImplementedError(f"backend {config.backend.name!r} is not yet implemented")
 
-        provisioner = AWSBatchWorkerProvisioner(config)
+        children_address = local_children_address(config.worker_manager_config)
+
+        provisioner = AWSBatchWorkerProvisioner(config, children_address)
         runner = WorkerManagerRunner(
             name="worker_manager_aws_hpc",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             provisioner=provisioner,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
         )
         runner.run()

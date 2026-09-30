@@ -4,8 +4,10 @@ import logging
 from typing import Set
 
 from scaler.config.section.oci_hpc_worker_manager import OCIHPCWorkerManagerConfig
+from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.local_process import (
     LOCAL_PROCESS_POLL_INTERVAL_SECONDS,
+    local_children_address,
     poll_local_processes,
     stop_local_process,
 )
@@ -18,7 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 class OCIJobsWorkerProvisioner(UnitProvisioner):
-    def __init__(self, config: OCIHPCWorkerManagerConfig) -> None:
+    def __init__(self, config: OCIHPCWorkerManagerConfig, children_address: AddressConfig) -> None:
+        self._children_address = children_address
         self._config = config
         self._base_concurrency = config.base_concurrency
         self._capabilities = config.worker_config.per_worker_capabilities.capabilities
@@ -31,6 +34,8 @@ class OCIJobsWorkerProvisioner(UnitProvisioner):
             address=config.worker_manager_config.effective_worker_scheduler_address,
             object_storage_address=config.worker_manager_config.object_storage_address,
             worker_manager_id=config.worker_manager_config.worker_manager_id.encode(),
+            worker_manager_address=self._children_address,
+            unit_id=unit_id,
             compartment_id=container_instance_config.compartment_id,
             availability_domain=container_instance_config.availability_domain,
             subnet_id=container_instance_config.subnet_id,
@@ -91,13 +96,15 @@ class OCIJobsWorkerManager:
             f"  Max Concurrent Jobs: {config.base_concurrency}\n"
             f"  Job Timeout: {config.job_timeout_seconds}s"
         )
-        provisioner = OCIJobsWorkerProvisioner(config)
+        children_address = local_children_address(config.worker_manager_config)
+        provisioner = OCIJobsWorkerProvisioner(config, children_address)
         runner = WorkerManagerRunner(
             name="worker_manager_oci_hpc",
             worker_manager_config=config.worker_manager_config,
             heartbeat_interval_seconds=config.worker_config.heartbeat_interval_seconds,
             capabilities=config.worker_config.per_worker_capabilities.capabilities,
             provisioner=provisioner,
+            children_address=children_address,
             io_threads=config.worker_config.io_threads,
         )
         runner.run()

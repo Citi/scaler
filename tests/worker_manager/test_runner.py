@@ -41,10 +41,11 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             heartbeat_interval_seconds=5,
             capabilities={"cpu": 4},
             provisioner=self.provisioner,
+            children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
         )
         connector = AsyncMock()
         connector.send = self.send_mock
-        self.runner._connector_external = connector
+        self.runner._connector_parent = connector
 
     async def test_command_sets_the_matching_desired_task_concurrency(self) -> None:
         cmd = WorkerManagerCommand(
@@ -79,7 +80,7 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
             pass
 
         with self.assertLogs("scaler", level=logging.WARNING) as captured:
-            await self.runner._on_receive_external(_Unknown())  # type: ignore[arg-type]
+            await self.runner._on_receive_parent(_Unknown())  # type: ignore[arg-type]
 
         self.assertTrue(any("Unknown action" in m or "unrecognized" in m for m in captured.output))
         self.send_mock.assert_not_called()
@@ -114,6 +115,8 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
             io_threads=1,
             event_loop="asyncio",
             worker_manager_id=b"mgr",
+            worker_manager_address=MagicMock(),
+            unit_id="unit",
             processor_status_provider_factory=MagicMock(),
             execution_backend_factory=MagicMock(),
         )
