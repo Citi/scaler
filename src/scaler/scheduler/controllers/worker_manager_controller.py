@@ -1,3 +1,4 @@
+import dataclasses
 import logging
 import time
 from typing import Dict, List, Optional, Tuple
@@ -25,6 +26,13 @@ logger = logging.getLogger(__name__)
 UINT16_MAX = 2**16 - 1
 
 
+@dataclasses.dataclass(frozen=True)
+class _ManagerUnits:
+    active: int
+    pending: int
+    draining: int
+
+
 class WorkerManagerController(Looper, Reporter):
     def __init__(self, config_controller: VanillaConfigController, policy_controller: PolicyController):
         self._config_controller = config_controller
@@ -44,12 +52,18 @@ class WorkerManagerController(Looper, Reporter):
         # Used to report pendingWorkers = max(0, last_desired - connected_count) to the monitor.
         self._last_desired_total: Dict[bytes, int] = {}
 
+        # Unit counts from the latest heartbeat of each manager, by source.
+        self._manager_units: Dict[bytes, _ManagerUnits] = {}
+
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
         self._task_controller = task_controller
         self._worker_controller = worker_controller
 
     async def on_heartbeat(self, source: bytes, heartbeat: WorkerManagerHeartbeat):
+        # Read before the capabilities rewrite below: assigning a field detaches the struct from its capnp source,
+        # and a field read after that fails.
+        units = _ManagerUnits(heartbeat.activeUnits, heartbeat.pendingUnits, heartbeat.drainingUnits)
         heartbeat.capabilities = capabilities_to_dict(heartbeat.capabilities)
         if source not in self._manager_alive_since:
             manager_id = heartbeat.workerManagerID
@@ -65,6 +79,7 @@ class WorkerManagerController(Looper, Reporter):
             logger.info(f"WorkerManager {manager_id!r} connected")
 
         self._manager_alive_since[source] = (time.time(), heartbeat)
+        self._manager_units[source] = units
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
@@ -107,9 +122,9 @@ class WorkerManagerController(Looper, Reporter):
                     "max_task_concurrency": heartbeat.maxTaskConcurrency,
                     "capabilities": caps_str,
                     "pending_workers": pending,
-                    "active_units": heartbeat.activeUnits,
-                    "pending_units": heartbeat.pendingUnits,
-                    "draining_units": heartbeat.drainingUnits,
+                    "active_units": self._manager_units[source].active,
+                    "pending_units": self._manager_units[source].pending,
+                    "draining_units": self._manager_units[source].draining,
                 }
             )
 
@@ -175,6 +190,7 @@ class WorkerManagerController(Looper, Reporter):
         logger.info(f"WorkerManager {source!r} disconnected")
         self._manager_alive_since.pop(source)
         self._last_desired_total.pop(source, None)
+        self._manager_units.pop(source, None)
 
 
 def _sum_desired_for_manager(commands: List[WorkerManagerCommand], manager_capabilities: Dict[str, int]) -> int:
