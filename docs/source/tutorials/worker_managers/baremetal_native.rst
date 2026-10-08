@@ -26,8 +26,8 @@ The fastest way to get going is with ``SchedulerClusterCombo``, which starts a s
 
        cluster.shutdown()
 
-Quick Start (CLI — Fixed Workers)
-----------------------------------
+Quick Start (CLI — Static Scaling)
+-----------------------------------
 
 Scaler has three components that must run together: a **scheduler**, **workers**, and your **client** code.
 
@@ -53,7 +53,7 @@ Start the scheduler with ``scaling=static``, then start a worker manager, then s
 
 .. code-block:: bash
 
-   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --worker-manager-id wm-fixed --max-task-concurrency 4
+   scaler_worker_manager baremetal_native tcp://127.0.0.1:8516 --worker-manager-id wm-native --max-task-concurrency 4
 
 **Terminal 4 — Client (save as** ``my_client.py`` **and run** ``python my_client.py`` **):**
 
@@ -68,7 +68,7 @@ Start the scheduler with ``scaling=static``, then start a worker manager, then s
        future = client.submit(add, 2, 3)
        print(future.result())  # 5
 
-Quick Start (CLI — Dynamic Scaling)
+Quick Start (CLI — Elastic Scaling)
 ------------------------------------
 
 With ``scaling=vanilla``, the scheduler's scaling policy starts and stops workers as the load changes.
