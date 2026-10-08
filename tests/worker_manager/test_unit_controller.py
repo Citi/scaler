@@ -10,6 +10,8 @@ from tests.utility.utility import logging_test_name
 TASK_CONCURRENCY_PER_UNIT = 2
 RESTART_BACKOFF_SECONDS = 60
 DRAIN_TIMEOUT_SECONDS = 60
+UNIT_TIMEOUT_SECONDS = 60
+STARTUP_TIMEOUT_SECONDS = 60
 
 
 class _FakeProvisioner(UnitProvisioner):
@@ -53,6 +55,9 @@ class _FakeProvisioner(UnitProvisioner):
     def poll_interval_seconds(self) -> int:
         return 1
 
+    def startup_timeout_seconds(self) -> int:
+        return STARTUP_TIMEOUT_SECONDS
+
 
 class TestUnitController(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -66,6 +71,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         return UnitController(
             provisioner,
             scale_down_cooldown_seconds=scale_down_cooldown_seconds,
+            unit_timeout_seconds=UNIT_TIMEOUT_SECONDS,
             drain_timeout_seconds=DRAIN_TIMEOUT_SECONDS,
             restart_backoff_seconds=RESTART_BACKOFF_SECONDS,
         )
@@ -75,6 +81,11 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         await controller.routine()
         for _ in range(3):
             await asyncio.sleep(0)
+
+    def __heartbeat_all(self, controller: UnitController, provisioner: _FakeProvisioner) -> None:
+        """Every unit that exists sends one heartbeat."""
+        for unit_id in provisioner.existing:
+            controller.on_unit_heartbeat(unit_id, TASK_CONCURRENCY_PER_UNIT, occupancy=0)
 
     def __states(self, controller: UnitController) -> Dict[UnitState, int]:
         states: Dict[UnitState, int] = {}
@@ -104,22 +115,64 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
 
         self.provisioner.release_creates.set()
         await self.__tick(self.controller)
+        self.__heartbeat_all(self.controller, self.provisioner)
         await self.__tick(self.controller)
         self.assertEqual(self.provisioner.created, list(self.controller._units))
         self.assertEqual(self.__states(self.controller), {UnitState.active: 1})
 
-    async def test_a_unit_that_exists_becomes_active(self) -> None:
+    async def test_a_unit_becomes_active_on_its_first_heartbeat(self) -> None:
+        """Existing is not enough: a unit that never reports stays pending."""
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
+        await self.__tick(self.controller)
         await self.__tick(self.controller)
         self.assertEqual(self.__states(self.controller), {UnitState.pending: 1})
-        await self.__tick(self.controller)
+
+        self.__heartbeat_all(self.controller, self.provisioner)
         self.assertEqual(self.__states(self.controller), {UnitState.active: 1})
 
-    async def test_a_lost_unit_is_removed_and_replaced_after_the_backoff(self) -> None:
+    async def test_a_unit_that_never_sends_a_heartbeat_is_destroyed_after_the_startup_timeout(self) -> None:
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(self.controller)
+        (unit_id,) = self.controller._units
+        self.controller._units[unit_id].state_since -= STARTUP_TIMEOUT_SECONDS + 1
+
         await self.__tick(self.controller)
-        (lost_unit_id,) = self.provisioner.existing
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+        self.assertEqual(self.controller._consecutive_unit_losses, 1)
+
+    async def test_a_silent_active_unit_is_destroyed_and_counts_as_lost(self) -> None:
+        """A unit that exists but stopped sending heartbeats, such as a deadlocked worker, is replaced."""
+        (unit_id,) = await self.__active_units(1)
+        self.controller._units[unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+        self.assertEqual(self.controller._consecutive_unit_losses, 1)
+
+        self.controller._create_not_before = 0
+        await self.__tick(self.controller)
+        self.assertEqual(len(self.provisioner.created), 2)
+
+    async def test_a_silent_draining_unit_is_destroyed_before_its_deadline_without_backoff(self) -> None:
+        (unit_id,) = await self.__active_units(1)
+        self.controller.set_desired_task_concurrency(0)
+        await self.__tick(self.controller)
+        self.controller._units[unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+        self.assertEqual(self.controller._consecutive_unit_losses, 0)
+
+    async def test_a_unit_that_sends_heartbeats_is_not_silent(self) -> None:
+        (unit_id,) = await self.__active_units(1)
+        self.controller._units[unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
+        self.__heartbeat_all(self.controller, self.provisioner)
+
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [])
+
+    async def test_a_lost_unit_is_removed_and_replaced_after_the_backoff(self) -> None:
+        (lost_unit_id,) = await self.__active_units(1)
         self.provisioner.existing.clear()
 
         await self.__tick(self.controller)
@@ -143,13 +196,13 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
     async def __active_units(self, count: int) -> List[str]:
         self.controller.set_desired_task_concurrency(count * TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(self.controller)
-        await self.__tick(self.controller)
+        self.__heartbeat_all(self.controller, self.provisioner)
         return list(self.controller._units)
 
     async def test_scale_down_drains_the_least_occupied_units(self) -> None:
         busy, idle, half = await self.__active_units(3)
-        self.controller.on_unit_report(busy, TASK_CONCURRENCY_PER_UNIT, occupancy=2)
-        self.controller.on_unit_report(half, TASK_CONCURRENCY_PER_UNIT, occupancy=1)
+        self.controller.on_unit_heartbeat(busy, TASK_CONCURRENCY_PER_UNIT, occupancy=2)
+        self.controller.on_unit_heartbeat(half, TASK_CONCURRENCY_PER_UNIT, occupancy=1)
 
         self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(self.controller)
@@ -222,16 +275,14 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         controller = self.__make_controller(self.provisioner, scale_down_cooldown_seconds=60)
         controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(controller)
-        await self.__tick(controller)
+        self.__heartbeat_all(controller, self.provisioner)
 
         controller.set_desired_task_concurrency(0)
         await self.__tick(controller)
         self.assertEqual(self.provisioner.destroyed, [])
 
     async def test_a_failed_destroy_is_retried(self) -> None:
-        self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
-        await self.__tick(self.controller)
-        await self.__tick(self.controller)
+        await self.__active_units(1)
 
         self.provisioner.fail_destroys = True
         (unit_id,) = self.controller._units
@@ -246,9 +297,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(self.provisioner.destroyed), 1)
 
     async def test_terminate_destroys_every_unit_including_one_still_being_created(self) -> None:
-        self.controller.set_desired_task_concurrency(TASK_CONCURRENCY_PER_UNIT)
-        await self.__tick(self.controller)
-        await self.__tick(self.controller)
+        await self.__active_units(1)
 
         self.provisioner.hold_creates = True
         self.controller.set_desired_task_concurrency(2 * TASK_CONCURRENCY_PER_UNIT)

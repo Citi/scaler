@@ -8,6 +8,9 @@ from scaler.config.types.address import AddressConfig
 # fleet is still draining in good order.
 CHILD_DRAIN_TIMEOUT_MARGIN_SECONDS = 30
 
+# A resource boots and installs scaler before its child manager sends the first heartbeat.
+CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS = 600
+
 
 def load_requirements_content(requirements_txt: str) -> str:
     """Return requirements file content, reading from disk if requirements_txt is a file path."""

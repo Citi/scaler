@@ -30,6 +30,7 @@ Draining and Nesting
 A worker manager retires a unit by draining it: the unit takes no new task, finishes its running tasks, then exits.
 
 * ``--drain-timeout-seconds`` (``-drt``): Seconds a unit may take to finish its running tasks after it is told to drain, before the worker manager destroys it by force (default: ``300``).
+* ``--unit-timeout-seconds`` (``-uts``): Seconds a unit may go without a heartbeat before the worker manager counts it as lost, destroys it by force, and replaces it (default: ``60``). A worker or a child worker manager that exists but sends no heartbeat, such as a deadlocked worker, is caught this way. A new unit has longer to send its first heartbeat: 60 seconds for a local process, 600 seconds for a cloud resource.
 * ``--children-address`` (``-ca``): Address the worker manager binds for its units to dial. Local worker processes default to a free loopback port. ORB AWS EC2, AWS Raw ECS, and OCI Raw require it: each provisioned resource runs a native worker manager that dials this address, so it must be reachable from those resources.
 * ``--parent-address`` (``-pa``) and ``--unit-id``: Set by a cloud worker manager in the command that starts its child. The child takes its desired task concurrency from this parent instead of the scheduler.
 

@@ -7,6 +7,7 @@ from scaler.config.section.oci_hpc_worker_manager import OCIHPCWorkerManagerConf
 from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.local_process import (
     LOCAL_PROCESS_POLL_INTERVAL_SECONDS,
+    LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS,
     local_children_address,
     poll_local_processes,
     stop_local_process,
@@ -78,6 +79,9 @@ class OCIJobsWorkerProvisioner(UnitProvisioner):
 
     def poll_interval_seconds(self) -> int:
         return LOCAL_PROCESS_POLL_INTERVAL_SECONDS
+
+    def startup_timeout_seconds(self) -> int:
+        return LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS
 
 
 class OCIJobsWorkerManager:

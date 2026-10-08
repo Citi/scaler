@@ -22,7 +22,7 @@ MAX_RESTART_BACKOFF_DOUBLINGS = 5
 
 
 class UnitState(enum.Enum):
-    pending = enum.auto()  # create dispatched, not yet confirmed to exist
+    pending = enum.auto()  # create dispatched, no heartbeat yet
     active = enum.auto()  # serving
     draining = enum.auto()  # told to drain, still finishing its tasks; never serves again
     stopping = enum.auto()  # teardown dispatched
@@ -38,6 +38,7 @@ class Unit:
     active_task_concurrency: int = 0  # task slots the unit reported
     occupancy: int = 0  # queued and running tasks the unit reported
     drain_deadline: Optional[float] = None  # time.monotonic()
+    last_heartbeat: Optional[float] = None  # time.monotonic(); None until the first heartbeat
 
 
 @dataclasses.dataclass(frozen=True)
@@ -54,17 +55,22 @@ class UnitController(Looper, Reporter):
 
     Every provisioner call runs in the background, so a slow cloud API never stops the routine. The controller sends
     no message: the runner answers each unit heartbeat from the state the controller keeps.
+
+    Two signals supervise a unit: the poll says it exists, and its heartbeat says it works. A unit that exists but
+    sends no heartbeat, such as a deadlocked worker, is lost.
     """
 
     def __init__(
         self,
         provisioner: UnitProvisioner,
         scale_down_cooldown_seconds: float,
+        unit_timeout_seconds: float,
         drain_timeout_seconds: float,
         restart_backoff_seconds: float,
     ) -> None:
         self._provisioner = provisioner
         self._scale_down_cooldown = Cooldown(scale_down_cooldown_seconds)
+        self._unit_timeout_seconds = unit_timeout_seconds
         self._drain_timeout_seconds = drain_timeout_seconds
         self._restart_backoff_seconds = restart_backoff_seconds
         self._shutting_down = False
@@ -85,13 +91,19 @@ class UnitController(Looper, Reporter):
             logger.info(f"desired task concurrency changed: {self._desired_task_concurrency} -> {task_concurrency}")
         self._desired_task_concurrency = task_concurrency
 
-    def on_unit_report(self, unit_id: str, active_task_concurrency: int, occupancy: int) -> None:
+    def on_unit_heartbeat(self, unit_id: str, active_task_concurrency: int, occupancy: int) -> None:
         unit = self._units.get(unit_id)
         if unit is None:
             return
 
+        unit.last_heartbeat = time.monotonic()
         unit.active_task_concurrency = active_task_concurrency
         unit.occupancy = occupancy
+
+        # A heartbeat that beats create_unit back waits for the next one: an active unit always has a handle.
+        if unit.state == UnitState.pending and unit.handle is not None:
+            logger.info(f"unit {unit_id!r} is active")
+            self._set_state(unit, UnitState.active)
 
     def on_unit_disconnect(self, unit_id: str) -> None:
         """The unit drained its fleet and is about to exit: destroy the resource it runs on now."""
@@ -135,6 +147,7 @@ class UnitController(Looper, Reporter):
 
     async def routine(self) -> None:
         await self._reap()
+        self._sweep_silent_units()
         self._sweep_drains()
         self._reconcile()
         self._drive_destroys()
@@ -158,14 +171,15 @@ class UnitController(Looper, Reporter):
         self._units.clear()
 
     async def _reap(self) -> None:
-        """Promote each created unit that exists, and remove each one that vanished."""
+        """Remove each created unit that vanished."""
         created = [unit for unit in self._units.values() if unit.handle is not None]
         alive = await self._provisioner.poll_units({unit.handle for unit in created})
 
         now = time.monotonic()
         for unit in created:
             if unit.handle in alive:
-                self._on_unit_alive(unit, now)
+                if unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS:
+                    self._consecutive_unit_losses = 0
                 continue
 
             # the exit of a unit that drains or stops is the report that it finished
@@ -175,21 +189,31 @@ class UnitController(Looper, Reporter):
             logger.warning(f"unit {unit.unit_id!r} vanished unexpectedly from state {unit.state.name}")
             self._on_unit_lost()
 
-    def _on_unit_alive(self, unit: Unit, now: float) -> None:
-        if unit.state == UnitState.pending:
-            logger.info(f"unit {unit.unit_id!r} is active")
-            self._set_state(unit, UnitState.active)
-            return
-
-        if unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS:
-            self._consecutive_unit_losses = 0
-
     def _on_unit_lost(self) -> None:
         self._consecutive_unit_losses += 1
         doublings = min(self._consecutive_unit_losses - 1, MAX_RESTART_BACKOFF_DOUBLINGS)
         backoff_seconds = self._restart_backoff_seconds * 2**doublings
         self._create_not_before = time.monotonic() + backoff_seconds
         logger.warning(f"{self._consecutive_unit_losses} consecutive unit loss(es): no create for {backoff_seconds}s")
+
+    def _sweep_silent_units(self) -> None:
+        """Destroy each unit that exists but sent no heartbeat in time. A silent unit that serves counts as lost."""
+        now = time.monotonic()
+        for unit in self._units_in(UnitState.pending, UnitState.active, UnitState.draining):
+            if unit.handle is None or not self._is_silent(unit, now):
+                continue
+
+            logger.warning(
+                f"unit {unit.unit_id!r} sent no heartbeat in time from state {unit.state.name}, destroying it"
+            )
+            if unit.state != UnitState.draining:
+                self._on_unit_lost()
+            self._set_state(unit, UnitState.stopping)
+
+    def _is_silent(self, unit: Unit, now: float) -> bool:
+        if unit.last_heartbeat is None:
+            return now - unit.state_since > self._provisioner.startup_timeout_seconds()
+        return now - unit.last_heartbeat > self._unit_timeout_seconds
 
     def _sweep_drains(self) -> None:
         """Destroy each unit whose drain passed its deadline."""

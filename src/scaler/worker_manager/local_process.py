@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 # A process check costs nothing, so a manager notices a dead local process within a second.
 LOCAL_PROCESS_POLL_INTERVAL_SECONDS = 1
 
+# A worker process imports scaler and dials its manager in seconds; one that has not reported by now never will.
+LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS = 60
+
 # A worker tears down in about 8 seconds: 5 to notify the scheduler, 3 to stop its processors.
 LOCAL_PROCESS_STOP_TIMEOUT_SECONDS = 30
 LOCAL_PROCESS_EXIT_POLL_SECONDS = 0.1

@@ -40,3 +40,8 @@ class UnitProvisioner(ABC):
     def poll_interval_seconds(self) -> int:
         """How often to poll the units: a process check is free, a cloud describe call is not."""
         ...
+
+    @abstractmethod
+    def startup_timeout_seconds(self) -> int:
+        """How long a new unit may take to send its first heartbeat before it counts as lost."""
+        ...

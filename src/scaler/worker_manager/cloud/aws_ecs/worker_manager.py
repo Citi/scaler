@@ -9,7 +9,12 @@ from typing import Set
 import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
-from scaler.worker_manager.cloud.child_command import child_link_arguments, cloud_children_address, format_capabilities
+from scaler.worker_manager.cloud.child_command import (
+    CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS,
+    child_link_arguments,
+    cloud_children_address,
+    format_capabilities,
+)
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
 
@@ -194,6 +199,9 @@ class ECSWorkerProvisioner(UnitProvisioner):
 
     def poll_interval_seconds(self) -> int:
         return ECS_POLL_INTERVAL_SECONDS
+
+    def startup_timeout_seconds(self) -> int:
+        return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
 
 
 class ECSWorkerManager:

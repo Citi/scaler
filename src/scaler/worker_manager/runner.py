@@ -68,6 +68,7 @@ class WorkerManagerRunner:
         self._unit_controller = UnitController(
             provisioner,
             scale_down_cooldown_seconds=worker_manager_config.scale_down_cooldown_seconds,
+            unit_timeout_seconds=worker_manager_config.unit_timeout_seconds,
             drain_timeout_seconds=worker_manager_config.drain_timeout_seconds,
             restart_backoff_seconds=DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS,
         )
@@ -223,7 +224,7 @@ class WorkerManagerRunner:
 
         if isinstance(message, WorkerHeartbeat):
             busy_processors = sum(processor.hasTask for processor in message.processors)
-            self._unit_controller.on_unit_report(
+            self._unit_controller.on_unit_heartbeat(
                 unit_id, self._provisioner.task_concurrency_per_unit(), message.queuedTasks + busy_processors
             )
             await self._binder_children.send(source, WorkerHeartbeatEcho(), detached=True)
@@ -232,7 +233,7 @@ class WorkerManagerRunner:
             return
 
         if isinstance(message, WorkerManagerHeartbeat):
-            self._unit_controller.on_unit_report(unit_id, message.activeTaskConcurrency, message.occupancy)
+            self._unit_controller.on_unit_heartbeat(unit_id, message.activeTaskConcurrency, message.occupancy)
             await self._binder_children.send(source, WorkerManagerHeartbeatEcho(), detached=True)
             await self._binder_children.send(source, self._instruction_for(unit_id), detached=True)
             return

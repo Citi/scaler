@@ -22,6 +22,7 @@ from scaler.config.section.orb_aws_ec2_worker_manager import ORBAWSEC2WorkerMana
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager.cloud.child_command import (
+    CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS,
     child_link_arguments,
     cloud_children_address,
     format_capabilities,
@@ -153,6 +154,9 @@ class ORBWorkerProvisioner(UnitProvisioner):
 
     def poll_interval_seconds(self) -> int:
         return ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
+
+    def startup_timeout_seconds(self) -> int:
+        return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
 
 
 class ORBAWSEC2WorkerManager:

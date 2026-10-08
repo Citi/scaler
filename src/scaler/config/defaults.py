@@ -57,6 +57,9 @@ DEFAULT_WORKER_MANAGER_DRAIN_TIMEOUT_SECONDS = 300
 # a child worker manager that hears no echo from its parent for this long drains its fleet and exits
 DEFAULT_WORKER_MANAGER_PARENT_TIMEOUT_SECONDS = 60
 
+# a unit that sent no heartbeat for this long is lost: its worker manager destroys and replaces it
+DEFAULT_WORKER_MANAGER_UNIT_TIMEOUT_SECONDS = 60
+
 # seconds a worker manager waits before it creates a unit after losing one; doubles on each consecutive loss
 DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS = 1
 
