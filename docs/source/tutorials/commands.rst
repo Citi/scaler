@@ -587,6 +587,10 @@ Local-process worker manager: runs as many worker processes as the scheduler ask
      - No
      - -
      - Backward-compatible alias for ``--max-task-concurrency``.
+   * - ``--ready-file``
+     - No
+     - ``None``
+     - Path of a file that holds the manager's pid while it is in service. See :doc:`worker_managers/baremetal_native`.
 
 Subcommand: ``symphony``
 ~~~~~~~~~~~~~~~~~~~~~~~~

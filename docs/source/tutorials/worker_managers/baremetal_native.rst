@@ -139,6 +139,27 @@ The worker manager connects to the scheduler and waits for scaling commands. On 
 
 To shed a worker, the manager drains it: the worker takes no new task, the scheduler takes back its queued tasks, and the worker exits once its running task finishes. A worker that has not finished within ``--drain-timeout-seconds`` is terminated, and its task runs again elsewhere.
 
+Ready File
+----------
+
+With ``--ready-file``, the manager marks itself in service with a file that holds its pid:
+
+1. On start, the manager removes the file, in case a killed manager left it behind.
+2. On the first ``WorkerManagerCommand`` from its parent, the manager writes the file, also for a desired task concurrency of zero.
+3. On ``WorkerManagerShutdown``, the file stays while the workers drain.
+4. Once the last worker is gone, the manager removes the file, then sends ``WorkerManagerDisconnectNotification`` to its parent.
+5. On any other exit, the manager removes the file.
+
+A manager that is told to shut down before its first command never writes the file.
+
+A Kubernetes readiness probe that checks both the file and the pid also reads a manager that died without cleanup as not ready:
+
+.. code:: yaml
+
+    readinessProbe:
+      exec:
+        command: ["sh", "-c", "kill -0 $(cat /tmp/scaler-ready)"]
+
 Configuration Reference
 ------------------------
 
@@ -152,6 +173,7 @@ Baremetal Native Parameters
 * ``--max-task-concurrency`` (``-mtc``): Maximum number of worker subprocesses. Set to ``-1`` for no limit (default: number of CPUs − 1).
 * ``--num-of-workers`` (``-n``): Alias for ``--max-task-concurrency``.
 * ``--preload``: Python module path to preload in each worker before it accepts tasks (e.g., ``my_package.preload``).
+* ``--ready-file``: Path of a file that holds the pid of the manager while it is in service. It lets a platform that hosts the manager, such as a Kubernetes pod, tell a retired manager from one in service. See `Ready File`_.
 
 Common Parameters
 ~~~~~~~~~~~~~~~~~

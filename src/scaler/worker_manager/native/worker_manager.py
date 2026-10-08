@@ -115,5 +115,6 @@ class NativeWorkerManager:
             children_address=children_address,
             io_threads=self._config.worker_config.io_threads,
             security_config=self._config.security,
+            ready_file=self._config.ready_file,
         )
         runner.run()

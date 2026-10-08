@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+import pathlib
 from typing import Dict, Optional
 
 from scaler.config.common.security import SecurityConfig
@@ -53,6 +55,7 @@ class WorkerManagerRunner:
         children_address: AddressConfig,
         io_threads: int = 1,
         security_config: Optional[SecurityConfig] = None,
+        ready_file: Optional[str] = None,
     ) -> None:
         self._name = name
         self._parent_address = worker_manager_config.parent_address or worker_manager_config.scheduler_address
@@ -64,6 +67,7 @@ class WorkerManagerRunner:
         self._children_address = children_address
         self._io_threads = io_threads
         self._security_config = security_config
+        self._ready_file = pathlib.Path(ready_file) if ready_file is not None else None
 
         self._unit_controller = UnitController(
             provisioner,
@@ -134,6 +138,7 @@ class WorkerManagerRunner:
         )
 
     async def _get_loops(self) -> None:
+        self._remove_ready_file()  # a file left by a killed manager must not mark this one ready
         await self._initialize_network()
         await self._connector_parent.connect(
             self._parent_address, ConnectorRemoteType.Binder, security_config=self._security_config
@@ -164,6 +169,7 @@ class WorkerManagerRunner:
 
         # Nothing is left after a drain. After a signal, whatever still runs is destroyed without one.
         await self._unit_controller.terminate()
+        self._remove_ready_file()
 
     async def _receive_from_parent(self) -> None:
         """Receive from the parent until it closes the link, then drain the fleet."""
@@ -186,6 +192,8 @@ class WorkerManagerRunner:
             return
 
         logger.info(f"{self._ident!r}: the fleet is gone, quitting")
+        # Before the notification: the parent may tear the resource down as soon as it arrives.
+        self._remove_ready_file()
         await self._notify_parent_of_exit()
         self._task.cancel()
 
@@ -218,6 +226,25 @@ class WorkerManagerRunner:
             logger.warning("Unknown action: received WorkerManagerCommand with no recognized payload")
             return
         self._unit_controller.set_desired_task_concurrency(extract_desired_count(list(requests), self._capabilities))
+        self._write_ready_file()
+
+    def _write_ready_file(self) -> None:
+        """Mark this manager in service once its parent commands it. A manager that is shutting down never is."""
+        if self._ready_file is None or self._ready_file.exists() or self._unit_controller.is_shutting_down():
+            return
+
+        # Write then rename, so a probe never reads a partial pid.
+        partial_file = self._ready_file.with_name(self._ready_file.name + ".partial")
+        partial_file.write_text(f"{os.getpid()}\n")
+        os.replace(partial_file, self._ready_file)
+        logger.info(f"{self._ident!r}: wrote ready file {str(self._ready_file)!r}")
+
+    def _remove_ready_file(self) -> None:
+        if self._ready_file is None or not self._ready_file.exists():
+            return
+
+        self._ready_file.unlink(missing_ok=True)
+        logger.info(f"{self._ident!r}: removed ready file {str(self._ready_file)!r}")
 
     async def _on_receive_child(self, source: bytes, message: BaseMessage) -> None:
         unit_id = source.decode()  # each unit dials with the unit id it was created with as its identity

@@ -1,4 +1,6 @@
 import logging
+import os
+import tempfile
 import unittest
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -82,6 +84,44 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(any("Unknown action" in m or "unrecognized" in m for m in captured.output))
         self.send_mock.assert_not_called()
+
+
+class TestWorkerManagerReadyFile(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        setup_logger()
+        logging_test_name(self)
+        self.directory = tempfile.TemporaryDirectory()
+        self.ready_file = os.path.join(self.directory.name, "ready")
+        self.runner = WorkerManagerRunner(
+            name="test_runner",
+            worker_manager_config=WorkerManagerConfig(
+                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:1"), worker_manager_id="mgr"
+            ),
+            heartbeat_interval_seconds=5,
+            capabilities={},
+            provisioner=MagicMock(spec=UnitProvisioner),
+            children_address=AddressConfig.from_string("tcp://127.0.0.1:2"),
+            ready_file=self.ready_file,
+        )
+
+    def tearDown(self) -> None:
+        self.directory.cleanup()
+
+    async def __command(self, task_concurrency: int) -> None:
+        request = WorkerManagerCommand.DesiredTaskConcurrencyRequest(taskConcurrency=task_concurrency, capabilities=[])
+        await self.runner._handle_command(WorkerManagerCommand(setDesiredTaskConcurrencyRequests=[request]))
+
+    async def test_the_first_command_writes_the_pid_even_for_a_target_of_zero(self) -> None:
+        """An idle manager is in service: only a retired one may read as not ready."""
+        self.assertFalse(os.path.exists(self.ready_file))
+        await self.__command(0)
+        with open(self.ready_file) as ready:
+            self.assertEqual(ready.read().strip(), str(os.getpid()))
+
+    async def test_a_command_after_shutdown_began_writes_no_ready_file(self) -> None:
+        self.runner._unit_controller.begin_shutdown()
+        await self.__command(2)
+        self.assertFalse(os.path.exists(self.ready_file))
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):

@@ -131,6 +131,9 @@ class UnitController(Looper, Reporter):
         logger.info(f"shutting down: draining {len(self._units)} unit(s)")
         self._shutting_down = True
 
+    def is_shutting_down(self) -> bool:
+        return self._shutting_down
+
     def is_shut_down(self) -> bool:
         """True once shutdown has begun, no unit remains, and no provisioner call is in flight."""
         return self._shutting_down and not self._units and not self._tasks
