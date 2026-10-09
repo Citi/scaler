@@ -56,8 +56,8 @@ class UnitController(Looper, Reporter):
     Every provisioner call runs in the background, so a slow cloud API never stops the routine. The controller sends
     no message: the runner answers each unit heartbeat from the state the controller keeps.
 
-    Two signals supervise a unit: the poll says it exists, and its heartbeat says it works. A unit that exists but
-    sends no heartbeat, such as a deadlocked worker, is lost.
+    A unit is supervised by its messages alone: its heartbeat says it works, and its disconnect notification says it is
+    gone. A unit that sends no heartbeat, such as a crashed or deadlocked worker, is lost.
     """
 
     def __init__(
@@ -96,9 +96,13 @@ class UnitController(Looper, Reporter):
         if unit is None:
             return
 
-        unit.last_heartbeat = time.monotonic()
+        now = time.monotonic()
+        unit.last_heartbeat = now
         unit.active_task_concurrency = active_task_concurrency
         unit.occupancy = occupancy
+
+        if unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS:
+            self._consecutive_unit_losses = 0
 
         # A heartbeat that beats create_unit back waits for the next one: an active unit always has a handle.
         if unit.state == UnitState.pending and unit.handle is not None:
@@ -153,7 +157,6 @@ class UnitController(Looper, Reporter):
         )
 
     async def routine(self) -> None:
-        await self._reap()
         self._sweep_silent_units()
         self._sweep_drains()
         self._reconcile()
@@ -176,25 +179,6 @@ class UnitController(Looper, Reporter):
             else:
                 logger.info(f"destroyed unit {unit.unit_id!r}")
         self._units.clear()
-
-    async def _reap(self) -> None:
-        """Remove each created unit that vanished."""
-        created = [unit for unit in self._units.values() if unit.handle is not None]
-        alive = await self._provisioner.poll_units({unit.handle for unit in created})
-
-        now = time.monotonic()
-        for unit in created:
-            if unit.handle in alive:
-                if unit.state == UnitState.active and now - unit.state_since > UNIT_STABLE_SECONDS:
-                    self._consecutive_unit_losses = 0
-                continue
-
-            # the exit of a unit that drains or stops is the report that it finished
-            if self._units.pop(unit.unit_id, None) is None or unit.state in (UnitState.draining, UnitState.stopping):
-                continue
-
-            logger.warning(f"unit {unit.unit_id!r} vanished unexpectedly from state {unit.state.name}")
-            self._on_unit_lost()
 
     def _on_unit_lost(self) -> None:
         self._consecutive_unit_losses += 1

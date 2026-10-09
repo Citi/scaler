@@ -2,7 +2,6 @@ import asyncio
 import logging
 import multiprocessing.process
 import time
-from typing import Set
 
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig, SocketType
@@ -10,9 +9,6 @@ from scaler.utility.exitcode import describe_exitcode
 from scaler.utility.network_util import get_available_tcp_port
 
 logger = logging.getLogger(__name__)
-
-# A process check costs nothing, so a manager notices a dead local process within a second.
-LOCAL_PROCESS_POLL_INTERVAL_SECONDS = 1
 
 # A worker process imports scaler and dials its manager in seconds; one that has not reported by now never will.
 LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS = 60
@@ -32,18 +28,6 @@ def local_children_address(worker_manager_config: WorkerManagerConfig) -> Addres
     return AddressConfig(SocketType.tcp, "127.0.0.1", get_available_tcp_port())
 
 
-def poll_local_processes(
-    processes: Set[multiprocessing.process.BaseProcess],
-) -> Set[multiprocessing.process.BaseProcess]:
-    """Return the processes that still run, and reap the ones that exited."""
-    alive = {process for process in processes if process.is_alive()}
-    for process in processes - alive:
-        process.join()
-        exitcode = describe_exitcode(process.exitcode)
-        logger.info(f"process {process.name!r} (pid={process.pid}) exited (exitcode={exitcode})")
-    return alive
-
-
 async def stop_local_process(process: multiprocessing.process.BaseProcess) -> None:
     """Terminate the process, kill it if it outlives the timeout, and reap it."""
     process.terminate()
@@ -59,3 +43,4 @@ async def stop_local_process(process: multiprocessing.process.BaseProcess) -> No
         process.kill()
 
     process.join()
+    logger.info(f"process {process.name!r} (pid={process.pid}) exited (exitcode={describe_exitcode(process.exitcode)})")

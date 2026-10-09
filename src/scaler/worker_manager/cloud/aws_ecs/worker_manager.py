@@ -4,7 +4,6 @@ import asyncio
 import logging
 import math
 import shlex
-from typing import Set
 
 import boto3
 
@@ -19,11 +18,6 @@ from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
 from scaler.worker_manager.runner import WorkerManagerRunner
 
 logger = logging.getLogger(__name__)
-
-ECS_POLL_INTERVAL_SECONDS = 10
-
-# describe_tasks accepts at most this many task ARNs per call
-ECS_DESCRIBE_TASKS_BATCH_SIZE = 100
 
 
 class ECSWorkerProvisioner(UnitProvisioner):
@@ -181,24 +175,11 @@ class ECSWorkerProvisioner(UnitProvisioner):
             raise RuntimeError(f"ECS stop task {handle!r} failed: {failures}")
         logger.info(f"stopped ECS task {handle!r}")
 
-    async def poll_units(self, handles: Set[UnitHandle]) -> Set[UnitHandle]:
-        task_arns = sorted(str(handle) for handle in handles)
-        alive: Set[UnitHandle] = set()
-        for batch_i in range(0, len(task_arns), ECS_DESCRIBE_TASKS_BATCH_SIZE):
-            batch = task_arns[batch_i : batch_i + ECS_DESCRIBE_TASKS_BATCH_SIZE]
-            resp = await asyncio.to_thread(self._ecs_client.describe_tasks, cluster=self._ecs_cluster, tasks=batch)
-            # a task ECS no longer knows comes back under "failures", and counts as gone
-            alive.update(task["taskArn"] for task in resp.get("tasks") or [] if task.get("lastStatus") != "STOPPED")
-        return alive
-
     def max_units(self) -> int:
         return self._max_instances
 
     def task_concurrency_per_unit(self) -> int:
         return self._ecs_task_cpu
-
-    def poll_interval_seconds(self) -> int:
-        return ECS_POLL_INTERVAL_SECONDS
 
     def startup_timeout_seconds(self) -> int:
         return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS

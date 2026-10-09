@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Hashable, Set
+from typing import Hashable
 
 UnitHandle = Hashable  # opaque to the controller: each provisioner picks its own type
 
@@ -15,17 +15,12 @@ class UnitProvisioner(ABC):
 
     @abstractmethod
     async def create_unit(self, unit_id: str) -> UnitHandle:
-        """Allocate one unit that identifies itself as `unit_id`, and return what destroy and poll need."""
+        """Allocate one unit that identifies itself as `unit_id`, and return what destroy needs."""
         ...
 
     @abstractmethod
     async def destroy_unit(self, handle: UnitHandle) -> None:
         """Release the unit, and return once it is gone."""
-        ...
-
-    @abstractmethod
-    async def poll_units(self, handles: Set[UnitHandle]) -> Set[UnitHandle]:
-        """Return the handles in `handles` whose unit still exists."""
         ...
 
     @abstractmethod
@@ -35,11 +30,6 @@ class UnitProvisioner(ABC):
 
     @abstractmethod
     def task_concurrency_per_unit(self) -> int: ...
-
-    @abstractmethod
-    def poll_interval_seconds(self) -> int:
-        """How often to poll the units: a process check is free, a cloud describe call is not."""
-        ...
 
     @abstractmethod
     def startup_timeout_seconds(self) -> int:

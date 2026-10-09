@@ -38,6 +38,9 @@ from scaler.worker_manager.unit_controller import UnitController
 
 logger = logging.getLogger(__name__)
 
+# The unit routine reads only state that messages wrote, and runs provisioner calls in the background.
+UNIT_CONTROLLER_INTERVAL_SECONDS = 1
+
 
 class WorkerManagerRunner:
     """Connects a unit controller to its parent (the scheduler, or a parent worker manager) and to its units.
@@ -154,9 +157,7 @@ class WorkerManagerRunner:
             create_async_loop_routine(self._binder_children.routine, 0, swallow_routine_errors=True),
             create_async_loop_routine(self._send_heartbeat, self._heartbeat_interval_seconds),
             create_async_loop_routine(self._parent_timeout_manager.routine, 1),
-            create_async_loop_routine(
-                self._routine, self._provisioner.poll_interval_seconds(), swallow_routine_errors=True
-            ),
+            create_async_loop_routine(self._routine, UNIT_CONTROLLER_INTERVAL_SECONDS, swallow_routine_errors=True),
         ]
 
         try:

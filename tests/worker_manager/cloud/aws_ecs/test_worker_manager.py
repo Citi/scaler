@@ -20,11 +20,3 @@ class TestECSWorkerProvisioner(unittest.IsolatedAsyncioTestCase):
 
     def test_no_limit_stays_unlimited(self) -> None:
         self.assertEqual(_make_provisioner(max_task_concurrency=-1).max_units(), -1)
-
-    async def test_poll_counts_stopped_and_missing_tasks_as_gone(self) -> None:
-        provisioner = _make_provisioner()
-        provisioner._ecs_client.describe_tasks.return_value = {
-            "tasks": [{"taskArn": "running", "lastStatus": "RUNNING"}, {"taskArn": "stopped", "lastStatus": "STOPPED"}],
-            "failures": [{"arn": "missing", "reason": "MISSING"}],
-        }
-        self.assertEqual(await provisioner.poll_units({"running", "stopped", "missing"}), {"running"})

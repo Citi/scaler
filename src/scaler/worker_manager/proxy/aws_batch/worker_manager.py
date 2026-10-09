@@ -1,15 +1,12 @@
 from __future__ import annotations
 
 import logging
-from typing import Set
 
 from scaler.config.section.aws_hpc_worker_manager import AWSBatchWorkerManagerConfig, AWSHPCBackend
 from scaler.config.types.address import AddressConfig
 from scaler.worker_manager.local_process import (
-    LOCAL_PROCESS_POLL_INTERVAL_SECONDS,
     LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS,
     local_children_address,
-    poll_local_processes,
     stop_local_process,
 )
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
@@ -59,17 +56,11 @@ class AWSBatchWorkerProvisioner(UnitProvisioner):
         await stop_local_process(handle)
         logger.info(f"stopped Batch worker process {handle.name!r}")
 
-    async def poll_units(self, handles: Set[UnitHandle]) -> Set[UnitHandle]:
-        return set(poll_local_processes({handle for handle in handles if isinstance(handle, WorkerProcess)}))
-
     def max_units(self) -> int:
         return -1
 
     def task_concurrency_per_unit(self) -> int:
         return self._base_concurrency
-
-    def poll_interval_seconds(self) -> int:
-        return LOCAL_PROCESS_POLL_INTERVAL_SECONDS
 
     def startup_timeout_seconds(self) -> int:
         return LOCAL_PROCESS_STARTUP_TIMEOUT_SECONDS

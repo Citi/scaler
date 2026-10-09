@@ -6,7 +6,7 @@ import functools
 import logging
 import math
 import uuid
-from typing import Any, Optional, Set
+from typing import Any, Optional
 
 import oci
 
@@ -29,8 +29,7 @@ _OCI_MAX_POLL_ATTEMPTS = 30  # 5 minutes total
 
 
 class OCIInstancesWorkerProvisioner(UnitProvisioner):
-    """One unit is one OCI Container Instance. OCI charges for each describe call, so poll_units cannot supervise
-    them."""
+    """One unit is one OCI Container Instance."""
 
     def __init__(self, config: OCIRawWorkerManagerConfig, max_instances: int) -> None:
         self._config = config
@@ -63,17 +62,11 @@ class OCIInstancesWorkerProvisioner(UnitProvisioner):
             raise RuntimeError(f"failed to delete OCI Container Instance {handle[-20:]}")
         logger.info(f"stopped OCI Container Instance {handle[-20:]}")
 
-    async def poll_units(self, handles: Set[UnitHandle]) -> Set[UnitHandle]:
-        return set(handles)
-
     def max_units(self) -> int:
         return self._max_instances
 
     def task_concurrency_per_unit(self) -> int:
         return max(1, int(self._config.instance_ocpus))
-
-    def poll_interval_seconds(self) -> int:
-        return _OCI_POLL_INTERVAL_SECONDS
 
     def startup_timeout_seconds(self) -> int:
         return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS

@@ -4,7 +4,7 @@ from typing import Dict, List, Set
 
 from scaler.utility.logging.utility import setup_logger
 from scaler.worker_manager.mixins import UnitHandle, UnitProvisioner
-from scaler.worker_manager.unit_controller import UnitController, UnitState
+from scaler.worker_manager.unit_controller import UNIT_STABLE_SECONDS, UnitController, UnitState
 from tests.utility.utility import logging_test_name
 
 TASK_CONCURRENCY_PER_UNIT = 2
@@ -43,17 +43,11 @@ class _FakeProvisioner(UnitProvisioner):
         self.destroyed.append(handle)
         self.existing.discard(handle)
 
-    async def poll_units(self, handles: Set[UnitHandle]) -> Set[UnitHandle]:
-        return {handle for handle in handles if handle in self.existing}
-
     def max_units(self) -> int:
         return self._max_units
 
     def task_concurrency_per_unit(self) -> int:
         return TASK_CONCURRENCY_PER_UNIT
-
-    def poll_interval_seconds(self) -> int:
-        return 1
 
     def startup_timeout_seconds(self) -> int:
         return STARTUP_TIMEOUT_SECONDS
@@ -173,7 +167,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
 
     async def test_a_lost_unit_is_removed_and_replaced_after_the_backoff(self) -> None:
         (lost_unit_id,) = await self.__active_units(1)
-        self.provisioner.existing.clear()
+        self.controller._units[lost_unit_id].last_heartbeat -= UNIT_TIMEOUT_SECONDS + 1
 
         await self.__tick(self.controller)
         self.assertNotIn(lost_unit_id, self.controller._units)
@@ -182,6 +176,18 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.controller._create_not_before = 0
         await self.__tick(self.controller)
         self.assertEqual(len(self.provisioner.created), 2)
+
+    async def test_a_heartbeat_from_a_unit_stable_for_a_while_resets_the_backoff(self) -> None:
+        """A unit that stays active proves the unit recipe works, so earlier losses stop doubling the backoff."""
+        (unit_id,) = await self.__active_units(1)
+        self.controller._consecutive_unit_losses = 3
+
+        self.__heartbeat_all(self.controller, self.provisioner)
+        self.assertEqual(self.controller._consecutive_unit_losses, 3, "a unit just made active proves nothing yet")
+
+        self.controller._units[unit_id].state_since -= UNIT_STABLE_SECONDS + 1
+        self.__heartbeat_all(self.controller, self.provisioner)
+        self.assertEqual(self.controller._consecutive_unit_losses, 0)
 
     async def test_a_failed_create_leaves_no_unit_and_arms_the_backoff(self) -> None:
         self.provisioner.fail_creates = True
@@ -219,16 +225,6 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         for _ in range(3):
             await self.__tick(self.controller)
         self.assertEqual(self.__states(self.controller), {UnitState.active: 1, UnitState.draining: 1})
-
-    async def test_a_drained_unit_that_exits_is_removed_without_backoff(self) -> None:
-        (unit_id,) = await self.__active_units(1)
-        self.controller.set_desired_task_concurrency(0)
-        await self.__tick(self.controller)
-
-        self.provisioner.existing.discard(unit_id)
-        await self.__tick(self.controller)
-        self.assertEqual(self.controller._units, {})
-        self.assertEqual(self.controller._consecutive_unit_losses, 0)
 
     async def test_a_drain_past_its_deadline_destroys_the_unit(self) -> None:
         (unit_id,) = await self.__active_units(1)
@@ -277,7 +273,8 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.__states(self.controller), {UnitState.draining: 2})
         self.assertFalse(self.controller.is_shut_down())
 
-        self.provisioner.existing.difference_update(units)
+        for unit_id in units:
+            self.controller.on_unit_disconnect(unit_id)
         await self.__tick(self.controller)
         self.assertTrue(self.controller.is_shut_down())
         self.assertEqual(len(self.provisioner.created), 2)

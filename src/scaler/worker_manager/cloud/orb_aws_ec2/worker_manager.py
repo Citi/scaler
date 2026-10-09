@@ -8,7 +8,7 @@ import logging
 import math
 import os
 import shlex
-from typing import Any, Callable, Dict, Optional, Set, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 from urllib.parse import urlsplit, urlunsplit
 
 try:
@@ -71,7 +71,6 @@ class ORBWorkerProvisioner(UnitProvisioner):
     """One unit is one EC2 instance, launched from a template of its own.
 
     ORB sets the user data per template, and each instance must carry its own unit id, so each unit gets a template.
-    ORB has no call that lists its machines, so poll_units cannot supervise them.
     A handle is (template id, instance id).
     """
 
@@ -143,17 +142,11 @@ class ORBWorkerProvisioner(UnitProvisioner):
         await self._sdk.delete_template(template_id=template_id)
         logger.info(f"returned instance {instance_id}")
 
-    async def poll_units(self, handles: Set[UnitHandle]) -> Set[UnitHandle]:
-        return set(handles)
-
     def max_units(self) -> int:
         return self._max_instances
 
     def task_concurrency_per_unit(self) -> int:
         return self._workers_per_instance
-
-    def poll_interval_seconds(self) -> int:
-        return ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
 
     def startup_timeout_seconds(self) -> int:
         return CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS
