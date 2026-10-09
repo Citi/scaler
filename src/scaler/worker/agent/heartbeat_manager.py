@@ -91,10 +91,6 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
     async def routine(self):
         processors = self._processor_manager.processors()
 
-        if self._start_timestamp_nanoseconds != 0:
-            # already sent heartbeat, expecting heartbeat echo, so not sending
-            return
-
         for processor_holder in processors:
             try:
                 status = processor_holder.process().status()
@@ -132,9 +128,13 @@ class VanillaHeartbeatManager(Looper, HeartbeatManager):
             netRecvBytes=net_recv,
             draining=self._worker_task_manager.is_draining(),
         )
-        await self._connector_external.send(heartbeat, detached=True)
-        # The manager reads the same heartbeat for liveness and occupancy, and echoes it on its own link.
+        # The manager judges liveness by these heartbeats, so they never wait on the scheduler's echo.
         await self._connector_manager.send(heartbeat, detached=True)
+
+        if self._start_timestamp_nanoseconds != 0:
+            return  # the scheduler has not echoed the last heartbeat yet
+
+        await self._connector_external.send(heartbeat, detached=True)
         self._start_timestamp_nanoseconds = time.time_ns()
 
     def get_object_storage_address(self) -> Optional[AddressConfig]:

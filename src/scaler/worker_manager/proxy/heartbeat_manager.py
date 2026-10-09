@@ -80,9 +80,6 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
         return self._object_storage_address
 
     async def routine(self) -> None:
-        if self._start_timestamp_nanoseconds != 0:
-            return
-
         try:
             agent_cpu = int(self._agent_process.cpu_percent() * 10)
             agent_rss = get_process_memory(self._agent_process)
@@ -105,7 +102,11 @@ class HeartbeatManager(Looper, HeartbeatManagerMixin):
             workerManagerID=self._worker_manager_id,
             draining=self._task_manager.is_draining(),
         )
-        await self._connector_external.send(heartbeat, detached=True)
-        # The manager reads the same heartbeat for liveness and occupancy, and echoes it on its own link.
+        # The manager judges liveness by these heartbeats, so they never wait on the scheduler's echo.
         await self._connector_manager.send(heartbeat, detached=True)
+
+        if self._start_timestamp_nanoseconds != 0:
+            return  # the scheduler has not echoed the last heartbeat yet
+
+        await self._connector_external.send(heartbeat, detached=True)
         self._start_timestamp_nanoseconds = time.time_ns()

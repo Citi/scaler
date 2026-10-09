@@ -65,7 +65,13 @@ class TestHeartbeatManagerTaskLock(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(sent, WorkerHeartbeat)
         self.assertTrue(sent.taskLock)
 
-    async def test_routine_skipped_when_timestamp_nonzero(self) -> None:
+    async def test_the_manager_gets_a_heartbeat_while_the_scheduler_has_not_echoed(self) -> None:
+        """The manager judges liveness by these heartbeats, so a silent scheduler must not silence them."""
+        self.task_manager.can_accept_task.return_value = True
         self.hm._start_timestamp_nanoseconds = 12345
-        await self.hm.routine()
+        with patch("psutil.virtual_memory") as mock_vm, patch("psutil.Process"):
+            mock_vm.return_value.available = 0
+            await self.hm.routine()
+
+        self.connector_manager.send.assert_called_once()
         self.connector_external.send.assert_not_called()
