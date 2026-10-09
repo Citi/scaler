@@ -372,7 +372,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     async def __teardown(self) -> None:
         # Guarded with `is not None` throughout: this runs even when __initialize failed partway
         # through, so some of these may never have been created.
-        await self.__notify_scheduler_of_exit()
+        await self.__notify_of_exit()
 
         destroyables: List[Tuple[str, Callable[[], None]]] = []
         if self._connector_external is not None:
@@ -409,25 +409,30 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
     def __register_signal(self):
         install_async_shutdown_handler(self._loop, self.__destroy)
 
-    async def __notify_scheduler_of_exit(self) -> None:
-        """Tell the scheduler this worker is leaving, so it re-dispatches our tasks instead of
-        waiting out the heartbeat timeout. Runs on every exit path, not just on a signal.
+    async def __notify_of_exit(self) -> None:
+        """Tell the scheduler and the manager this worker is leaving: the scheduler re-dispatches our tasks instead of
+        waiting out the heartbeat timeout, and the manager reaps this process at once. Runs on every exit path.
         """
-        if self._connector_external is None:
+        await asyncio.gather(
+            self.__send_exit_notification(self._connector_external, "scheduler"),
+            self.__send_exit_notification(self._connector_manager, "manager"),
+        )
+
+    async def __send_exit_notification(self, connector: Optional[AsyncConnector], peer: str) -> None:
+        if connector is None:
             return
 
         try:
             await asyncio.wait_for(
-                self._connector_external.send(WorkerDisconnectNotification(), detached=False),
-                WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS,
+                connector.send(WorkerDisconnectNotification(), detached=False), WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS
             )
         except ymq.YMQException as e:
             if e.code not in _EXPECTED_TEARDOWN_ERROR_CODES:
                 raise
-            logger.info(f"{self.identity!r}: could not notify the scheduler of exit: {e}")
+            logger.info(f"{self.identity!r}: could not notify the {peer} of exit: {e}")
         except asyncio.TimeoutError:
             logger.warning(
-                f"{self.identity!r}: could not notify the scheduler of exit within "
+                f"{self.identity!r}: could not notify the {peer} of exit within "
                 f"{WORKER_EXIT_NOTIFICATION_TIMEOUT_SECONDS}s, quitting anyway"
             )
 

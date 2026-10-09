@@ -236,6 +236,11 @@ class WorkerTeardownYMQErrorTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(sent), 1, "WorkerDisconnectNotification was not sent during teardown")
         self.assertIsInstance(sent[0], WorkerDisconnectNotification)
 
+        # The manager learns of the exit from the same message, and reaps the process at once.
+        sent_to_manager = worker._connector_manager.sent_messages
+        self.assertEqual(len(sent_to_manager), 1, "the manager was not notified during teardown")
+        self.assertIsInstance(sent_to_manager[0], WorkerDisconnectNotification)
+
     async def test_teardown_completes_when_the_notification_send_hangs(self) -> None:
         # The notification only saves the scheduler from waiting out the heartbeat timeout, so a
         # connection that is wedged rather than closed must not keep the worker alive forever.

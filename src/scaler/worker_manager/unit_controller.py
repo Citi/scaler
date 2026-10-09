@@ -106,12 +106,16 @@ class UnitController(Looper, Reporter):
             self._set_state(unit, UnitState.active)
 
     def on_unit_disconnect(self, unit_id: str) -> None:
-        """The unit drained its fleet and is about to exit: destroy the resource it runs on now."""
+        """The unit is about to exit: destroy what it runs on now. A unit that still serves is lost."""
         unit = self._units.get(unit_id)
         if unit is None or unit.state == UnitState.stopping or unit.handle is None:
             return
 
-        logger.info(f"unit {unit_id!r} reported its fleet gone")
+        if unit.state == UnitState.draining:
+            logger.info(f"unit {unit_id!r} finished its drain")
+        else:
+            logger.warning(f"unit {unit_id!r} exited on its own from state {unit.state.name}")
+            self._on_unit_lost()
         self._set_state(unit, UnitState.stopping)
 
     def is_unit_serving(self, unit_id: str) -> bool:

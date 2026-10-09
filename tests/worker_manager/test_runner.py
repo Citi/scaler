@@ -13,8 +13,10 @@ from scaler.protocol.capnp import (
     Task,
     TaskCancel,
     TaskCapability,
+    WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
+    WorkerManagerDisconnectNotification,
 )
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
@@ -84,6 +86,16 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(any("Unknown action" in m or "unrecognized" in m for m in captured.output))
         self.send_mock.assert_not_called()
+
+    async def test_a_disconnect_notification_from_a_unit_reaches_the_controller(self) -> None:
+        """A worker and a child manager report their exit with their own notification; both end the unit."""
+        for notification in (WorkerDisconnectNotification(), WorkerManagerDisconnectNotification()):
+            with self.subTest(notification=type(notification).__name__):
+                self.runner._unit_controller.on_unit_disconnect = MagicMock()  # type: ignore[method-assign]
+
+                await self.runner._on_receive_child(b"unit-1", notification)
+
+                self.runner._unit_controller.on_unit_disconnect.assert_called_once_with("unit-1")
 
 
 class TestWorkerManagerReadyFile(unittest.IsolatedAsyncioTestCase):

@@ -18,6 +18,7 @@ from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
+    WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
@@ -265,7 +266,7 @@ class WorkerManagerRunner:
             await self._binder_children.send(source, self._instruction_for(unit_id), detached=True)
             return
 
-        if isinstance(message, WorkerManagerDisconnectNotification):
+        if isinstance(message, (WorkerDisconnectNotification, WorkerManagerDisconnectNotification)):
             self._unit_controller.on_unit_disconnect(unit_id)
             return
 

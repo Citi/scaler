@@ -247,6 +247,17 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
         self.controller.on_unit_disconnect(unit_id)
         await self.__tick(self.controller)
         self.assertEqual(self.provisioner.destroyed, [unit_id])
+        self.assertEqual(self.controller._consecutive_unit_losses, 0, "a finished drain is not a loss")
+
+    async def test_a_unit_that_exits_while_serving_is_destroyed_and_counts_as_lost(self) -> None:
+        """A disconnect notification from a unit nobody told to drain means it gave up on its own."""
+        (unit_id,) = await self.__active_units(1)
+
+        self.controller.on_unit_disconnect(unit_id)
+        await self.__tick(self.controller)
+        self.assertEqual(self.provisioner.destroyed, [unit_id])
+        self.assertNotIn(unit_id, self.controller._units)
+        self.assertEqual(self.controller._consecutive_unit_losses, 1)
 
     async def test_an_unknown_unit_is_not_serving(self) -> None:
         self.assertFalse(self.controller.is_unit_serving("unknown"))
