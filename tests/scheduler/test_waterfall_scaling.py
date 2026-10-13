@@ -482,8 +482,8 @@ class TestWaterfallCapabilities(unittest.TestCase):
         self.assertEqual(set(cap_requests[0][0].keys()), {"a"})
 
 
-class TestWaterfallV1Policy(unittest.TestCase):
-    """Unit tests for WaterfallScalingPolicy config parsing and scaling delegation."""
+class TestWaterfallConfigParsing(unittest.TestCase):
+    """Unit tests for waterfall config parsing via create_policies() factory."""
 
     def setUp(self):
         setup_logger()
@@ -588,8 +588,8 @@ class TestWaterfallV1Policy(unittest.TestCase):
         self.assertIsInstance(status, ScalingManagerStatus)
 
 
-class TestWaterfallV1PolicyAssignmentWithCapabilities(unittest.TestCase):
-    """Tests that the waterfall_v1 policy engine's assign_task respects task capabilities."""
+class TestWaterfallAllocationWithCapabilities(unittest.TestCase):
+    """Tests that the waterfall allocation policy respects task capabilities."""
 
     def setUp(self):
         setup_logger()
