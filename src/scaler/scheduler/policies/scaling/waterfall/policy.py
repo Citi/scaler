@@ -3,9 +3,9 @@ from math import ceil
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
 from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
 from scaler.scheduler.policies.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 from scaler.scheduler.policies.scaling.waterfall.types import WaterfallRule
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot

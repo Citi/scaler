@@ -13,7 +13,7 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
-from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status
+from scaler.scheduler.controllers.worker_manager_utilities import build_scaling_manager_status
 from scaler.scheduler.policies.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID

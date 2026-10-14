@@ -559,7 +559,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
     async def test_pending_equals_desired_minus_connected(self):
         """pendingWorkers = max(0, last_desired_total - connected_count)."""
-        from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
+        from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 
         source = b"mgr-src"
         manager_id = b"mgr-id"
@@ -578,7 +578,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
     async def test_pending_clamped_at_zero(self):
         """If more workers are connected than desired, pendingWorkers is 0 (never negative)."""
-        from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
+        from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 
         source = b"mgr-src"
         manager_id = b"mgr-id"
@@ -595,7 +595,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
 
     async def test_pending_only_counts_capsets_this_manager_can_serve(self):
         """A capset whose capabilities are not a subset of the manager's capabilities is excluded."""
-        from scaler.scheduler.controllers.worker_manager_utilties import build_set_desired_command
+        from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 
         source = b"mgr-src"
         manager_id = b"mgr-id"
