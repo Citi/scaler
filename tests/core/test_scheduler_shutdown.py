@@ -11,6 +11,12 @@ from tests.utility.utility import logging_test_name
 SCHEDULER_EXIT_TIMEOUT_SECONDS = 30
 
 
+def noop_sleep(seconds: float) -> float:
+    # a Python function: Python 3.10 cannot read the signature of the builtin time.sleep, which submit needs
+    time.sleep(seconds)
+    return seconds
+
+
 class TestSchedulerShutdown(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
@@ -26,7 +32,7 @@ class TestSchedulerShutdown(unittest.TestCase):
         self.addCleanup(cluster.shutdown)
 
         with Client(address=address) as client:
-            client.submit(time.sleep, 0).result()  # the cluster is up
+            client.submit(noop_sleep, 0).result()  # the cluster is up
             client.shutdown()
 
         cluster._scheduler.join(SCHEDULER_EXIT_TIMEOUT_SECONDS)
