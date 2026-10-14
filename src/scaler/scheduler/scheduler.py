@@ -22,6 +22,7 @@ from scaler.protocol.capnp import (
     TaskResult,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
+    WorkerManagerDisconnectNotification,
     WorkerManagerHeartbeat,
 )
 from scaler.scheduler.controllers.balance_controller import VanillaBalanceController
@@ -253,6 +254,10 @@ class Scheduler:
         # worker manager controller
         if isinstance(message, WorkerManagerHeartbeat):
             await self._worker_manager_controller.on_heartbeat(source, message)
+            return
+
+        if isinstance(message, WorkerManagerDisconnectNotification):
+            await self._worker_manager_controller.on_disconnect_notification(source)
             return
 
         logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")

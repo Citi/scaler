@@ -62,17 +62,13 @@ if __name__ == "__main__":
 
 
 class TestClientControllerShutdown(unittest.IsolatedAsyncioTestCase):
-    async def test_shutdown_asks_every_worker_manager_to_drain(self) -> None:
-        """A cluster shutdown goes through the worker managers: the scheduler stops no worker itself."""
+    async def test_shutdown_drains_every_worker_manager_before_quitting(self) -> None:
+        """A cluster shutdown answers each manager heartbeat with a shutdown, and quits once every manager is gone."""
         config_controller = MagicMock()
         config_controller.get_config.side_effect = lambda path: False if path == "protected" else MagicMock()
         worker_manager_controller = WorkerManagerController(config_controller, MagicMock())
         binder = AsyncMock()
         worker_manager_controller.register(binder, MagicMock(), MagicMock())
-        worker_manager_controller._manager_alive_since = {
-            b"manager-a": (0.0, MagicMock()),
-            b"manager-b": (0.0, MagicMock()),
-        }
 
         controller = VanillaClientController(config_controller=config_controller)
         controller.register(
@@ -83,15 +79,34 @@ class TestClientControllerShutdown(unittest.IsolatedAsyncioTestCase):
             worker_manager_controller=worker_manager_controller,
         )
 
-        with self.assertRaises(ClientShutdownException):
-            await controller.on_client_disconnect(
-                ClientID.generate_client_id(), ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown)
-            )
+        sources = [b"manager-a", b"manager-b"]
+        for source in sources:
+            heartbeat = deserialize(serialize(WorkerManagerHeartbeat(workerManagerID=source, capabilities=[])))
+            assert isinstance(heartbeat, WorkerManagerHeartbeat)
+            await worker_manager_controller.on_heartbeat(source, heartbeat)
+
+        await controller.on_client_disconnect(
+            ClientID.generate_client_id(), ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown)
+        )
+        await worker_manager_controller.routine()  # managers are left, so the scheduler keeps serving
+
+        binder.send.reset_mock()
+        for source in sources:
+            heartbeat = deserialize(serialize(WorkerManagerHeartbeat(workerManagerID=source, capabilities=[])))
+            assert isinstance(heartbeat, WorkerManagerHeartbeat)
+            await worker_manager_controller.on_heartbeat(source, heartbeat)
 
         shutdowns = [
             call.args[0] for call in binder.send.call_args_list if isinstance(call.args[1], WorkerManagerShutdown)
         ]
-        self.assertEqual(shutdowns, [b"manager-a", b"manager-b"])
+        self.assertEqual(shutdowns, sources)
+
+        await worker_manager_controller.on_disconnect_notification(b"manager-a")
+        await worker_manager_controller.routine()
+
+        await worker_manager_controller.on_disconnect_notification(b"manager-b")
+        with self.assertRaises(ClientShutdownException):
+            await worker_manager_controller.routine()
 
 
 class TestWorkerManagerControllerStatus(unittest.IsolatedAsyncioTestCase):

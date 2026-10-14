@@ -138,11 +138,11 @@ struct WorkerDisconnectNotification {
 struct WorkerShutdown {
 }
 
-# Parent manager -> child manager: drain the whole fleet, then exit.
+# Scheduler or parent manager -> child manager: drain the whole fleet, then exit.
 struct WorkerManagerShutdown {
 }
 
-# Child manager -> parent manager: the fleet is gone and the child is about to exit.
+# Child manager -> scheduler or parent manager: the fleet is gone and the child is about to exit.
 struct WorkerManagerDisconnectNotification {
 }
 

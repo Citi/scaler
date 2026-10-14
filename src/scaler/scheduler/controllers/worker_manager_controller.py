@@ -17,6 +17,7 @@ from scaler.scheduler.controllers.config_controller import VanillaConfigControll
 from scaler.scheduler.controllers.mixins import PolicyController, TaskController, WorkerController
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status
+from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.snapshot import InformationSnapshot
@@ -55,6 +56,8 @@ class WorkerManagerController(Looper, Reporter):
         # Unit counts from the latest heartbeat of each manager, by source.
         self._manager_units: Dict[bytes, _ManagerUnits] = {}
 
+        self._shutting_down = False
+
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
         self._task_controller = task_controller
@@ -83,6 +86,11 @@ class WorkerManagerController(Looper, Reporter):
 
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
 
+        if self._shutting_down:
+            # Every heartbeat, not once: a manager that connects during the shutdown must drain too.
+            await self._binder.send(source, WorkerManagerShutdown(), detached=True)
+            return
+
         information_snapshot = self._build_snapshot()
         managed_worker_ids = self._worker_controller.get_workers_by_manager_id(heartbeat.workerManagerID)
         worker_manager_snapshots = self._build_manager_snapshots()
@@ -96,13 +104,19 @@ class WorkerManagerController(Looper, Reporter):
 
         self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
 
-    async def on_client_shutdown(self) -> None:
-        """Ask every worker manager to drain its fleet and exit. The scheduler owns no worker's lifecycle."""
-        for source in self._manager_alive_since:
-            await self._binder.send(source, WorkerManagerShutdown(), detached=True)
+    def on_client_shutdown(self) -> None:
+        """Drain every worker manager, then quit. The scheduler stays up to cancel the queued tasks of draining
+        workers, and owns no worker's lifecycle."""
+        self._shutting_down = True
+
+    async def on_disconnect_notification(self, source: bytes) -> None:
+        await self._disconnect_manager(source)
 
     async def routine(self):
         await self._clean_managers()
+
+        if self._shutting_down and not self._manager_alive_since:
+            raise ClientShutdownException("every worker manager is gone, quitting")
 
     def get_status(self) -> ScalingManagerStatus:
         managed_workers = self.get_managed_workers()

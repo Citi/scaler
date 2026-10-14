@@ -16,7 +16,6 @@ from scaler.protocol.capnp import (
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import ClientController, ObjectController, TaskController
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
-from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, TaskID
 from scaler.utility.mixins import Looper, Reporter
 from scaler.utility.one_to_many_dict import OneToManyDict
@@ -135,9 +134,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         if self._config_controller.get_config("protected"):
             return
 
-        await self._worker_manager_controller.on_client_shutdown()
-
-        raise ClientShutdownException(f"received client shutdown from {client_id!r}, quitting")
+        self._worker_manager_controller.on_client_shutdown()
 
     async def routine(self):
         await self.__routine_cleanup_clients()
