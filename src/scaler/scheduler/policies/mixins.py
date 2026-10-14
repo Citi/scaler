@@ -1,7 +1,7 @@
 import abc
 from typing import Dict, List, Optional, Set
 
-from scaler.protocol.capnp import ScalingManagerStatus, Task, WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.protocol.capnp import Task, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.snapshot import InformationSnapshot
@@ -74,9 +74,4 @@ class ScalingPolicy(metaclass=abc.ABCMeta):
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         """Pure function: state in, declarative scaling command out."""
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        """Pure function: state in, status out."""
         raise NotImplementedError()

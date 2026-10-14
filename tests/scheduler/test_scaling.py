@@ -456,14 +456,6 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertEqual(set(capabilities_to_dict(requests[0].capabilities).keys()), {"gpu"})
         self.assertEqual(requests[0].taskConcurrency, 1)
 
-    def test_get_status_returns_scaling_manager_status(self):
-        """CapabilityScalingPolicy.get_status returns a ScalingManagerStatus object."""
-        from scaler.protocol.capnp import ScalingManagerStatus
-
-        managed_workers = {b"mgr": [WorkerID(b"w0")]}
-        status = self.policy.get_status(managed_workers)
-        self.assertIsInstance(status, ScalingManagerStatus)
-
 
 class TestVanillaDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch vanilla shutdown tests."""
@@ -518,14 +510,6 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
         self.assertEqual(requests[0].taskConcurrency, 5)
 
-    def test_get_status_returns_scaling_manager_status(self):
-        """VanillaScalingPolicy.get_status returns a ScalingManagerStatus object."""
-        from scaler.protocol.capnp import ScalingManagerStatus
-
-        managed_workers = {b"mgr": [WorkerID(b"w0")]}
-        status = self.policy.get_status(managed_workers)
-        self.assertIsInstance(status, ScalingManagerStatus)
-
 
 class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch capability shutdown tests."""
@@ -561,7 +545,6 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         setup_logger()
         config_controller = MagicMock()
         scaling_policy = MagicMock()
-        scaling_policy.get_status.return_value = MagicMock(managed_workers={})
 
         self.controller = WorkerManagerController(config_controller, scaling_policy)
         self.scaling_policy = scaling_policy

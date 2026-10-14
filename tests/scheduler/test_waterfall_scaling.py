@@ -577,16 +577,6 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         self.assertEqual(len(commands_b), 1)
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
-    def test_scaling_status(self):
-        """get_status should return a ScalingManagerStatus."""
-        _, scaling_policy = create_policies("waterfall_v1", "1,manager_a,10")
-
-        from scaler.protocol.capnp import ScalingManagerStatus
-
-        managed_workers = {b"mgr-1": [WorkerID(b"worker-1")]}
-        status = scaling_policy.get_status(managed_workers)
-        self.assertIsInstance(status, ScalingManagerStatus)
-
 
 class TestWaterfallAllocationWithCapabilities(unittest.TestCase):
     """Tests that the waterfall allocation policy respects task capabilities."""
