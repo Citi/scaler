@@ -405,7 +405,7 @@ def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     )
 
 
-def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> WorkerHeartbeat:
+def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, draining: bool = False) -> WorkerHeartbeat:
     return WorkerHeartbeat(
         agent=Resource(cpu=1, rss=1000000),
         rssFree=500000,
@@ -416,6 +416,7 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0) -> 
         processors=[],
         capabilities=capabilities,
         workerManagerID=b"test",
+        draining=draining,
     )
 
 
