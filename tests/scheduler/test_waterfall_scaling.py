@@ -404,6 +404,30 @@ class TestWaterfallFloor(unittest.TestCase):
                 commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
                 self.assertEqual(_generic_request(commands[0]).taskConcurrency, burst_desired)
 
+    def test_a_floor_on_a_lower_tier_counts_as_supply_first(self):
+        """Demand that a lower tier's floor covers starts nothing on a higher tier; only the excess does."""
+        policy = WaterfallScalingPolicy(
+            [
+                WaterfallRule(priority=1, worker_manager_id=b"burst", max_task_concurrency=20),
+                WaterfallRule(priority=2, worker_manager_id=b"warm", max_task_concurrency=20, min_task_concurrency=8),
+            ]
+        )
+        manager_snapshots = {
+            b"burst": _create_manager_snapshot(b"burst", max_task_concurrency=20, worker_count=0),
+            b"warm": _create_manager_snapshot(b"warm", max_task_concurrency=20, worker_count=8),
+        }
+
+        # target = ceil(tasks / 10): the warm floor of 8 covers the target first, the burst tier fills next
+        for task_count, burst_desired, warm_desired in ((50, 0, 8), (200, 12, 8), (300, 20, 10), (500, 20, 20)):
+            with self.subTest(task_count=task_count):
+                snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
+                desired = {}
+                for manager_id in (b"burst", b"warm"):
+                    heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=20)
+                    commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+                    desired[manager_id] = _generic_request(commands[0]).taskConcurrency
+                self.assertEqual(desired, {b"burst": burst_desired, b"warm": warm_desired})
+
 
 class TestWaterfallCapabilities(unittest.TestCase):
     """Capability-aware declarative emission for WaterfallScalingPolicy."""
