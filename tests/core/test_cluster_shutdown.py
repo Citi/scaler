@@ -16,6 +16,12 @@ LONG_TASK_SECONDS = 600  # a forced shutdown must not wait for it
 SHUTDOWN_DEADLINE_SECONDS = 30
 
 
+def noop_sleep(seconds: float) -> float:
+    # a Python function: Python 3.10 cannot read the signature of the builtin time.sleep, which submit needs
+    time.sleep(seconds)
+    return seconds
+
+
 class TestClusterShutdown(unittest.TestCase):
     def setUp(self) -> None:
         setup_logger()
@@ -31,10 +37,10 @@ class TestClusterShutdown(unittest.TestCase):
 
         # The tasks belong to a client that stays connected: a shutting-down client cancels its own tasks first.
         with Client(address=address) as task_client:
-            task_client.submit(time.sleep, 0).result()  # the worker is up
+            task_client.submit(noop_sleep, 0).result()  # the worker is up
 
             for _ in range(QUEUED_TASK_COUNT):
-                task_client.submit(time.sleep, TASK_SECONDS)
+                task_client.submit(noop_sleep, TASK_SECONDS)
             time.sleep(DISPATCH_SECONDS)
 
             with Client(address=address) as shutdown_client:
@@ -61,10 +67,10 @@ class TestClusterShutdown(unittest.TestCase):
         cluster = SchedulerClusterCombo(address=address, n_workers=1, per_worker_task_queue_size=QUEUED_TASK_COUNT)
 
         with Client(address=address) as task_client:
-            task_client.submit(time.sleep, 0).result()  # the worker is up
+            task_client.submit(noop_sleep, 0).result()  # the worker is up
 
             for _ in range(QUEUED_TASK_COUNT):
-                task_client.submit(time.sleep, LONG_TASK_SECONDS)
+                task_client.submit(noop_sleep, LONG_TASK_SECONDS)
             time.sleep(DISPATCH_SECONDS)
 
             shutdown_start = time.monotonic()
