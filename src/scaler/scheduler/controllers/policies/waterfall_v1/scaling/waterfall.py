@@ -118,14 +118,19 @@ class WaterfallScalingPolicy(ScalingPolicy):
             return 0
         total_desired = max(1, ceil(task_count / self._upper_task_ratio))
 
-        remaining = total_desired
+        # Every online manager's floor counts as supply first; the rest fills managers above their floors by priority.
+        online_rules: List[Tuple[WaterfallRule, int, int]] = []  # (rule, cap, floor)
         for rule in self._rules:
             cap = self._effective_capacity(rule, current_rule, current_heartbeat, snapshots)
-            if cap is None:
-                continue
+            if cap is not None:
+                online_rules.append((rule, cap, min(rule.min_task_concurrency, cap)))
+
+        remaining = max(0, total_desired - sum(floor for _, _, floor in online_rules))
+        for rule, cap, floor in online_rules:
+            share = min(remaining, cap - floor)
             if rule.worker_manager_id == current_rule.worker_manager_id:
-                return min(remaining, cap)
-            remaining = max(0, remaining - cap)
+                return floor + share
+            remaining -= share
         return 0
 
     def _allocate_capset_desired(
