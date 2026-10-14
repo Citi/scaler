@@ -386,6 +386,26 @@ class TestWaterfallFloor(unittest.TestCase):
         self.assertEqual(_generic_request(commands[0]).taskConcurrency, 4)
         self.assertEqual(_capability_requests(commands[0]), [({"gpu": 1}, 1)])
 
+    def test_a_tier_above_a_floor_tier_drains_once_the_floor_tier_is_at_its_floor(self):
+        """With no tasks, a higher tier waits for a lower tier to drain to its floor, not to zero."""
+        policy = WaterfallScalingPolicy(
+            [
+                WaterfallRule(priority=1, worker_manager_id=b"burst", max_task_concurrency=20),
+                WaterfallRule(priority=2, worker_manager_id=b"warm", max_task_concurrency=8, min_task_concurrency=4),
+            ]
+        )
+        snapshot = InformationSnapshot(tasks={}, workers={})
+        heartbeat = _create_worker_manager_heartbeat(b"burst", max_task_concurrency=20)
+
+        for warm_workers, burst_desired in ((6, 20), (4, 0)):
+            with self.subTest(warm_workers=warm_workers):
+                manager_snapshots = {
+                    b"burst": _create_manager_snapshot(b"burst", max_task_concurrency=20, worker_count=20),
+                    b"warm": _create_manager_snapshot(b"warm", max_task_concurrency=8, worker_count=warm_workers),
+                }
+                commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+                self.assertEqual(_generic_request(commands[0]).taskConcurrency, burst_desired)
+
 
 class TestWaterfallCapabilities(unittest.TestCase):
     """Capability-aware declarative emission for WaterfallScalingPolicy."""
