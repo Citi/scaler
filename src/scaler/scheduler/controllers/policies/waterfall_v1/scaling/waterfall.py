@@ -84,7 +84,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         generic_desired = self._allocate_generic_desired(
             current_rule, information_snapshot, current_heartbeat, snapshots
         )
-        floor = min(current_rule.min_task_concurrency, current_heartbeat.maxTaskConcurrency)
+        floor = _effective_floor(current_rule, current_heartbeat.maxTaskConcurrency)
         result.append(({}, max(floor, generic_desired)))
 
         for required_keys, capability_dict in self._tasks_by_capability(information_snapshot).items():
@@ -107,12 +107,12 @@ class WaterfallScalingPolicy(ScalingPolicy):
         task_count = len(information_snapshot.tasks)
         if task_count == 0:
             # Drain lower-priority managers first: if any lower-priority manager still has
-            # connected workers, this manager holds its current count rather than draining.
+            # workers above its floor, this manager holds its current count rather than draining.
             for rule in self._rules:
                 if rule.priority <= current_rule.priority:
                     continue
                 snap = snapshots.get(rule.worker_manager_id)
-                if snap is not None and snap.worker_count > 0:
+                if snap is not None and snap.worker_count > _effective_floor(rule, snap.max_task_concurrency):
                     own_snap = snapshots.get(current_rule.worker_manager_id)
                     return own_snap.worker_count if own_snap is not None else 0
             return 0
@@ -198,3 +198,8 @@ class WaterfallScalingPolicy(ScalingPolicy):
             if required_keys not in result:
                 result[required_keys] = dict(task.capabilities)
         return result
+
+
+def _effective_floor(rule: WaterfallRule, max_task_concurrency: int) -> int:
+    """The rule's floor, clamped to the manager's advertised maximum."""
+    return min(rule.min_task_concurrency, max_task_concurrency)
