@@ -296,10 +296,18 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             return
 
         if isinstance(message, UnitShutdown):
-            self.__drain("the worker manager asked")
+            self.__on_shutdown(message)
             return
 
         logger.error(f"{self.identity!r}: unknown message from the worker manager: {message}")
+
+    def __on_shutdown(self, message: UnitShutdown) -> None:
+        if not message.force:
+            self.__drain("the worker manager asked")
+            return
+
+        logger.info(f"{self.identity!r}: the worker manager forced a shutdown, dropping the running task")
+        self.__destroy()
 
     def __on_scheduler_timeout(self) -> None:
         raise TimeoutError("timeout when connect to scheduler, quitting")

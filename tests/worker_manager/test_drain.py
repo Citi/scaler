@@ -153,6 +153,8 @@ class TestCloudDrain(unittest.IsolatedAsyncioTestCase):
                 ready_file_seen_since_start = ready_file_seen_since_start or (stale_removed and exists)
                 await asyncio.sleep(0.01)
 
+            # A child with no unit quits as soon as it is told to: it may remove the file and quit between two polls.
+            stale_removed = stale_removed or not os.path.exists(ready_file)
             self.assertTrue(stale_removed)
             self.assertFalse(ready_file_seen_since_start)
             await loop.run_in_executor(None, child_process.join, TIMEOUT_SECONDS)

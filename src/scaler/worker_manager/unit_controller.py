@@ -74,6 +74,7 @@ class UnitController(Looper, Reporter):
         self._drain_timeout_seconds = drain_timeout_seconds
         self._restart_backoff_seconds = restart_backoff_seconds
         self._shutting_down = False
+        self._force_shutdown = False  # set only with _shutting_down: the units drop their running tasks
 
         self._desired_task_concurrency = 0
         self._units: Dict[str, Unit] = {}  # in creation order
@@ -82,6 +83,7 @@ class UnitController(Looper, Reporter):
         # collected mid-flight and leak the resource it was creating.
         self._tasks: Set[asyncio.Task] = set()
         self._destroying_unit_ids: Set[str] = set()
+        self._shut_down = asyncio.Event()  # set once is_shut_down() holds
 
         self._consecutive_unit_losses = 0
         self._create_not_before = 0.0  # time.monotonic()
@@ -131,20 +133,37 @@ class UnitController(Looper, Reporter):
         unit = self._units.get(unit_id)
         return unit.desired_task_concurrency if unit is not None else 0
 
-    def begin_shutdown(self) -> None:
-        """Drain every unit, create no more, and ignore new desired counts. Calling it again does nothing."""
-        if self._shutting_down:
+    def begin_shutdown(self, force: bool) -> None:
+        """Drain every unit, create no more, and ignore new desired counts. With force, the units drop their running
+        tasks. A forced call turns a drain into a forced shutdown; any other repeated call does nothing."""
+        if self._shutting_down and (self._force_shutdown or not force):
             return
 
-        logger.info(f"shutting down: draining {len(self._units)} unit(s)")
+        logger.info(f"shutting down{' by force' if force else ''}: draining {len(self._units)} unit(s)")
         self._shutting_down = True
+        self._force_shutdown = force
+        self._set_if_shut_down()
 
     def is_shutting_down(self) -> bool:
         return self._shutting_down
 
+    def is_force_shutdown(self) -> bool:
+        return self._force_shutdown
+
     def is_shut_down(self) -> bool:
         """True once shutdown has begun, no unit remains, and no provisioner call is in flight."""
         return self._shutting_down and not self._units and not self._tasks
+
+    async def wait_until_shut_down(self) -> None:
+        await self._shut_down.wait()
+
+    def get_connected_unit_ids(self) -> List[str]:
+        """The units that sent a heartbeat and are not being destroyed: the ones a message can reach."""
+        return [
+            unit.unit_id
+            for unit in self._units_in(UnitState.pending, UnitState.active, UnitState.draining)
+            if unit.last_heartbeat is not None
+        ]
 
     def get_status(self) -> UnitControllerStatus:
         active = self._units_in(UnitState.active)
@@ -310,6 +329,11 @@ class UnitController(Looper, Reporter):
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         task.add_done_callback(on_done)
+        task.add_done_callback(lambda _: self._set_if_shut_down())
+
+    def _set_if_shut_down(self) -> None:
+        if self.is_shut_down():
+            self._shut_down.set()
 
     def _select_units_to_shed(self, count: int) -> List[Unit]:
         """The `count` active units with the lowest occupancy.

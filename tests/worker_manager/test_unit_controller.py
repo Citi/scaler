@@ -267,7 +267,7 @@ class TestUnitController(unittest.IsolatedAsyncioTestCase):
 
     async def test_shutdown_drains_every_unit_and_ignores_new_counts(self) -> None:
         units = await self.__active_units(2)
-        self.controller.begin_shutdown()
+        self.controller.begin_shutdown(force=False)
         self.controller.set_desired_task_concurrency(10 * TASK_CONCURRENCY_PER_UNIT)
         await self.__tick(self.controller)
         self.assertEqual(self.__states(self.controller), {UnitState.draining: 2})

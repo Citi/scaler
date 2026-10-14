@@ -1,6 +1,7 @@
 import logging
 import os
 import tempfile
+import time
 import unittest
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -13,6 +14,7 @@ from scaler.protocol.capnp import (
     Task,
     TaskCancel,
     TaskCapability,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
@@ -24,6 +26,7 @@ from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
+from scaler.worker_manager.unit_controller import Unit, UnitState
 from tests.utility.utility import logging_test_name
 
 
@@ -97,6 +100,25 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
 
                 self.runner._unit_controller.on_unit_disconnect.assert_called_once_with("unit-1")
 
+    async def test_a_forced_shutdown_tells_each_connected_unit_at_once(self) -> None:
+        """A forced UnitShutdown from the parent reaches every unit that sent a heartbeat, before its next one."""
+        unit_ids = ["unit-a", "unit-b"]
+        for unit_id in unit_ids:
+            self.runner._unit_controller._units[unit_id] = Unit(
+                unit_id=unit_id, handle=unit_id, state=UnitState.active, state_since=time.monotonic()
+            )
+            self.runner._unit_controller.on_unit_heartbeat(unit_id, active_task_concurrency=1, occupancy=0)
+        binder = AsyncMock()
+        self.runner._binder_children = binder
+
+        await self.runner._on_receive_parent(UnitShutdown(force=True))
+
+        sent = {call.args[0]: call.args[1] for call in binder.send.call_args_list}
+        self.assertEqual(set(sent), {unit_id.encode() for unit_id in unit_ids})
+        for message in sent.values():
+            self.assertIsInstance(message, UnitShutdown)
+            self.assertTrue(message.force)
+
 
 class TestWorkerManagerReadyFile(unittest.IsolatedAsyncioTestCase):
     def setUp(self) -> None:
@@ -131,7 +153,7 @@ class TestWorkerManagerReadyFile(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(ready.read().strip(), str(os.getpid()))
 
     async def test_a_command_after_shutdown_began_writes_no_ready_file(self) -> None:
-        self.runner._unit_controller.begin_shutdown()
+        self.runner._unit_controller.begin_shutdown(force=False)
         await self.__command(2)
         self.assertFalse(os.path.exists(self.ready_file))
 

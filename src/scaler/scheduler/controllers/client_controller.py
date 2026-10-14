@@ -134,7 +134,7 @@ class VanillaClientController(ClientController, Looper, Reporter):
         if self._config_controller.get_config("protected"):
             return
 
-        self._worker_manager_controller.on_client_shutdown()
+        await self._worker_manager_controller.begin_shutdown(force=False)
 
     async def routine(self):
         await self.__routine_cleanup_clients()

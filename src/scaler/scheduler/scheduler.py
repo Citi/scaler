@@ -125,6 +125,11 @@ class Scheduler:
         assert self._address is not None
         return self._address
 
+    async def force_shutdown(self) -> None:
+        """Stop the cluster through its worker managers, the workers dropping their running tasks, then quit."""
+        logger.info(f"{self.__class__.__name__}: forced shutdown, stopping every worker manager")
+        await self._worker_manager_controller.begin_shutdown(force=True)
+
     async def __initialize_network(self) -> None:
         # Scheduler's binder
         assert self._address is not None

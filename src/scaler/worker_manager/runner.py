@@ -156,7 +156,10 @@ class WorkerManagerRunner:
             create_async_loop_routine(self._binder_children.routine, 0, swallow_routine_errors=True),
             create_async_loop_routine(self._send_heartbeat, self._heartbeat_interval_seconds),
             create_async_loop_routine(self._parent_timeout_manager.routine, 1),
-            create_async_loop_routine(self._routine, UNIT_CONTROLLER_INTERVAL_SECONDS, swallow_routine_errors=True),
+            create_async_loop_routine(
+                self._unit_controller.routine, UNIT_CONTROLLER_INTERVAL_SECONDS, swallow_routine_errors=True
+            ),
+            self._quit_when_shut_down(),
         ]
 
         try:
@@ -181,16 +184,25 @@ class WorkerManagerRunner:
             if e.code != ymq.ErrorCode.ConnectorSocketClosedByRemoteEnd:
                 raise
             logger.warning(f"{self._ident!r}: the parent closed the link, draining the fleet")
-            self._unit_controller.begin_shutdown()
+            await self._begin_shutdown(force=False)
 
     def _on_parent_timeout(self) -> None:
         logger.warning(f"{self._ident!r}: no heartbeat echo from the parent, draining the fleet")
-        self._unit_controller.begin_shutdown()
+        self._unit_controller.begin_shutdown(force=False)
 
-    async def _routine(self) -> None:
+    async def _begin_shutdown(self, force: bool) -> None:
+        """Drain the fleet, telling each reachable unit at once rather than on its next heartbeat."""
+        self._unit_controller.begin_shutdown(force)
         await self._unit_controller.routine()
-        if not self._unit_controller.is_shut_down():
-            return
+
+        for unit_id in self._unit_controller.get_connected_unit_ids():
+            if self._unit_controller.is_unit_serving(unit_id):
+                continue
+
+            await self._binder_children.send(unit_id.encode(), self._unit_shutdown(), detached=True)
+
+    async def _quit_when_shut_down(self) -> None:
+        await self._unit_controller.wait_until_shut_down()
 
         logger.info(f"{self._ident!r}: the fleet is gone, quitting")
         # Before the notification: the parent may tear the resource down as soon as it arrives.
@@ -215,7 +227,7 @@ class WorkerManagerRunner:
             elif isinstance(message, WorkerManagerHeartbeatEcho):
                 self._parent_timeout_manager.update_last_seen_time()
             elif isinstance(message, UnitShutdown):
-                self._unit_controller.begin_shutdown()
+                await self._begin_shutdown(force=message.force)
             else:
                 logger.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
         except Exception:
@@ -257,7 +269,7 @@ class WorkerManagerRunner:
             )
             await self._binder_children.send(source, WorkerHeartbeatEcho(), detached=True)
             if not self._unit_controller.is_unit_serving(unit_id):
-                await self._binder_children.send(source, UnitShutdown(), detached=True)
+                await self._binder_children.send(source, self._unit_shutdown(), detached=True)
             return
 
         if isinstance(message, WorkerManagerHeartbeat):
@@ -268,13 +280,17 @@ class WorkerManagerRunner:
 
         if isinstance(message, (WorkerDisconnectNotification, WorkerManagerDisconnectNotification)):
             self._unit_controller.on_unit_disconnect(unit_id)
+            await self._unit_controller.routine()  # reap the unit now, not on the next routine
             return
 
         logger.error(f"unknown message from unit {unit_id!r}: {message}")
 
+    def _unit_shutdown(self) -> UnitShutdown:
+        return UnitShutdown(force=self._unit_controller.is_force_shutdown())
+
     def _instruction_for(self, unit_id: str) -> BaseMessage:
         if not self._unit_controller.is_unit_serving(unit_id):
-            return UnitShutdown()
+            return self._unit_shutdown()
 
         desired = self._unit_controller.get_unit_desired_task_concurrency(unit_id)
         return WorkerManagerCommand(

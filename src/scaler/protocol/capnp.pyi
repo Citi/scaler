@@ -278,7 +278,10 @@ class ObjectInstruction(BaseMessage):
         clear = 2
 
 class WorkerDisconnectNotification(BaseMessage): ...
-class UnitShutdown(BaseMessage): ...
+
+class UnitShutdown(BaseMessage):
+    force: bool
+
 class WorkerManagerDisconnectNotification(BaseMessage): ...
 
 class ClientDisconnect(BaseMessage):

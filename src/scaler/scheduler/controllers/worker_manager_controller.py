@@ -57,6 +57,7 @@ class WorkerManagerController(Looper, Reporter):
         self._manager_units: Dict[bytes, _ManagerUnits] = {}
 
         self._shutting_down = False
+        self._force_shutdown = False  # set only with _shutting_down: the workers drop their running tasks
 
     def register(self, binder: AsyncBinder, task_controller: TaskController, worker_controller: WorkerController):
         self._binder = binder
@@ -88,7 +89,7 @@ class WorkerManagerController(Looper, Reporter):
 
         if self._shutting_down:
             # Every heartbeat, not once: a manager that connects during the shutdown must drain too.
-            await self._binder.send(source, UnitShutdown(), detached=True)
+            await self._binder.send(source, UnitShutdown(force=self._force_shutdown), detached=True)
             return
 
         information_snapshot = self._build_snapshot()
@@ -104,17 +105,25 @@ class WorkerManagerController(Looper, Reporter):
 
         self._last_desired_total[source] = _sum_desired_for_manager(commands, heartbeat.capabilities)
 
-    def on_client_shutdown(self) -> None:
-        """Drain every worker manager, then quit. The scheduler stays up to cancel the queued tasks of draining
-        workers, and owns no worker's lifecycle."""
+    async def begin_shutdown(self, force: bool) -> None:
+        """Drain every worker manager, then quit. With force, the workers drop their running tasks. The scheduler
+        stays up to cancel the queued tasks of draining workers, and owns no worker's lifecycle."""
         self._shutting_down = True
+        self._force_shutdown = self._force_shutdown or force
+
+        # At once rather than on each manager's next heartbeat, which keeps repeating it.
+        for source in self._manager_alive_since:
+            await self._binder.send(source, UnitShutdown(force=self._force_shutdown), detached=True)
 
     async def on_disconnect_notification(self, source: bytes) -> None:
         await self._disconnect_manager(source)
+        self._quit_if_shut_down()
 
     async def routine(self):
         await self._clean_managers()
+        self._quit_if_shut_down()
 
+    def _quit_if_shut_down(self) -> None:
         if self._shutting_down and not self._manager_alive_since:
             raise ClientShutdownException("every worker manager is gone, quitting")
 

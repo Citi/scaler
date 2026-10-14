@@ -26,6 +26,8 @@ The fastest way to get going is with ``SchedulerClusterCombo``, which starts a s
 
        cluster.shutdown()
 
+``cluster.shutdown()`` stops the workers at once, dropping their running tasks, then the worker manager, then the scheduler.
+
 Quick Start (CLI — Static Scaling)
 -----------------------------------
 
