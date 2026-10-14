@@ -148,7 +148,7 @@ With ``--ready-file``, the manager marks itself in service with a file that hold
 
 1. On start, the manager removes the file, in case a killed manager left it behind.
 2. On the first ``WorkerManagerCommand`` from its parent, the manager writes the file, also for a desired task concurrency of zero.
-3. On ``WorkerManagerShutdown``, the file stays while the workers drain.
+3. On ``UnitShutdown``, the file stays while the workers drain.
 4. Once the last worker is gone, the manager removes the file, then sends ``WorkerManagerDisconnectNotification`` to its parent.
 5. On any other exit, the manager removes the file.
 

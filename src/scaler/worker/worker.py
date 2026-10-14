@@ -26,9 +26,9 @@ from scaler.protocol.capnp import (
     TaskCancel,
     TaskLog,
     TaskResult,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeatEcho,
-    WorkerShutdown,
 )
 from scaler.utility.event_loop import create_async_loop_routine, register_event_loop, run_task_forever
 from scaler.utility.exceptions import ObjectStorageException
@@ -295,7 +295,7 @@ class Worker(multiprocessing.get_context("spawn").Process):  # type: ignore
             self._manager_timeout_manager.update_last_seen_time()
             return
 
-        if isinstance(message, WorkerShutdown):
+        if isinstance(message, UnitShutdown):
             self.__drain("the worker manager asked")
             return
 

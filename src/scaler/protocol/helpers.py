@@ -77,8 +77,7 @@ PROTOCOL: bidict.bidict[str, type] = bidict.bidict(
         "informationRequest": capnp.InformationRequest,
         "informationResponse": capnp.InformationResponse,
         "workerDisconnectNotification": capnp.WorkerDisconnectNotification,
-        "workerShutdown": capnp.WorkerShutdown,
-        "workerManagerShutdown": capnp.WorkerManagerShutdown,
+        "unitShutdown": capnp.UnitShutdown,
         "workerManagerDisconnectNotification": capnp.WorkerManagerDisconnectNotification,
     }
 )

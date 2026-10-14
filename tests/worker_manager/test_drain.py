@@ -14,11 +14,11 @@ from scaler.config.types.address import AddressConfig
 from scaler.io.network_backends import get_network_backend_from_env
 from scaler.protocol.capnp import (
     BaseMessage,
+    UnitShutdown,
     WorkerManagerCommand,
     WorkerManagerDisconnectNotification,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
-    WorkerManagerShutdown,
 )
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.network_util import get_available_tcp_port
@@ -71,7 +71,7 @@ class _FakeParent:
         assert isinstance(message, WorkerManagerHeartbeat)
         await self._binder.send(source, WorkerManagerHeartbeatEcho(), detached=True)
         if self.shutdown_requested:
-            await self._binder.send(source, WorkerManagerShutdown(), detached=True)
+            await self._binder.send(source, UnitShutdown(), detached=True)
             return
 
         request = WorkerManagerCommand.DesiredTaskConcurrencyRequest(taskConcurrency=1, capabilities=[])
@@ -86,7 +86,7 @@ class TestCloudDrain(unittest.IsolatedAsyncioTestCase):
         logging_test_name(self)
 
     async def test_a_child_manager_drains_its_running_task_before_it_exits(self) -> None:
-        """WorkerManagerShutdown lets the running task finish once, then the child reports its fleet gone."""
+        """UnitShutdown lets the running task finish once, then the child reports its fleet gone."""
         combo = SchedulerClusterCombo(n_workers=0)
         ready_directory = tempfile.TemporaryDirectory()
         ready_file = os.path.join(ready_directory.name, "ready")

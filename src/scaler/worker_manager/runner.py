@@ -18,6 +18,7 @@ from scaler.io.network_backends import get_network_backend_from_env
 from scaler.io.utility import generate_identity_from_name
 from scaler.protocol.capnp import (
     BaseMessage,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
@@ -25,8 +26,6 @@ from scaler.protocol.capnp import (
     WorkerManagerDisconnectNotification,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
-    WorkerManagerShutdown,
-    WorkerShutdown,
 )
 from scaler.protocol.helpers import dict_to_capabilities
 from scaler.utility.event_loop import create_async_loop_routine, run_task_forever
@@ -215,7 +214,7 @@ class WorkerManagerRunner:
                 await self._handle_command(message)
             elif isinstance(message, WorkerManagerHeartbeatEcho):
                 self._parent_timeout_manager.update_last_seen_time()
-            elif isinstance(message, WorkerManagerShutdown):
+            elif isinstance(message, UnitShutdown):
                 self._unit_controller.begin_shutdown()
             else:
                 logger.warning(f"Unknown action: received unrecognized message type {type(message).__name__!r}")
@@ -258,7 +257,7 @@ class WorkerManagerRunner:
             )
             await self._binder_children.send(source, WorkerHeartbeatEcho(), detached=True)
             if not self._unit_controller.is_unit_serving(unit_id):
-                await self._binder_children.send(source, WorkerShutdown(), detached=True)
+                await self._binder_children.send(source, UnitShutdown(), detached=True)
             return
 
         if isinstance(message, WorkerManagerHeartbeat):
@@ -275,7 +274,7 @@ class WorkerManagerRunner:
 
     def _instruction_for(self, unit_id: str) -> BaseMessage:
         if not self._unit_controller.is_unit_serving(unit_id):
-            return WorkerManagerShutdown()
+            return UnitShutdown()
 
         desired = self._unit_controller.get_unit_desired_task_concurrency(unit_id)
         return WorkerManagerCommand(

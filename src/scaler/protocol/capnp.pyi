@@ -278,8 +278,7 @@ class ObjectInstruction(BaseMessage):
         clear = 2
 
 class WorkerDisconnectNotification(BaseMessage): ...
-class WorkerShutdown(BaseMessage): ...
-class WorkerManagerShutdown(BaseMessage): ...
+class UnitShutdown(BaseMessage): ...
 class WorkerManagerDisconnectNotification(BaseMessage): ...
 
 class ClientDisconnect(BaseMessage):
@@ -382,8 +381,7 @@ class Message(CapnpUnionStruct):
     workerManagerHeartbeatEcho: WorkerManagerHeartbeatEcho
     workerManagerCommand: WorkerManagerCommand
     workerDisconnectNotification: WorkerDisconnectNotification
-    workerShutdown: WorkerShutdown
-    workerManagerShutdown: WorkerManagerShutdown
+    unitShutdown: UnitShutdown
     workerManagerDisconnectNotification: WorkerManagerDisconnectNotification
 
 class ObjectRequestHeader(CapnpStruct):

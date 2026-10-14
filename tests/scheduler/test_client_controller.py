@@ -4,7 +4,7 @@ from typing import List, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
 from scaler.io.utility import deserialize, serialize
-from scaler.protocol.capnp import ClientDisconnect, TaskCancel, WorkerManagerHeartbeat, WorkerManagerShutdown
+from scaler.protocol.capnp import ClientDisconnect, TaskCancel, UnitShutdown, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.client_controller import VanillaClientController
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
 from scaler.utility.exceptions import ClientShutdownException
@@ -96,9 +96,7 @@ class TestClientControllerShutdown(unittest.IsolatedAsyncioTestCase):
             assert isinstance(heartbeat, WorkerManagerHeartbeat)
             await worker_manager_controller.on_heartbeat(source, heartbeat)
 
-        shutdowns = [
-            call.args[0] for call in binder.send.call_args_list if isinstance(call.args[1], WorkerManagerShutdown)
-        ]
+        shutdowns = [call.args[0] for call in binder.send.call_args_list if isinstance(call.args[1], UnitShutdown)]
         self.assertEqual(shutdowns, sources)
 
         await worker_manager_controller.on_disconnect_notification(b"manager-a")

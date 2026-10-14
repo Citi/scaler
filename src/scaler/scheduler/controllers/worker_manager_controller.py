@@ -7,10 +7,10 @@ from scaler.config.defaults import DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS
 from scaler.io.mixins import AsyncBinder
 from scaler.protocol.capnp import (
     ScalingManagerStatus,
+    UnitShutdown,
     WorkerManagerCommand,
     WorkerManagerHeartbeat,
     WorkerManagerHeartbeatEcho,
-    WorkerManagerShutdown,
 )
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
@@ -88,7 +88,7 @@ class WorkerManagerController(Looper, Reporter):
 
         if self._shutting_down:
             # Every heartbeat, not once: a manager that connects during the shutdown must drain too.
-            await self._binder.send(source, WorkerManagerShutdown(), detached=True)
+            await self._binder.send(source, UnitShutdown(), detached=True)
             return
 
         information_snapshot = self._build_snapshot()

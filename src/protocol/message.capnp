@@ -134,12 +134,9 @@ struct ObjectInstruction {
 struct WorkerDisconnectNotification {
 }
 
-# Manager -> worker: finish the running task, take no new one, then exit.
-struct WorkerShutdown {
-}
-
-# Scheduler or parent manager -> child manager: drain the whole fleet, then exit.
-struct WorkerManagerShutdown {
+# Parent -> unit (scheduler -> worker manager, worker manager -> worker or child manager): finish the running tasks,
+# take no new one, then exit.
+struct UnitShutdown {
 }
 
 # Child manager -> scheduler or parent manager: the fleet is gone and the child is about to exit.
@@ -273,8 +270,7 @@ struct Message {
 
         workerDisconnectNotification @26 :WorkerDisconnectNotification;
 
-        workerShutdown @27 :WorkerShutdown;
-        workerManagerShutdown @28 :WorkerManagerShutdown;
-        workerManagerDisconnectNotification @29 :WorkerManagerDisconnectNotification;
+        unitShutdown @27 :UnitShutdown;
+        workerManagerDisconnectNotification @28 :WorkerManagerDisconnectNotification;
     }
 }
