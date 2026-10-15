@@ -2,6 +2,7 @@ import logging
 from math import ceil
 from typing import Dict, List, Tuple
 
+from scaler.config.constants import VANILLA_LOWER_TASK_RATIO, VANILLA_UPPER_TASK_RATIO
 from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds, WorkerManagerSnapshot
@@ -22,8 +23,6 @@ class VanillaScalingPolicy(ScalingPolicy):
 
     def __init__(self, bounds: Dict[bytes, WorkerManagerBounds]):
         self._bounds = bounds
-        self._lower_task_ratio = 1
-        self._upper_task_ratio = 10
         self._logged_desired_by_manager: Dict[bytes, int] = {}
 
     def get_scaling_commands(
@@ -55,45 +54,16 @@ class VanillaScalingPolicy(ScalingPolicy):
         current = len(managed_worker_ids)
         task_count = len(information_snapshot.tasks)
         worker_count = len(information_snapshot.workers)
+        worker_count_by_manager = {
+            other_id: snapshot.worker_count for other_id, snapshot in worker_manager_snapshots.items()
+        }
 
-        if worker_count == 0:
-            desired = current + 1 if task_count > 0 else current
-        else:
-            task_ratio = task_count / worker_count
-            if task_ratio > self._upper_task_ratio:
-                desired = current + 1
-            elif task_ratio < self._lower_task_ratio:
-                needed = 0 if task_count == 0 else max(1, ceil(task_count / self._upper_task_ratio))
-                desired = max(0, needed - self._floor_held_worker_count(manager_id, worker_manager_snapshots))
-            else:
-                desired = current
-
-        desired = self._clamp_to_bounds(manager_id, worker_manager_heartbeat.maxTaskConcurrency, desired)
+        floor_held = floor_held_worker_count(manager_id, self._bounds, worker_count_by_manager)
+        desired = ratio_target(current, task_count, worker_count, floor_held)
+        bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
+        desired = clamp_to_bounds(desired, bounds, worker_manager_heartbeat.maxTaskConcurrency)
         self.__log_decision(manager_id, task_count, worker_count, current, desired)
         return desired
-
-    def _clamp_to_bounds(self, manager_id: bytes, advertised_max_task_concurrency: int, desired: int) -> int:
-        """Keep `desired` within the manager's bounds, whose cap never exceeds the manager's advertised maximum."""
-        bounds = self._bounds.get(manager_id, WorkerManagerBounds(max_task_concurrency=None))
-        caps = [cap for cap in (bounds.max_task_concurrency, advertised_max_task_concurrency) if cap not in (None, -1)]
-        if not caps:
-            return max(bounds.min_task_concurrency, desired)
-
-        cap = min(caps)
-        return max(min(bounds.min_task_concurrency, cap), min(desired, cap))
-
-    def _floor_held_worker_count(
-        self, manager_id: bytes, worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot]
-    ) -> int:
-        """The connected workers that other managers hold at their floors.
-
-        A manager never drops below its floor, so these workers are safe to count as supply. Workers above a floor
-        are not: two scaling managers sized from one snapshot would each subtract the other and drain together."""
-        return sum(
-            min(snapshot.worker_count, self._bounds[other_id].min_task_concurrency)
-            for other_id, snapshot in worker_manager_snapshots.items()
-            if other_id != manager_id and other_id in self._bounds
-        )
 
     def __log_decision(self, manager_id: bytes, task_count: int, worker_count: int, current: int, desired: int) -> None:
         """Logs a request to change a manager's worker count, once per run of that same request.
@@ -113,3 +83,42 @@ class VanillaScalingPolicy(ScalingPolicy):
             f"scaling {manager_id!r}: tasks={task_count}, workers={worker_count}, current={current} -> "
             f"desired={desired}"
         )
+
+
+def ratio_target(current: int, task_count: int, worker_count: int, floor_held: int) -> int:
+    """The count the task-to-worker ratio asks of a manager that holds `current` workers, before its bounds.
+
+    Shrinking aims at one worker per VANILLA_UPPER_TASK_RATIO tasks, less the `floor_held` other managers keep."""
+    if worker_count == 0:
+        return current + 1 if task_count > 0 else current
+
+    task_ratio = task_count / worker_count
+    if task_ratio > VANILLA_UPPER_TASK_RATIO:
+        return current + 1
+    if task_ratio < VANILLA_LOWER_TASK_RATIO:
+        return max(0, ceil(task_count / VANILLA_UPPER_TASK_RATIO) - floor_held)
+    return current
+
+
+def clamp_to_bounds(desired: int, bounds: WorkerManagerBounds, advertised_max_task_concurrency: int) -> int:
+    """Keep `desired` within `bounds`, whose cap never exceeds the manager's advertised maximum (-1: none)."""
+    caps = [cap for cap in (bounds.max_task_concurrency, advertised_max_task_concurrency) if cap not in (None, -1)]
+    if not caps:
+        return max(bounds.min_task_concurrency, desired)
+
+    cap = min(caps)
+    return max(min(bounds.min_task_concurrency, cap), min(desired, cap))
+
+
+def floor_held_worker_count(
+    manager_id: bytes, bounds_by_manager: Dict[bytes, WorkerManagerBounds], worker_count_by_manager: Dict[bytes, int]
+) -> int:
+    """The connected workers that managers other than `manager_id` hold at their floors.
+
+    A manager never drops below its floor, so these workers are safe to count as supply. Workers above a floor
+    are not: two scaling managers sized from one snapshot would each subtract the other and drain together."""
+    return sum(
+        min(worker_count, bounds_by_manager[other_id].min_task_concurrency)
+        for other_id, worker_count in worker_count_by_manager.items()
+        if other_id != manager_id and other_id in bounds_by_manager
+    )
