@@ -8,6 +8,13 @@ from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy, parse_waterfall_rules
+from scaler.scheduler.policies.scaling.waterfall.policy import (
+    TASKS_PER_WORKER,
+    allocate,
+    lower_priority_tier_above_floor,
+    target_worker_count,
+)
+from scaler.scheduler.policies.scaling.waterfall.types import Tier
 from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -316,61 +323,76 @@ class TestWaterfallScalingPolicy(unittest.TestCase):
         self.assertEqual(_generic_request(commands_b[0]).taskConcurrency, 0)
 
 
+class TestTargetWorkerCount(unittest.TestCase):
+    def test_one_worker_per_ten_tasks_rounded_up(self):
+        for task_count, target in ((0, 0), (1, 1), (10, 1), (11, 2), (200, 20)):
+            with self.subTest(task_count=task_count):
+                self.assertEqual(target_worker_count(task_count), target)
+
+
+class TestAllocate(unittest.TestCase):
+    """Floors count as supply first; the rest of the target fills tiers above their floors in priority order."""
+
+    def test_a_floor_holds_with_no_demand(self):
+        tiers = [_tier(b"native", cap=8, floor=8), _tier(b"cloud", cap=100)]
+        self.assertEqual(allocate(0, tiers), {b"native": 8, b"cloud": 0})
+
+    def test_demand_under_a_floor_stays_on_the_floor_tier(self):
+        tiers = [_tier(b"native", cap=8, floor=8), _tier(b"cloud", cap=100)]
+        self.assertEqual(allocate(5, tiers), {b"native": 8, b"cloud": 0})
+
+    def test_demand_above_a_full_tier_spills_to_the_next(self):
+        tiers = [_tier(b"native", cap=8, floor=8), _tier(b"cloud", cap=100)]
+        self.assertEqual(allocate(20, tiers), {b"native": 8, b"cloud": 12})
+
+    def test_a_floor_below_the_cap_is_a_minimum(self):
+        self.assertEqual(allocate(10, [_tier(b"native", cap=20, floor=2)]), {b"native": 10})
+
+    def test_a_floor_on_a_lower_tier_counts_as_supply_first(self):
+        tiers = [_tier(b"burst", cap=20), _tier(b"warm", cap=20, floor=8)]
+        for target, burst, warm in ((5, 0, 8), (20, 12, 8), (30, 20, 10), (50, 20, 20)):
+            with self.subTest(target=target):
+                self.assertEqual(allocate(target, tiers), {b"burst": burst, b"warm": warm})
+
+
+class TestDrainOrder(unittest.TestCase):
+    def test_a_tier_holds_while_a_lower_priority_tier_is_above_its_floor(self):
+        warm_draining = _tier(b"warm", cap=8, floor=4, worker_count=6, priority=2)
+        warm_at_floor = _tier(b"warm", cap=8, floor=4, worker_count=4, priority=2)
+        burst = _tier(b"burst", cap=20, worker_count=20)
+        self.assertTrue(lower_priority_tier_above_floor(burst, [burst, warm_draining]))
+        self.assertFalse(lower_priority_tier_above_floor(burst, [burst, warm_at_floor]))
+
+    def test_a_tier_of_the_same_priority_does_not_hold_it(self):
+        burst = _tier(b"burst", cap=20, worker_count=20)
+        peer = _tier(b"peer", cap=8, worker_count=6)
+        self.assertFalse(lower_priority_tier_above_floor(burst, [burst, peer]))
+
+
 class TestWaterfallFloor(unittest.TestCase):
-    """A rule's min_task_concurrency holds its manager at a floor while lower tiers scale on demand."""
+    """The floor reaches a manager through the policy's heartbeat and snapshot handling."""
 
     def setUp(self):
         setup_logger()
-        self.policy = WaterfallScalingPolicy(
+
+    def test_spill_through_the_policy(self):
+        policy = WaterfallScalingPolicy(
             [
                 WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=8, min_task_concurrency=8),
                 WaterfallRule(priority=2, worker_manager_id=b"cloud", max_task_concurrency=100),
             ]
         )
+        managers = {b"native": 8, b"cloud": 100}
+        desired = _desired_by_manager(policy, task_count=20 * TASKS_PER_WORKER, advertised_max_by_manager=managers)
+        self.assertEqual(desired, {b"native": 8, b"cloud": 12})
 
-    def _desired(self, manager_id: bytes, task_count: int, native_workers: int, max_task_concurrency: int = 100):
-        snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
-        manager_snapshots = {
-            b"native": _create_manager_snapshot(b"native", max_task_concurrency=8, worker_count=native_workers),
-            b"cloud": _create_manager_snapshot(b"cloud", max_task_concurrency=100, worker_count=0),
-        }
-        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=max_task_concurrency)
-        commands = self.policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
-        return _generic_request(commands[0]).taskConcurrency
-
-    def test_floor_holds_with_no_tasks(self):
-        """A manager with a floor keeps it when there is no work."""
-        self.assertEqual(self._desired(b"native", task_count=0, native_workers=8, max_task_concurrency=8), 8)
-        self.assertEqual(self._desired(b"cloud", task_count=0, native_workers=8), 0)
-
-    def test_demand_below_floor_stays_on_the_floor_tier(self):
-        """Demand that fits under the floor does not reach the next tier."""
-        self.assertEqual(self._desired(b"native", task_count=50, native_workers=8, max_task_concurrency=8), 8)
-        self.assertEqual(self._desired(b"cloud", task_count=50, native_workers=8), 0)
-
-    def test_demand_above_the_floor_spills_to_the_next_tier(self):
-        """Demand beyond the floor tier's cap overflows to the next tier as before."""
-        self.assertEqual(self._desired(b"native", task_count=200, native_workers=8, max_task_concurrency=8), 8)
-        self.assertEqual(self._desired(b"cloud", task_count=200, native_workers=8), 12)
-
-    def test_floor_is_clamped_to_the_advertised_maximum(self):
-        """A floor above the manager's advertised maximum asks for that maximum."""
-        self.assertEqual(self._desired(b"native", task_count=0, native_workers=0, max_task_concurrency=3), 3)
-
-    def test_demand_above_the_floor_raises_the_target(self):
-        """A floor below the cap is a minimum, not a fixed count."""
+    def test_a_floor_is_clamped_to_the_advertised_maximum(self):
         policy = WaterfallScalingPolicy(
-            [WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=20, min_task_concurrency=2)]
+            [WaterfallRule(priority=1, worker_manager_id=b"native", max_task_concurrency=8, min_task_concurrency=8)]
         )
-        snapshot = InformationSnapshot(tasks=_create_tasks(100), workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"native", max_task_concurrency=20)
-        manager_snapshots = {b"native": _create_manager_snapshot(b"native", max_task_concurrency=20, worker_count=2)}
+        self.assertEqual(_desired_by_manager(policy, 0, {b"native": 3}), {b"native": 3})
 
-        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
-
-        self.assertEqual(_generic_request(commands[0]).taskConcurrency, 10)
-
-    def test_floor_does_not_apply_to_capability_requests(self):
+    def test_a_floor_does_not_apply_to_capability_requests(self):
         """Only the generic request carries the floor; a capability request stays driven by demand."""
         policy = WaterfallScalingPolicy(
             [WaterfallRule(priority=1, worker_manager_id=b"gpu", max_task_concurrency=8, min_task_concurrency=4)]
@@ -383,50 +405,6 @@ class TestWaterfallFloor(unittest.TestCase):
 
         self.assertEqual(_generic_request(commands[0]).taskConcurrency, 4)
         self.assertEqual(_capability_requests(commands[0]), [({"gpu": 1}, 1)])
-
-    def test_a_tier_above_a_floor_tier_drains_once_the_floor_tier_is_at_its_floor(self):
-        """With no tasks, a higher tier waits for a lower tier to drain to its floor, not to zero."""
-        policy = WaterfallScalingPolicy(
-            [
-                WaterfallRule(priority=1, worker_manager_id=b"burst", max_task_concurrency=20),
-                WaterfallRule(priority=2, worker_manager_id=b"warm", max_task_concurrency=8, min_task_concurrency=4),
-            ]
-        )
-        snapshot = InformationSnapshot(tasks={}, workers={})
-        heartbeat = _create_worker_manager_heartbeat(b"burst", max_task_concurrency=20)
-
-        for warm_workers, burst_desired in ((6, 20), (4, 0)):
-            with self.subTest(warm_workers=warm_workers):
-                manager_snapshots = {
-                    b"burst": _create_manager_snapshot(b"burst", max_task_concurrency=20, worker_count=20),
-                    b"warm": _create_manager_snapshot(b"warm", max_task_concurrency=8, worker_count=warm_workers),
-                }
-                commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
-                self.assertEqual(_generic_request(commands[0]).taskConcurrency, burst_desired)
-
-    def test_a_floor_on_a_lower_tier_counts_as_supply_first(self):
-        """Demand that a lower tier's floor covers starts nothing on a higher tier; only the excess does."""
-        policy = WaterfallScalingPolicy(
-            [
-                WaterfallRule(priority=1, worker_manager_id=b"burst", max_task_concurrency=20),
-                WaterfallRule(priority=2, worker_manager_id=b"warm", max_task_concurrency=20, min_task_concurrency=8),
-            ]
-        )
-        manager_snapshots = {
-            b"burst": _create_manager_snapshot(b"burst", max_task_concurrency=20, worker_count=0),
-            b"warm": _create_manager_snapshot(b"warm", max_task_concurrency=20, worker_count=8),
-        }
-
-        # target = ceil(tasks / 10): the warm floor of 8 covers the target first, the burst tier fills next
-        for task_count, burst_desired, warm_desired in ((50, 0, 8), (200, 12, 8), (300, 20, 10), (500, 20, 20)):
-            with self.subTest(task_count=task_count):
-                snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
-                desired = {}
-                for manager_id in (b"burst", b"warm"):
-                    heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=20)
-                    commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
-                    desired[manager_id] = _generic_request(commands[0]).taskConcurrency
-                self.assertEqual(desired, {b"burst": burst_desired, b"warm": warm_desired})
 
 
 class TestWaterfallCapabilities(unittest.TestCase):
@@ -839,3 +817,24 @@ def _create_workers(
         worker_id = WorkerID(f"worker-{i}".encode())
         workers[worker_id] = _create_mock_worker_heartbeat(queued_tasks, capabilities=capabilities)
     return workers
+
+
+def _tier(worker_manager_id: bytes, cap: int, floor: int = 0, worker_count: int = 0, priority: int = 1) -> Tier:
+    return Tier(worker_manager_id, priority, cap, floor, worker_count)
+
+
+def _desired_by_manager(
+    policy: WaterfallScalingPolicy, task_count: int, advertised_max_by_manager: Dict[bytes, int]
+) -> Dict[bytes, int]:
+    """Ask the policy once per manager, as each manager's heartbeat does, with one consistent cluster view."""
+    snapshot = InformationSnapshot(tasks=_create_tasks(task_count), workers={})
+    manager_snapshots = {
+        manager_id: _create_manager_snapshot(manager_id, max_task_concurrency=advertised_max)
+        for manager_id, advertised_max in advertised_max_by_manager.items()
+    }
+    desired = {}
+    for manager_id, advertised_max in advertised_max_by_manager.items():
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=advertised_max)
+        commands = policy.get_scaling_commands(snapshot, heartbeat, [], manager_snapshots)
+        desired[manager_id] = _generic_request(commands[0]).taskConcurrency
+    return desired
