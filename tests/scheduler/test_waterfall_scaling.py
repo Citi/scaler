@@ -3,6 +3,7 @@ import time
 import unittest
 from typing import Dict, Optional
 
+from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.controllers.policies.library.utility import create_policy
@@ -10,7 +11,6 @@ from scaler.scheduler.controllers.policies.simple_policy.scaling.types import Wo
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.types import Tier, WaterfallRule
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.utility import parse_waterfall_rules
 from scaler.scheduler.controllers.policies.waterfall_v1.scaling.waterfall import (
-    TASKS_PER_WORKER,
     WaterfallScalingPolicy,
     allocate,
     lower_priority_tier_above_floor,
