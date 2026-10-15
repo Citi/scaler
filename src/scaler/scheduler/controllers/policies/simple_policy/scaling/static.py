@@ -9,13 +9,15 @@ from scaler.utility.snapshot import InformationSnapshot
 
 
 class StaticScalingPolicy(ScalingPolicy):
-    """Requests the same task concurrency from every worker manager, whatever the load.
+    """Requests a fixed task concurrency from each worker manager, whatever the load.
 
-    With no count, each manager is asked for the maximum task concurrency it advertises.
+    A manager named in `task_concurrency_by_manager` gets its own count, any other gets `task_concurrency`.
+    With no count, a manager is asked for the maximum task concurrency it advertises, which also caps every count.
     """
 
-    def __init__(self, task_concurrency: Optional[int]):
+    def __init__(self, task_concurrency: Optional[int], task_concurrency_by_manager: Dict[bytes, int]):
         self._task_concurrency = task_concurrency
+        self._task_concurrency_by_manager = task_concurrency_by_manager
 
     def get_scaling_commands(
         self,
@@ -25,8 +27,11 @@ class StaticScalingPolicy(ScalingPolicy):
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         desired = worker_manager_heartbeat.maxTaskConcurrency
-        if self._task_concurrency is not None:
-            desired = min(self._task_concurrency, desired)
+        task_concurrency = self._task_concurrency_by_manager.get(
+            worker_manager_heartbeat.workerManagerID, self._task_concurrency
+        )
+        if task_concurrency is not None:
+            desired = min(task_concurrency, desired)
         return [build_set_desired_command([({}, desired)])]
 
     def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
