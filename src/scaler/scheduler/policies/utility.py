@@ -6,6 +6,7 @@ from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
+from scaler.scheduler.policies.scaling.types import WorkerManagerBounds
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.scheduler.policies.scaling.waterfall import WaterfallScalingPolicy, parse_waterfall_rules
 from scaler.scheduler.policies.types import AllocatePolicyStrategy, PolicyEngineType, ScalingPolicyStrategy
@@ -25,12 +26,13 @@ def create_allocate_policy(allocate_policy_strategy: AllocatePolicyStrategy) -> 
 def create_scaling_policy(scaling: str) -> ScalingPolicy:
     """Build a scaling policy from its `name[:argument]` string, or `name[entries]`.
 
-    Only `static` takes an argument or entries:
+    Only `static` takes an argument, and only `static` and `vanilla` take entries:
 
         static                          every worker manager runs its advertised maximum
         static:4                        every worker manager runs 4, capped at its advertised maximum
         static[native:4, ecs:0]         native runs 4, ecs runs 0, any other runs its advertised maximum
         vanilla                         every worker manager scales between 0 and its advertised maximum
+        vanilla[native:8:8, ecs:100]    native holds 8, ecs scales between 0 and 100
         capability                      scales per capability group
 
     An argument and entries cannot be combined: `static:2[native:4]` is refused."""
@@ -43,7 +45,9 @@ def create_scaling_policy(scaling: str) -> ScalingPolicy:
         case (ScalingPolicyStrategy.STATIC, None, str() as entries):
             return StaticScalingPolicy(None, _parse_static_task_concurrencies(entries))
         case (ScalingPolicyStrategy.VANILLA, None, None):
-            return VanillaScalingPolicy()
+            return VanillaScalingPolicy({})
+        case (ScalingPolicyStrategy.VANILLA, None, str() as entries):
+            return VanillaScalingPolicy(_parse_vanilla_bounds(entries))
         case (ScalingPolicyStrategy.CAPABILITY, None, None):
             return CapabilityScalingPolicy()
         case (_, str(), str()):
@@ -83,6 +87,24 @@ def _parse_static_task_concurrencies(entries: str) -> Dict[bytes, int]:
         worker_manager_id.encode(): _parse_count(task_concurrency, f"static entry {worker_manager_id!r}")
         for worker_manager_id, (task_concurrency,) in fields_by_manager.items()
     }
+
+
+def _parse_vanilla_bounds(entries: str) -> Dict[bytes, WorkerManagerBounds]:
+    """Parse `worker_manager_id:max_task_concurrency[:min_task_concurrency]` entries separated by `,`.
+
+    An empty max_task_concurrency leaves the cap to the manager's advertised maximum."""
+    fields_by_manager = _split_entries(entries, "worker_manager_id:max_task_concurrency[:min_task_concurrency]", (1, 2))
+    bounds: Dict[bytes, WorkerManagerBounds] = {}
+    for worker_manager_id, fields in fields_by_manager.items():
+        context = f"vanilla bounds entry {worker_manager_id!r}"
+        max_task_concurrency = _parse_count(fields[0], context) if fields[0] else None
+        min_task_concurrency = _parse_count(fields[1], context) if len(fields) == 2 else 0
+        if max_task_concurrency is not None and min_task_concurrency > max_task_concurrency:
+            raise ValueError(f"{context}: the minimum exceeds the maximum")
+
+        bounds[worker_manager_id.encode()] = WorkerManagerBounds(max_task_concurrency, min_task_concurrency)
+
+    return bounds
 
 
 def _split_entries(entries: str, entry_format: str, field_counts: Tuple[int, ...]) -> Dict[str, List[str]]:

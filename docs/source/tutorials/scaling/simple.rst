@@ -114,11 +114,12 @@ The ``scaling`` option controls how worker capacity grows or shrinks.
   * ``static[<counts>]`` requests a count per worker manager, see `Static counts`_.
   * Only ``static`` takes an argument.
 
-* ``scaling=vanilla``
+* ``scaling=vanilla`` or ``scaling=vanilla[<bounds>]``
 
   * General autoscaling for homogeneous clusters.
   * Scale up when ``tasks / workers > 10``.
   * Scale down when ``tasks / workers < 1``.
+  * The optional bounds keep each named worker manager within a range, see `Vanilla bounds`_.
 
 * ``scaling=capability``
 
@@ -142,6 +143,27 @@ Static counts
 * ``static:N`` and a list of counts cannot be combined.
 * A ``worker_manager_id`` in the counts cannot contain ``:``, ``,``, ``[``, ``]``, or ``;``.
 * A negative count or a repeated ``worker_manager_id`` is refused at startup.
+
+Vanilla bounds
+--------------
+
+``vanilla`` takes an optional list of bounds, one entry per worker manager, separated by ``,``:
+
+.. code-block:: text
+
+    allocate=even_load; scaling=vanilla[native-local:8:8, ecs-burst:100]
+
+* An entry is ``worker_manager_id:max_task_concurrency[:min_task_concurrency]``.
+* The effective cap is ``min(max_task_concurrency, heartbeat.max_task_concurrency)``; leave it empty to keep only the heartbeat's: ``warm::2``.
+* The worker manager never gets fewer than its floor, clamped to the effective cap, even with no tasks.
+* A worker manager without an entry ranges from ``0`` to its heartbeat's ``max_task_concurrency``.
+* A ``worker_manager_id`` in the bounds cannot contain ``:``, ``,``, ``[``, ``]``, or ``;``.
+* A floor above its cap, a negative count, or a repeated ``worker_manager_id`` is refused at startup.
+
+An entry whose floor equals its cap holds a fixed pool next to worker managers that scale.
+In the example, ``native-local`` always runs 8 workers, and ``ecs-burst`` scales with the load.
+When the load shrinks, ``vanilla`` counts the workers held at other managers' floors as supply.
+So a few tasks over an idle fixed pool do not start a worker on ``ecs-burst``.
 
 Notes:
 
