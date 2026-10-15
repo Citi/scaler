@@ -4,7 +4,12 @@ from typing import Dict, Optional
 
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.types import WorkerManagerBounds, WorkerManagerSnapshot
-from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
+from scaler.scheduler.policies.scaling.vanilla import (
+    VanillaScalingPolicy,
+    clamp_to_bounds,
+    floor_held_worker_count,
+    ratio_target,
+)
 from scaler.scheduler.policies.utility import create_scaling_policy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
@@ -98,72 +103,94 @@ class TestVanillaScalingPolicy(unittest.TestCase):
         self.assertEqual(request.taskConcurrency, 2)
 
 
+class TestRatioTarget(unittest.TestCase):
+    """A manager grows by one above 10 tasks per worker, holds in band, and shrinks below 1 task per worker."""
+
+    def test_the_ratio_bands(self):
+        # current, tasks, workers, floor_held -> target
+        cases = (
+            (0, 0, 0, 0, 0),  # idle
+            (0, 5, 0, 0, 1),  # tasks and no workers: start one
+            (1, 20, 1, 0, 2),  # ratio 20 > 10: grow by one
+            (5, 15, 5, 0, 5),  # ratio 3 in band: hold
+            (10, 5, 10, 0, 1),  # ratio 0.5 < 1: shrink to ceil(5 / 10)
+            (3, 0, 3, 0, 0),  # no tasks: drain
+        )
+        for current, task_count, worker_count, floor_held, target in cases:
+            with self.subTest(current=current, task_count=task_count, worker_count=worker_count):
+                self.assertEqual(ratio_target(current, task_count, worker_count, floor_held), target)
+
+    def test_workers_held_at_other_floors_count_as_supply_when_shrinking(self):
+        # an idle pinned pool of 8 covers 5 tasks, so the scaling manager asks for nothing
+        self.assertEqual(ratio_target(current=0, task_count=5, worker_count=8, floor_held=8), 0)
+        # 40 tasks need 4 workers, 2 of which another manager's floor holds
+        self.assertEqual(ratio_target(current=40, task_count=40, worker_count=46, floor_held=2), 2)
+
+    def test_load_beyond_a_pinned_pool_still_grows_the_manager(self):
+        self.assertEqual(ratio_target(current=0, task_count=100, worker_count=8, floor_held=8), 1)
+
+
+class TestClampToBounds(unittest.TestCase):
+    def test_bounds_and_the_advertised_maximum(self):
+        # desired, bounds, advertised maximum -> clamped
+        cases = (
+            (0, WorkerManagerBounds(8, 8), 100, 8),  # a pinned manager holds its floor when idle
+            (500, WorkerManagerBounds(3), 100, 3),  # the bounds' cap wins below the advertised maximum
+            (500, WorkerManagerBounds(None), 4, 4),  # without a cap in the bounds, the advertised maximum caps
+            (0, WorkerManagerBounds(8, 8), 4, 4),  # a floor above the advertised maximum asks for that maximum
+            (500, WorkerManagerBounds(None, 2), -1, 500),  # no cap anywhere
+            (0, WorkerManagerBounds(None, 2), -1, 2),  # a floor without a cap
+        )
+        for desired, bounds, advertised_max, clamped in cases:
+            with self.subTest(desired=desired, bounds=bounds, advertised_max=advertised_max):
+                self.assertEqual(clamp_to_bounds(desired, bounds, advertised_max), clamped)
+
+
+class TestFloorHeldWorkerCount(unittest.TestCase):
+    """Only the connected workers that other managers' floors hold count as supply."""
+
+    def test_floor_held_workers(self):
+        bounds = {b"native": WorkerManagerBounds(8, 8), b"warm": WorkerManagerBounds(10, 2)}
+        # worker count by manager -> workers held for b"cloud"
+        cases = (
+            ({b"native": 8, b"cloud": 0}, 8),  # a full pinned pool
+            ({b"native": 0, b"cloud": 10}, 0),  # a pool that is still starting supplies nothing
+            ({b"warm": 6, b"cloud": 40}, 2),  # workers above a floor can shrink, so they do not count
+            ({b"native": 8, b"warm": 6}, 10),  # floors add up
+            ({b"other": 30}, 0),  # a manager without bounds has no floor
+        )
+        for worker_count_by_manager, held in cases:
+            with self.subTest(worker_count_by_manager=worker_count_by_manager):
+                self.assertEqual(floor_held_worker_count(b"cloud", bounds, worker_count_by_manager), held)
+
+    def test_a_manager_does_not_count_its_own_floor(self):
+        bounds = {b"native": WorkerManagerBounds(8, 8)}
+        self.assertEqual(floor_held_worker_count(b"native", bounds, {b"native": 8}), 0)
+
+
 class TestVanillaBounds(unittest.TestCase):
-    """Vanilla keeps each manager within its bounds, and counts workers held at other managers' floors as supply."""
+    """Bounds reach a manager through the policy and the scaling string."""
 
     def setUp(self):
         setup_logger()
-        self.policy = VanillaScalingPolicy(
-            {b"native": WorkerManagerBounds(max_task_concurrency=8, min_task_concurrency=8)}
-        )
 
-    def _desired(
-        self,
-        policy: VanillaScalingPolicy,
-        manager_id: bytes,
-        task_count: int,
-        worker_counts: Dict[bytes, int],
-        max_task_concurrency: int = 100,
-    ) -> int:
-        tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(task_count)}
-        workers = {
-            WorkerID(f"{other_id.decode()}-{worker_i}".encode()): _create_mock_worker_heartbeat({})
-            for other_id, count in worker_counts.items()
-            for worker_i in range(count)
-        }
-        managed = [worker_id for worker_id in workers if worker_id.startswith(manager_id + b"-")]
+    def test_an_idle_pinned_pool_keeps_the_scaling_manager_at_zero_through_the_policy(self):
+        policy = VanillaScalingPolicy({b"native": WorkerManagerBounds(max_task_concurrency=8, min_task_concurrency=8)})
+        native_workers = {WorkerID(f"native-{i}".encode()): _create_mock_worker_heartbeat({}) for i in range(8)}
+        tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(5)}
         snapshots = {
-            other_id: WorkerManagerSnapshot(
-                worker_manager_id=other_id, max_task_concurrency=100, worker_count=count, last_seen_at=time.time()
+            manager_id: WorkerManagerSnapshot(
+                worker_manager_id=manager_id, max_task_concurrency=100, worker_count=count, last_seen_at=time.time()
             )
-            for other_id, count in worker_counts.items()
+            for manager_id, count in ((b"native", 8), (b"cloud", 0))
         }
-        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=max_task_concurrency)
+        heartbeat = _create_worker_manager_heartbeat(b"cloud", max_task_concurrency=100)
+
         commands = policy.get_scaling_commands(
-            InformationSnapshot(tasks=tasks, workers=workers), heartbeat, managed, snapshots
+            InformationSnapshot(tasks=tasks, workers=native_workers), heartbeat, [], snapshots
         )
-        return commands[0].setDesiredTaskConcurrencyRequests[0].taskConcurrency
 
-    def test_a_pinned_manager_holds_its_count_with_no_tasks(self):
-        """A manager whose floor equals its cap keeps that count when idle."""
-        self.assertEqual(self._desired(self.policy, b"native", 0, {b"native": 8}), 8)
-
-    def test_an_idle_pinned_pool_keeps_the_scaling_manager_at_zero(self):
-        """Few tasks over a pinned pool ask the scaling manager for nothing, not ceil(tasks / 10)."""
-        self.assertEqual(self._desired(self.policy, b"cloud", 5, {b"native": 8, b"cloud": 0}), 0)
-
-    def test_load_beyond_the_pinned_pool_scales_the_other_manager_up(self):
-        """Above the scale-up ratio the scaling manager still grows."""
-        self.assertEqual(self._desired(self.policy, b"cloud", 100, {b"native": 8, b"cloud": 0}), 1)
-
-    def test_a_pool_that_is_not_up_supplies_nothing(self):
-        """Only connected workers at a floor count, so a pool that is still starting does not starve the tasks."""
-        self.assertEqual(self._desired(self.policy, b"cloud", 5, {b"native": 0, b"cloud": 10}), 1)
-
-    def test_workers_above_a_floor_are_not_subtracted(self):
-        """Only the workers a floor holds count as supply; the rest can shrink."""
-        policy = VanillaScalingPolicy({b"a": WorkerManagerBounds(max_task_concurrency=10, min_task_concurrency=2)})
-        # ratio 40 / 46 < 1: needed ceil(40 / 10) = 4, minus the 2 workers a's floor holds.
-        self.assertEqual(self._desired(policy, b"b", 40, {b"a": 6, b"b": 40}), 2)
-
-    def test_the_cap_of_the_bounds_clamps_below_the_advertised_maximum(self):
-        """A cap in the bounds wins when it is lower than the manager's own maximum."""
-        policy = VanillaScalingPolicy({b"cloud": WorkerManagerBounds(max_task_concurrency=3)})
-        self.assertEqual(self._desired(policy, b"cloud", 500, {b"cloud": 3}), 3)
-
-    def test_the_floor_is_clamped_to_the_advertised_maximum(self):
-        """A floor above what the manager advertises asks for that maximum."""
-        self.assertEqual(self._desired(self.policy, b"native", 0, {b"native": 0}, max_task_concurrency=4), 4)
+        self.assertEqual(commands[0].setDesiredTaskConcurrencyRequests[0].taskConcurrency, 0)
 
     def test_bounds_parse_from_the_scaling_string(self):
         """`vanilla[id:max[:min], ...]` sets each manager's bounds; an empty max leaves the cap to the manager."""
