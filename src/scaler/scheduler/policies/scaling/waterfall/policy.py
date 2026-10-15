@@ -2,6 +2,7 @@ import logging
 from math import ceil
 from typing import Dict, FrozenSet, List, Optional, Tuple
 
+from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
@@ -11,8 +12,6 @@ from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
-
-TASKS_PER_WORKER = 10
 
 
 class WaterfallScalingPolicy(ScalingPolicy):

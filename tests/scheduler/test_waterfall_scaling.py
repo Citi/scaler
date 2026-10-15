@@ -3,13 +3,13 @@ import time
 import unittest
 from typing import Dict, Optional
 
+from scaler.config.defaults import TASKS_PER_WORKER
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.waterfall import WaterfallRule, WaterfallScalingPolicy, parse_waterfall_rules
 from scaler.scheduler.policies.scaling.waterfall.policy import (
-    TASKS_PER_WORKER,
     allocate,
     lower_priority_tier_above_floor,
     target_worker_count,
