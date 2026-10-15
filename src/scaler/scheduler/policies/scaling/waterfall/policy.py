@@ -6,11 +6,13 @@ from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.scheduler.policies.scaling.utility import build_set_desired_command
-from scaler.scheduler.policies.scaling.waterfall.types import WaterfallRule
+from scaler.scheduler.policies.scaling.waterfall.types import Tier, WaterfallRule
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
 logger = logging.getLogger(__name__)
+
+TASKS_PER_WORKER = 10
 
 
 class WaterfallScalingPolicy(ScalingPolicy):
@@ -29,8 +31,6 @@ class WaterfallScalingPolicy(ScalingPolicy):
     def __init__(self, rules: List[WaterfallRule]):
         self._rules = sorted(rules, key=lambda r: r.priority)
         self._rule_by_manager_id: Dict[bytes, WaterfallRule] = {r.worker_manager_id: r for r in self._rules}
-        # Scale up when tasks/workers > 10 (tasks significantly outnumber workers, overloaded)
-        self._upper_task_ratio = 10
 
     def get_scaling_commands(
         self,
@@ -81,8 +81,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         generic_desired = self._allocate_generic_desired(
             current_rule, information_snapshot, current_heartbeat, snapshots
         )
-        floor = _effective_floor(current_rule, current_heartbeat.maxTaskConcurrency)
-        result.append(({}, max(floor, generic_desired)))
+        result.append(({}, generic_desired))
 
         for required_keys, capability_dict in self._tasks_by_capability(information_snapshot).items():
             cap_desired = self._allocate_capset_desired(
@@ -101,34 +100,30 @@ class WaterfallScalingPolicy(ScalingPolicy):
         snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> int:
         """Allocate this manager's share of the cluster-wide generic worker target."""
-        task_count = len(information_snapshot.tasks)
-        if task_count == 0:
-            # Drain lower-priority managers first: if any lower-priority manager still has
-            # workers above its floor, this manager holds its current count rather than draining.
-            for rule in self._rules:
-                if rule.priority <= current_rule.priority:
-                    continue
-                snap = snapshots.get(rule.worker_manager_id)
-                if snap is not None and snap.worker_count > _effective_floor(rule, snap.max_task_concurrency):
-                    own_snap = snapshots.get(current_rule.worker_manager_id)
-                    return own_snap.worker_count if own_snap is not None else 0
-            return 0
-        total_desired = max(1, ceil(task_count / self._upper_task_ratio))
+        tiers = self._online_tiers(current_rule, current_heartbeat, snapshots)
+        current_tier = next(tier for tier in tiers if tier.worker_manager_id == current_rule.worker_manager_id)
+        target = target_worker_count(len(information_snapshot.tasks))
+        if target == 0 and lower_priority_tier_above_floor(current_tier, tiers):
+            return max(current_tier.floor, current_tier.worker_count)
+        return allocate(target, tiers)[current_tier.worker_manager_id]
 
-        # Every online manager's floor counts as supply first; the rest fills managers above their floors by priority.
-        online_rules: List[Tuple[WaterfallRule, int, int]] = []  # (rule, cap, floor)
+    def _online_tiers(
+        self,
+        current_rule: WaterfallRule,
+        current_heartbeat: WorkerManagerHeartbeat,
+        snapshots: Dict[bytes, WorkerManagerSnapshot],
+    ) -> List[Tier]:
+        """The rules of the online managers in priority order, with their caps and floors resolved."""
+        tiers = []
         for rule in self._rules:
             cap = self._effective_capacity(rule, current_rule, current_heartbeat, snapshots)
-            if cap is not None:
-                online_rules.append((rule, cap, min(rule.min_task_concurrency, cap)))
-
-        remaining = max(0, total_desired - sum(floor for _, _, floor in online_rules))
-        for rule, cap, floor in online_rules:
-            share = min(remaining, cap - floor)
-            if rule.worker_manager_id == current_rule.worker_manager_id:
-                return floor + share
-            remaining -= share
-        return 0
+            if cap is None:
+                continue
+            snap = snapshots.get(rule.worker_manager_id)
+            worker_count = snap.worker_count if snap is not None else 0
+            floor = min(rule.min_task_concurrency, cap)
+            tiers.append(Tier(rule.worker_manager_id, rule.priority, cap, floor, worker_count))
+        return tiers
 
     def _allocate_capset_desired(
         self,
@@ -142,11 +137,7 @@ class WaterfallScalingPolicy(ScalingPolicy):
         task_count = sum(
             1 for task in information_snapshot.tasks.values() if frozenset(task.capabilities.keys()) == required_keys
         )
-        if task_count == 0:
-            return 0
-        total_desired = max(1, ceil(task_count / self._upper_task_ratio))
-
-        remaining = total_desired
+        remaining = target_worker_count(task_count)
         for rule in self._rules:
             snap = self._find_matching_snapshot(rule, snapshots)
             if rule.worker_manager_id == current_rule.worker_manager_id:
@@ -202,6 +193,24 @@ class WaterfallScalingPolicy(ScalingPolicy):
         return result
 
 
-def _effective_floor(rule: WaterfallRule, max_task_concurrency: int) -> int:
-    """The rule's floor, clamped to the manager's advertised maximum."""
-    return min(rule.min_task_concurrency, max_task_concurrency)
+def target_worker_count(task_count: int) -> int:
+    """The workers the cluster needs for `task_count` tasks, rounded up."""
+    return ceil(task_count / TASKS_PER_WORKER)
+
+
+def allocate(target: int, tiers: List[Tier]) -> Dict[bytes, int]:
+    """Split `target` workers over `tiers`, given in priority order.
+
+    Every floor counts as supply first; the rest fills each tier above its floor, up to its cap, in order."""
+    remaining = max(0, target - sum(tier.floor for tier in tiers))
+    allocation = {}
+    for tier in tiers:
+        share = min(remaining, tier.cap - tier.floor)
+        allocation[tier.worker_manager_id] = tier.floor + share
+        remaining -= share
+    return allocation
+
+
+def lower_priority_tier_above_floor(tier: Tier, tiers: List[Tier]) -> bool:
+    """With no tasks, `tier` keeps its workers while a lower-priority tier still drains toward its floor."""
+    return any(other.priority > tier.priority and other.worker_count > other.floor for other in tiers)

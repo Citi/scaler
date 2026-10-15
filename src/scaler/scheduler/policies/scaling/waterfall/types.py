@@ -11,3 +11,14 @@ class WaterfallRule:
     worker_manager_id: bytes
     max_task_concurrency: Optional[int]
     min_task_concurrency: int = 0
+
+
+@dataclasses.dataclass(frozen=True)
+class Tier:
+    """An online worker manager's rule, with its cap and floor resolved against the maximum it advertises."""
+
+    worker_manager_id: bytes
+    priority: int
+    cap: int
+    floor: int
+    worker_count: int
