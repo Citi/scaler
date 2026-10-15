@@ -1,6 +1,6 @@
 import dataclasses
 import enum
-from typing import Dict
+from typing import Dict, Optional
 
 
 @dataclasses.dataclass(frozen=True)
@@ -12,6 +12,14 @@ class WorkerManagerSnapshot:
     worker_count: int
     last_seen_at: float  # time.time() epoch seconds of the last heartbeat
     capabilities: Dict[str, int] = dataclasses.field(default_factory=dict)
+
+
+@dataclasses.dataclass(frozen=True)
+class WorkerManagerBounds:
+    """The range a scaling policy keeps the desired task concurrency of one worker manager in."""
+
+    max_task_concurrency: Optional[int]
+    min_task_concurrency: int = 0
 
 
 class ScalingPolicyStrategy(enum.Enum):

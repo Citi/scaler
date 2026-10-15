@@ -34,6 +34,7 @@ from scaler.config.types.worker import WorkerCapabilities
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.static import StaticScalingPolicy
+from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerBounds
 from scaler.scheduler.controllers.policies.simple_policy.scaling.utility import create_scaling_policy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
@@ -172,7 +173,7 @@ class TestScalingStringParsing(unittest.TestCase):
 
     def test_only_ascii_digits_are_counts(self):
         """Unicode digits are refused with the parser's message, not converted or crashed on in `int()`."""
-        for scaling in ["static:\u00b2", "static:\u0663", "static[a:\u00b2]", "static[a:\u0663]"]:
+        for scaling in ["static:\u00b2", "static:\u0663", "static[a:\u00b2]", "vanilla[a:\u0663]"]:
             with self.subTest(scaling=scaling):
                 with self.assertRaisesRegex(ValueError, "is not a non-negative task concurrency"):
                     create_scaling_policy(scaling)
@@ -183,9 +184,9 @@ class TestScalingStringParsing(unittest.TestCase):
         assert isinstance(static, StaticScalingPolicy)
         self.assertEqual(static._task_concurrency, 4)
 
-        static = create_scaling_policy("static [native:8]")
-        assert isinstance(static, StaticScalingPolicy)
-        self.assertEqual(static._task_concurrency_by_manager, {b"native": 8})
+        vanilla = create_scaling_policy("vanilla [native:8]")
+        assert isinstance(vanilla, VanillaScalingPolicy)
+        self.assertEqual(vanilla._bounds, {b"native": WorkerManagerBounds(8, 0)})
 
     def test_an_argument_with_entries_is_refused_as_such(self):
         with self.assertRaisesRegex(ValueError, "an argument or entries, not both"):
@@ -205,7 +206,7 @@ class TestScalingStringParsing(unittest.TestCase):
                     create_scaling_policy(scaling)
 
     def test_a_worker_manager_id_with_a_bracket_is_refused(self):
-        for scaling in ["static[[native:4]", "static[nat]ive:4]"]:
+        for scaling in ["static[[native:4]", "vanilla[[native:8]", "static[nat]ive:4]"]:
             with self.subTest(scaling=scaling):
                 with self.assertRaises(ValueError):
                     create_scaling_policy(scaling)
@@ -221,7 +222,7 @@ class TestAtCapacityEmission(unittest.TestCase):
 
     def test_vanilla_at_cap_emits_current(self):
         """Vanilla: ratio asks for current+1, cap clamps to current -> emits setDesired(current)."""
-        policy = VanillaScalingPolicy()
+        policy = VanillaScalingPolicy({})
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(f"w{i}".encode()) for i in range(10)]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
@@ -236,7 +237,7 @@ class TestAtCapacityEmission(unittest.TestCase):
 
     def test_vanilla_changes_emit(self):
         """Vanilla: when ratio's desired differs from current connected, emit."""
-        policy = VanillaScalingPolicy()
+        policy = VanillaScalingPolicy({})
         tasks = {TaskID.generate_task_id(): _create_mock_task(TaskID.generate_task_id(), {}) for _ in range(100)}
         managed = [WorkerID(b"w0")]
         workers = {wid: _create_mock_worker_heartbeat({}, queued_tasks=10) for wid in managed}
