@@ -1,4 +1,5 @@
 import logging
+import time
 import unittest
 from typing import Optional
 from unittest.mock import AsyncMock, MagicMock
@@ -7,24 +8,25 @@ from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import (
-    ClientDisconnect,
     ObjectInstruction,
     ObjectMetadata,
     Task,
     TaskCancel,
     TaskCapability,
+    UnitShutdown,
     WorkerDisconnectNotification,
     WorkerHeartbeat,
     WorkerHeartbeatEcho,
     WorkerManagerCommand,
+    WorkerManagerDisconnectNotification,
 )
-from scaler.utility.exceptions import ClientShutdownException
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.metadata.task_flags import TaskFlags
 from scaler.worker_manager.mixins import UnitProvisioner
 from scaler.worker_manager.proxy.worker_process import WorkerProcess
 from scaler.worker_manager.runner import WorkerManagerRunner
+from scaler.worker_manager.unit_controller import Unit, UnitState
 from tests.utility.utility import logging_test_name
 
 
@@ -89,11 +91,14 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         self.send_mock.assert_not_called()
 
     async def test_a_disconnect_notification_from_a_unit_reaches_the_controller(self) -> None:
-        self.runner._unit_controller.on_unit_disconnect = MagicMock()  # type: ignore[method-assign]
+        """A worker and a child manager report their exit with their own notification; both end the unit."""
+        for notification in (WorkerDisconnectNotification(), WorkerManagerDisconnectNotification()):
+            with self.subTest(notification=type(notification).__name__):
+                self.runner._unit_controller.on_unit_disconnect = MagicMock()  # type: ignore[method-assign]
 
-        await self.runner._on_receive_child(b"unit-1", WorkerDisconnectNotification())
+                await self.runner._on_receive_child(b"unit-1", notification)
 
-        self.runner._unit_controller.on_unit_disconnect.assert_called_once_with("unit-1")
+                self.runner._unit_controller.on_unit_disconnect.assert_called_once_with("unit-1")
 
     async def test_a_worker_heartbeat_gets_an_echo(self) -> None:
         binder = AsyncMock()
@@ -102,9 +107,28 @@ class TestWorkerManagerHandleCommand(unittest.IsolatedAsyncioTestCase):
         heartbeat = deserialize(serialize(WorkerHeartbeat()))  # a field read needs a struct off the wire
         await self.runner._on_receive_child(b"unit-1", heartbeat)
 
-        binder.send.assert_awaited_once()
-        self.assertEqual(binder.send.call_args.args[0], b"unit-1")
-        self.assertIsInstance(binder.send.call_args.args[1], WorkerHeartbeatEcho)
+        echo_call = binder.send.call_args_list[0]
+        self.assertEqual(echo_call.args[0], b"unit-1")
+        self.assertIsInstance(echo_call.args[1], WorkerHeartbeatEcho)
+
+    async def test_a_forced_shutdown_tells_each_connected_unit_at_once(self) -> None:
+        """A forced UnitShutdown from the parent reaches every unit that sent a heartbeat, before its next one."""
+        unit_ids = ["unit-a", "unit-b"]
+        for unit_id in unit_ids:
+            self.runner._unit_controller._units[unit_id] = Unit(
+                unit_id=unit_id, handle=unit_id, state=UnitState.active, state_since=time.monotonic()
+            )
+            self.runner._unit_controller.on_unit_heartbeat(unit_id, active_task_concurrency=1, occupancy=0)
+        binder = AsyncMock()
+        self.runner._binder_children = binder
+
+        await self.runner._on_receive_parent(UnitShutdown(force=True))
+
+        sent = {call.args[0]: call.args[1] for call in binder.send.call_args_list}
+        self.assertEqual(set(sent), {unit_id.encode() for unit_id in unit_ids})
+        for message in sent.values():
+            self.assertIsInstance(message, UnitShutdown)
+            self.assertTrue(message.force)
 
 
 class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
@@ -191,12 +215,6 @@ class TestWorkerProcessOnReceiveExternal(unittest.IsolatedAsyncioTestCase):
         instruction = _make_object_instruction()
         await self._dispatch(instruction)
         self.on_object_instruction.assert_called_once_with(instruction)
-
-    async def test_client_disconnect_shutdown_raises_client_shutdown_exception(self) -> None:
-        self.wp._heartbeat_received = True
-        msg = ClientDisconnect(disconnectType=ClientDisconnect.DisconnectType.shutdown)
-        with self.assertRaises(ClientShutdownException):
-            await self._dispatch(msg)
 
     async def test_unknown_message_type_raises_type_error(self) -> None:
         self.wp._heartbeat_received = True

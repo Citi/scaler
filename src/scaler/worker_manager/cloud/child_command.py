@@ -4,6 +4,10 @@ from typing import Dict
 from scaler.config.common.worker_manager import WorkerManagerConfig
 from scaler.config.types.address import AddressConfig
 
+# A child ends its drain this long before the parent's deadline, so the parent never destroys a resource whose
+# fleet is still draining in good order.
+CHILD_DRAIN_TIMEOUT_MARGIN_SECONDS = 30
+
 # A resource boots and installs scaler before its child manager sends the first heartbeat.
 CLOUD_UNIT_STARTUP_TIMEOUT_SECONDS = 600
 
@@ -42,8 +46,12 @@ def cloud_children_address(worker_manager_config: WorkerManagerConfig) -> Addres
 
 def child_link_arguments(worker_manager_config: WorkerManagerConfig, unit_id: str, task_concurrency: int) -> str:
     """The command line arguments that make a child native manager serve this manager as unit `unit_id`."""
+    child_drain_timeout_seconds = max(
+        0, worker_manager_config.drain_timeout_seconds - CHILD_DRAIN_TIMEOUT_MARGIN_SECONDS
+    )
     return (
         f"--parent-address {cloud_children_address(worker_manager_config)} "
         f"--unit-id {unit_id} "
-        f"--max-task-concurrency {task_concurrency}"
+        f"--max-task-concurrency {task_concurrency} "
+        f"--drain-timeout-seconds {child_drain_timeout_seconds}"
     )
