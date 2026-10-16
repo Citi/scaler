@@ -31,7 +31,9 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
+from scaler.io.utility import deserialize, serialize
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.protocol.helpers import dict_to_capabilities
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.static import StaticScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerBounds
@@ -378,7 +380,7 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         source = b"mgr-src"
         manager_id = b"mgr-id"
         # Manager advertises only "cpu" capability.
-        heartbeat = WorkerManagerHeartbeat(maxTaskConcurrency=10, capabilities={"cpu": -1}, workerManagerID=manager_id)
+        heartbeat = _create_worker_manager_heartbeat(manager_id, max_task_concurrency=10, capabilities={"cpu": -1})
 
         # Generic (empty caps, wildcard) -> 2; gpu-only -> 4 (not servable); cpu-only -> 3 (servable).
         self.policy_controller.get_scaling_commands.return_value = [
@@ -466,9 +468,18 @@ def _create_mock_worker_heartbeat(capabilities: dict, queued_tasks: int = 0, dra
 def _create_worker_manager_heartbeat(
     worker_manager_id: bytes, max_task_concurrency: int = 10, capabilities: Optional[Dict[str, int]] = None
 ) -> WorkerManagerHeartbeat:
-    return WorkerManagerHeartbeat(
-        maxTaskConcurrency=max_task_concurrency, capabilities=capabilities or {}, workerManagerID=worker_manager_id
+    """A heartbeat as the binder delivers it: decoded from the wire, not built in memory."""
+    heartbeat = deserialize(
+        serialize(
+            WorkerManagerHeartbeat(
+                maxTaskConcurrency=max_task_concurrency,
+                capabilities=dict_to_capabilities(capabilities or {}),
+                workerManagerID=worker_manager_id,
+            )
+        )
     )
+    assert isinstance(heartbeat, WorkerManagerHeartbeat)
+    return heartbeat
 
 
 def _run_native_worker_manager(

@@ -49,6 +49,13 @@ class TestVanillaWorkerControllerOnDrainingHeartbeat(unittest.IsolatedAsyncioTes
         self.policy_controller.drain_worker.assert_called_once_with(_WORKER_ID)
         self.task_controller.on_task_balance_cancel.assert_called_once_with(_TASK_ID)
 
+    async def test_status_reports_a_draining_worker(self) -> None:
+        """The monitor reads a draining worker as draining, not as an ordinary busy one."""
+        self.policy_controller.statistics.return_value = {_WORKER_ID: {"free": 10, "sent": 0}}
+        await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
+        (status,) = self.controller.get_status().workers
+        self.assertTrue(status.draining)
+
     async def test_later_draining_heartbeats_do_not_drain_again(self) -> None:
         await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))
         await self.controller.on_heartbeat(_WORKER_ID, _received_heartbeat(draining=True))

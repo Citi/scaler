@@ -105,3 +105,29 @@ class TestClientControllerShutdown(unittest.IsolatedAsyncioTestCase):
         await worker_manager_controller.on_disconnect_notification(b"manager-a")
         with self.assertRaises(ClientShutdownException):
             await worker_manager_controller.on_disconnect_notification(b"manager-b")
+
+
+class TestWorkerManagerControllerStatus(unittest.IsolatedAsyncioTestCase):
+    async def test_status_reports_the_units_each_manager_reports(self) -> None:
+        policy_controller = MagicMock()
+        policy_controller.get_scaling_commands.return_value = []
+        worker_manager_controller = WorkerManagerController(MagicMock(), policy_controller)
+        worker_controller = MagicMock()
+        worker_controller.get_workers_by_manager_id.return_value = []
+        worker_controller._worker_alive_since = {}
+        task_controller = MagicMock()
+        task_controller._task_id_to_task = {}
+        worker_manager_controller.register(AsyncMock(), task_controller, worker_controller)
+
+        heartbeat = deserialize(
+            serialize(
+                WorkerManagerHeartbeat(
+                    maxTaskConcurrency=4, workerManagerID=b"manager", activeUnits=2, pendingUnits=1, drainingUnits=3
+                )
+            )
+        )
+        assert isinstance(heartbeat, WorkerManagerHeartbeat)
+        await worker_manager_controller.on_heartbeat(b"source", heartbeat)
+
+        (detail,) = worker_manager_controller.get_status().workerManagerDetails
+        self.assertEqual((detail.activeUnits, detail.pendingUnits, detail.drainingUnits), (2, 1, 3))
