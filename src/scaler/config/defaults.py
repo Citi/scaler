@@ -51,6 +51,23 @@ DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 # to avoid flapping under intermittent load. 0 disables the cooldown.
 DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS = 30
 
+# drain_timeout_seconds values with a meaning of their own: shed a unit without a drain, or drain it for as long as it
+# takes to finish its running tasks
+DRAIN_TIMEOUT_DESTROY_AT_ONCE = 0
+DRAIN_TIMEOUT_NONE = -1
+
+# seconds a unit may take to finish its running tasks once told to drain, before its worker manager destroys it
+DEFAULT_WORKER_MANAGER_DRAIN_TIMEOUT_SECONDS = DRAIN_TIMEOUT_NONE
+
+# a child worker manager that hears no echo from its parent for this long drains its fleet and exits
+DEFAULT_WORKER_MANAGER_PARENT_TIMEOUT_SECONDS = 60
+
+# a unit that sent no heartbeat for this long is lost: its worker manager destroys and replaces it
+DEFAULT_WORKER_MANAGER_UNIT_TIMEOUT_SECONDS = 60
+
+# seconds a worker manager waits before it creates a unit after losing one; doubles on each consecutive loss
+DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS = 1
+
 # number of seconds for load balance, if value is -1 means disable load balance
 DEFAULT_LOAD_BALANCE_SECONDS = 1
 
@@ -60,6 +77,9 @@ DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 
 # number of tasks can be queued to each worker on scheduler side
 DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
+
+# tasks the waterfall scaling policy counts as one worker's load when sizing the cluster
+TASKS_PER_WORKER = 10
 
 # how long the scheduler waits for the object storage server to answer what it holds.
 # Without a bound the status routine would wedge behind a server that never answers.
