@@ -2,6 +2,7 @@ import os
 from typing import Dict
 
 from scaler.config.common.worker_manager import WorkerManagerConfig
+from scaler.config.defaults import DRAIN_TIMEOUT_DESTROY_AT_ONCE, DRAIN_TIMEOUT_NONE
 from scaler.config.types.address import AddressConfig
 
 # A child ends its drain this long before the parent's deadline, so the parent never destroys a resource whose
@@ -44,12 +45,18 @@ def cloud_children_address(worker_manager_config: WorkerManagerConfig) -> Addres
 def child_link_arguments(worker_manager_config: WorkerManagerConfig, unit_id: str, task_concurrency: int) -> str:
     """The command line arguments that make a child native manager serve this manager as unit `unit_id`."""
     parent_address = worker_manager_config.advertised_children_address or cloud_children_address(worker_manager_config)
-    child_drain_timeout_seconds = max(
-        0, worker_manager_config.drain_timeout_seconds - CHILD_DRAIN_TIMEOUT_MARGIN_SECONDS
-    )
     return (
         f"--parent-address {parent_address} "
         f"--unit-id {unit_id} "
         f"--max-task-concurrency {task_concurrency} "
-        f"--drain-timeout-seconds {child_drain_timeout_seconds}"
+        f"--drain-timeout-seconds {_child_drain_timeout_seconds(worker_manager_config.drain_timeout_seconds)}"
     )
+
+
+def _child_drain_timeout_seconds(drain_timeout_seconds: int) -> int:
+    """A deadline ends a little earlier in the child; no deadline and no drain pass through unchanged.
+
+    A short deadline leaves the child at least 1 second, since 0 would mean no drain at all."""
+    if drain_timeout_seconds in (DRAIN_TIMEOUT_NONE, DRAIN_TIMEOUT_DESTROY_AT_ONCE):
+        return drain_timeout_seconds
+    return max(1, drain_timeout_seconds - CHILD_DRAIN_TIMEOUT_MARGIN_SECONDS)
