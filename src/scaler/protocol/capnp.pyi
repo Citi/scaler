@@ -132,6 +132,7 @@ class WorkerStatus(CapnpStruct):
     hostname: str
     netSentBytes: int
     netRecvBytes: int
+    draining: bool
 
 class WorkerManagerStatus(CapnpStruct):
     workers: Any
@@ -148,6 +149,9 @@ class ScalingManagerStatus(CapnpStruct):
         maxTaskConcurrency: int
         capabilities: str
         pendingWorkers: int
+        activeUnits: int
+        pendingUnits: int
+        drainingUnits: int
 
     managedWorkers: Any
     workerManagerDetails: Any

@@ -159,6 +159,7 @@ class VanillaWorkerController(WorkerController, Looper, Reporter):
             hostname=info.hostname,
             netSentBytes=info.netSentBytes,
             netRecvBytes=info.netRecvBytes,
+            draining=info.draining,
         )
 
     def has_available_worker(self) -> bool:
