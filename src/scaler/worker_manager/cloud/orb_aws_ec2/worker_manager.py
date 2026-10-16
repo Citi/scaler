@@ -13,6 +13,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 try:
     import boto3
+    from orb.sdk.exceptions import NotFoundError
     from packaging.requirements import Requirement
     from packaging.utils import canonicalize_name
 except ModuleNotFoundError as exc:
@@ -35,6 +36,10 @@ logger = logging.getLogger(__name__)
 
 ORB_AWS_EC2_POLLING_INTERVAL_SECONDS = 5
 ORB_AWS_EC2_MAX_POLLING_ATTEMPTS = 60
+
+# The statuses that end an ORB 1.8.5 return request without returning the instance.
+ORB_AWS_EC2_FAILED_RETURN_STATUSES = {"failed", "cancelled", "partial", "timeout"}
+ORB_AWS_EC2_COMPLETED_RETURN_STATUS = "complete"
 
 
 def _extract_git_url_and_branch(requirements_content: str) -> Optional[Tuple[str, str]]:
@@ -136,11 +141,61 @@ class ORBWorkerProvisioner(UnitProvisioner):
         raise TimeoutError(f"ORB request {request_id} timed out after {timeout_seconds:.0f}s with no instance")
 
     async def destroy_unit(self, handle: UnitHandle) -> None:
+        """Return the instance, then delete its template. Each step reads ORB's state first, so a retry resumes."""
         assert isinstance(handle, tuple)
         template_id, instance_id = handle
-        await self._sdk.create_return_request(machine_ids=[instance_id])
-        await self._sdk.delete_template(template_id=template_id)
+        await self._return_instance(instance_id)
+
+        try:
+            await self._sdk.delete_template(template_id=template_id)
+        except NotFoundError:
+            logger.info(f"template {template_id} is already deleted")
         logger.info(f"returned instance {instance_id}")
+
+    async def _return_instance(self, instance_id: str) -> None:
+        """Return the instance unless ORB holds a return of it already, then wait for that return to complete.
+
+        ORB refuses a second return of a machine that has one, and keeps a failed return without raising it.
+        """
+        try:
+            machine = await self._sdk.get_machine(machine_id=instance_id)
+        except NotFoundError:
+            logger.warning(f"ORB has no record of instance {instance_id}: nothing to return")
+            return
+
+        request_id = machine.get("return_request_id")
+        if request_id is None:
+            request_id = await self._create_return_request(instance_id, force_return=False)
+
+        status = await self._wait_for_return(request_id)
+        if status == ORB_AWS_EC2_COMPLETED_RETURN_STATUS:
+            return
+
+        await self._create_return_request(instance_id, force_return=True)
+        raise RuntimeError(
+            f"ORB return request {request_id} of instance {instance_id} ended {status!r}, returning again"
+        )
+
+    async def _create_return_request(self, instance_id: str, force_return: bool) -> str:
+        response = await self._sdk.create_return_request(machine_ids=[instance_id], force_return=force_return)
+        request_ids = response.get("created_request_ids") if isinstance(response, dict) else None
+        if not request_ids:
+            raise RuntimeError(f"ORB create_return_request returned no request ID. Response: {response}")
+        return request_ids[0]
+
+    async def _wait_for_return(self, request_id: str) -> str:
+        """Poll the return request until it completes or fails, and return its status."""
+        for _ in range(ORB_AWS_EC2_MAX_POLLING_ATTEMPTS):
+            status_response = await self._sdk.get_request_status(request_ids=[request_id])
+            requests = status_response.get("requests", []) if isinstance(status_response, dict) else []
+            status = requests[0].get("status", "") if requests and isinstance(requests[0], dict) else ""
+            if status == ORB_AWS_EC2_COMPLETED_RETURN_STATUS or status in ORB_AWS_EC2_FAILED_RETURN_STATUSES:
+                return status
+
+            await asyncio.sleep(ORB_AWS_EC2_POLLING_INTERVAL_SECONDS)
+
+        timeout_seconds = ORB_AWS_EC2_MAX_POLLING_ATTEMPTS * ORB_AWS_EC2_POLLING_INTERVAL_SECONDS
+        raise TimeoutError(f"ORB return request {request_id} did not end within {timeout_seconds:.0f}s")
 
     def max_units(self) -> int:
         return self._max_instances
