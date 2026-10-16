@@ -51,6 +51,12 @@ DEFAULT_WORKER_MANAGER_TIMEOUT_SECONDS = 10
 # to avoid flapping under intermittent load. 0 disables the cooldown.
 DEFAULT_WORKER_MANAGER_SCALE_DOWN_COOLDOWN_SECONDS = 30
 
+# a unit that sent no heartbeat for this long is lost: its worker manager destroys and replaces it
+DEFAULT_WORKER_MANAGER_UNIT_TIMEOUT_SECONDS = 60
+
+# seconds a worker manager waits before it creates a unit after losing one; doubles on each consecutive loss
+DEFAULT_WORKER_MANAGER_RESTART_BACKOFF_SECONDS = 1
+
 # number of seconds for load balance, if value is -1 means disable load balance
 DEFAULT_LOAD_BALANCE_SECONDS = 1
 
@@ -60,6 +66,9 @@ DEFAULT_LOAD_BALANCE_TRIGGER_TIMES = 2
 
 # number of tasks can be queued to each worker on scheduler side
 DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
+
+# tasks the waterfall scaling policy counts as one worker's load when sizing the cluster
+TASKS_PER_WORKER = 10
 
 # how long the scheduler waits for the object storage server to answer what it holds.
 # Without a bound the status routine would wedge behind a server that never answers.

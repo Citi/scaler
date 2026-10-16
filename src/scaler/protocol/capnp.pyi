@@ -239,6 +239,7 @@ class WorkerHeartbeat(BaseMessage):
     hostname: str
     netSentBytes: int
     netRecvBytes: int
+    draining: bool
 
 class WorkerHeartbeatEcho(BaseMessage):
     objectStorageAddress: ObjectStorageAddress
@@ -247,6 +248,10 @@ class WorkerManagerHeartbeat(BaseMessage):
     maxTaskConcurrency: int
     capabilities: Any
     workerManagerID: bytes
+    activeTaskConcurrency: int
+    occupancy: int
+    activeUnits: int
+    pendingUnits: int
 
 class WorkerManagerHeartbeatEcho(BaseMessage): ...
 
