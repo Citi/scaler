@@ -24,6 +24,7 @@ MAX_RESTART_BACKOFF_DOUBLINGS = 5
 class UnitState(enum.Enum):
     pending = enum.auto()  # create dispatched, no heartbeat yet
     active = enum.auto()  # serving
+    draining = enum.auto()  # told to drain, still finishing its tasks; never serves again
     stopping = enum.auto()  # teardown dispatched
 
 
@@ -36,6 +37,7 @@ class Unit:
     desired_task_concurrency: int = 0  # the share of the desired task concurrency this unit is asked for
     active_task_concurrency: int = 0  # task slots the unit reported
     occupancy: int = 0  # queued and running tasks the unit reported
+    drain_deadline: Optional[float] = None  # time.monotonic()
     last_heartbeat: Optional[float] = None  # time.monotonic(); None until the first heartbeat
 
 
@@ -45,10 +47,11 @@ class UnitControllerStatus:
     occupancy: int
     active_units: int
     pending_units: int
+    draining_units: int
 
 
 class UnitController(Looper, Reporter):
-    """The only owner of the fleet of a worker manager: creates, supervises, and destroys its units.
+    """The only owner of the fleet of a worker manager: creates, supervises, drains, and destroys its units.
 
     Every provisioner call runs in the background, so a slow cloud API never stops the routine. The controller sends
     no message: the runner answers each unit heartbeat from the state the controller keeps.
@@ -62,12 +65,16 @@ class UnitController(Looper, Reporter):
         provisioner: UnitProvisioner,
         scale_down_cooldown_seconds: float,
         unit_timeout_seconds: float,
+        drain_timeout_seconds: float,
         restart_backoff_seconds: float,
     ) -> None:
         self._provisioner = provisioner
         self._scale_down_cooldown = Cooldown(scale_down_cooldown_seconds)
         self._unit_timeout_seconds = unit_timeout_seconds
+        self._drain_timeout_seconds = drain_timeout_seconds
         self._restart_backoff_seconds = restart_backoff_seconds
+        self._shutting_down = False
+        self._force_shutdown = False  # set only with _shutting_down: the units drop their running tasks
 
         self._desired_task_concurrency = 0
         self._units: Dict[str, Unit] = {}  # in creation order
@@ -76,6 +83,7 @@ class UnitController(Looper, Reporter):
         # collected mid-flight and leak the resource it was creating.
         self._tasks: Set[asyncio.Task] = set()
         self._destroying_unit_ids: Set[str] = set()
+        self._shut_down = asyncio.Event()  # set once is_shut_down() holds
 
         self._consecutive_unit_losses = 0
         self._create_not_before = 0.0  # time.monotonic()
@@ -104,18 +112,55 @@ class UnitController(Looper, Reporter):
             self._set_state(unit, UnitState.active)
 
     def on_unit_disconnect(self, unit_id: str) -> None:
-        """The unit is about to exit on its own: destroy what it runs on now, and count it as lost."""
+        """The unit is about to exit: destroy what it runs on now. A unit that still serves is lost."""
         unit = self._units.get(unit_id)
         if unit is None or unit.state == UnitState.stopping or unit.handle is None:
             return
 
-        logger.warning(f"unit {unit_id!r} exited on its own from state {unit.state.name}")
-        self._on_unit_lost()
+        if unit.state == UnitState.draining:
+            logger.info(f"unit {unit_id!r} finished its drain")
+        else:
+            logger.warning(f"unit {unit_id!r} exited on its own from state {unit.state.name}")
+            self._on_unit_lost()
         self._set_state(unit, UnitState.stopping)
+
+    def is_unit_serving(self, unit_id: str) -> bool:
+        """False for a unit that must drain: one told to, or one this controller does not know."""
+        unit = self._units.get(unit_id)
+        return unit is not None and unit.state in (UnitState.pending, UnitState.active)
 
     def get_unit_desired_task_concurrency(self, unit_id: str) -> int:
         unit = self._units.get(unit_id)
         return unit.desired_task_concurrency if unit is not None else 0
+
+    def begin_shutdown(self, force: bool) -> None:
+        """Drain every unit, create no more, and ignore new desired counts. With force, the units drop their running
+        tasks. A forced call turns a drain into a forced shutdown; any other repeated call does nothing."""
+        if self._shutting_down and (self._force_shutdown or not force):
+            return
+
+        logger.info(f"shutting down{' by force' if force else ''}: draining {len(self._units)} unit(s)")
+        self._shutting_down = True
+        self._force_shutdown = force
+        self._set_if_shut_down()
+
+    def is_force_shutdown(self) -> bool:
+        return self._force_shutdown
+
+    def is_shut_down(self) -> bool:
+        """True once shutdown has begun, no unit remains, and no provisioner call is in flight."""
+        return self._shutting_down and not self._units and not self._tasks
+
+    async def wait_until_shut_down(self) -> None:
+        await self._shut_down.wait()
+
+    def get_connected_unit_ids(self) -> List[str]:
+        """The units that sent a heartbeat and are not being destroyed: the ones a message can reach."""
+        return [
+            unit.unit_id
+            for unit in self._units_in(UnitState.pending, UnitState.active, UnitState.draining)
+            if unit.last_heartbeat is not None
+        ]
 
     def get_status(self) -> UnitControllerStatus:
         active = self._units_in(UnitState.active)
@@ -124,15 +169,17 @@ class UnitController(Looper, Reporter):
             occupancy=sum(unit.occupancy for unit in self._units.values()),
             active_units=len(active),
             pending_units=len(self._units_in(UnitState.pending)),
+            draining_units=len(self._units_in(UnitState.draining)),
         )
 
     async def routine(self) -> None:
         self._sweep_silent_units()
+        self._sweep_drains()
         self._reconcile()
         self._drive_destroys()
 
     async def terminate(self) -> None:
-        """Destroy every unit at once. Waits for the provisioner calls in flight first, so a
+        """Destroy every unit at once, without a drain. Waits for the provisioner calls in flight first, so a
         create that finishes now is destroyed too."""
         if self._tasks:
             logger.info(f"waiting for {len(self._tasks)} provisioner call(s) in flight")
@@ -157,16 +204,17 @@ class UnitController(Looper, Reporter):
         logger.warning(f"{self._consecutive_unit_losses} consecutive unit loss(es): no create for {backoff_seconds}s")
 
     def _sweep_silent_units(self) -> None:
-        """Destroy each unit that exists but sent no heartbeat in time, and count it as lost."""
+        """Destroy each unit that exists but sent no heartbeat in time. A silent unit that serves counts as lost."""
         now = time.monotonic()
-        for unit in self._units_in(UnitState.pending, UnitState.active):
+        for unit in self._units_in(UnitState.pending, UnitState.active, UnitState.draining):
             if unit.handle is None or not self._is_silent(unit, now):
                 continue
 
             logger.warning(
                 f"unit {unit.unit_id!r} sent no heartbeat in time from state {unit.state.name}, destroying it"
             )
-            self._on_unit_lost()
+            if unit.state != UnitState.draining:
+                self._on_unit_lost()
             self._set_state(unit, UnitState.stopping)
 
     def _is_silent(self, unit: Unit, now: float) -> bool:
@@ -174,15 +222,26 @@ class UnitController(Looper, Reporter):
             return now - unit.state_since > self._provisioner.startup_timeout_seconds()
         return now - unit.last_heartbeat > self._unit_timeout_seconds
 
-    def _reconcile(self) -> None:
-        """Create or destroy units until the supply matches the desired task concurrency.
+    def _sweep_drains(self) -> None:
+        """Destroy each unit whose drain passed its deadline."""
+        now = time.monotonic()
+        for unit in self._units_in(UnitState.draining):
+            assert unit.drain_deadline is not None, "a draining unit always has a deadline"
+            if now > unit.drain_deadline:
+                logger.warning(f"unit {unit.unit_id!r} did not drain in {self._drain_timeout_seconds}s, destroying it")
+                self._set_state(unit, UnitState.stopping)
 
-        Stopping units are not supply: counting them would destroy one more unit at every routine while a slow
-        destroy runs.
+    def _reconcile(self) -> None:
+        """Create or drain units until the supply matches the desired task concurrency.
+
+        Draining and stopping units are not supply: counting them would drain one more unit at every routine while
+        a long drain runs.
         """
         per_unit = self._provisioner.task_concurrency_per_unit()
         desired_units = math.ceil(self._desired_task_concurrency / per_unit)
-        if self._provisioner.max_units() != -1:
+        if self._shutting_down:
+            desired_units = 0
+        elif self._provisioner.max_units() != -1:
             desired_units = min(desired_units, self._provisioner.max_units())
 
         self._assign_unit_targets()
@@ -195,15 +254,14 @@ class UnitController(Looper, Reporter):
             return
 
         # Anchors to the first scale-down request in the streak, so a scale-down that keeps being asked for is
-        # honored once the cooldown elapses, even if the requested count changes meanwhile.
+        # honored once the cooldown elapses, even if the requested count changes meanwhile. A shutdown does not wait.
         self._scale_down_cooldown.start_if_not_running()
-        if self._scale_down_cooldown.remaining_seconds() is not None:
+        if self._scale_down_cooldown.remaining_seconds() is not None and not self._shutting_down:
             return
 
         self._scale_down_cooldown.reset()
         for unit in self._select_units_to_shed(supply - desired_units):
-            logger.info(f"shedding unit {unit.unit_id!r} (occupancy={unit.occupancy})")
-            self._set_state(unit, UnitState.stopping)
+            self._begin_drain(unit)
 
     def _assign_unit_targets(self) -> None:
         """Fill each active unit to capacity except the last, which takes the remainder.
@@ -211,14 +269,19 @@ class UnitController(Looper, Reporter):
         Only a unit that runs a child manager reads its target: the task concurrency of a local process is fixed.
         """
         per_unit = self._provisioner.task_concurrency_per_unit()
-        remaining = self._desired_task_concurrency
+        remaining = 0 if self._shutting_down else self._desired_task_concurrency
         for unit in self._units_in(UnitState.active):
             unit.desired_task_concurrency = min(per_unit, remaining)
             remaining -= unit.desired_task_concurrency
 
+    def _begin_drain(self, unit: Unit) -> None:
+        logger.info(f"draining unit {unit.unit_id!r} (occupancy={unit.occupancy})")
+        self._set_state(unit, UnitState.draining)
+        unit.drain_deadline = unit.state_since + self._drain_timeout_seconds
+
     def _dispatch_create(self) -> None:
         """Add a pending unit and create it in the background, unless the crash-loop backoff is active."""
-        if time.monotonic() < self._create_not_before:
+        if self._shutting_down or time.monotonic() < self._create_not_before:
             return
 
         unit = Unit(unit_id=uuid.uuid4().hex, handle=None, state=UnitState.pending, state_since=time.monotonic())
@@ -263,6 +326,11 @@ class UnitController(Looper, Reporter):
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         task.add_done_callback(on_done)
+        task.add_done_callback(lambda _: self._set_if_shut_down())
+
+    def _set_if_shut_down(self) -> None:
+        if self.is_shut_down():
+            self._shut_down.set()
 
     def _select_units_to_shed(self, count: int) -> List[Unit]:
         """The `count` active units with the lowest occupancy.
