@@ -1,5 +1,6 @@
 import asyncio
 import multiprocessing
+import threading
 from typing import TYPE_CHECKING, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
@@ -21,8 +22,9 @@ def run_scheduler(
     logging_level: str,
     shutdown_event: Optional["EventType"] = None,
 ) -> None:
-    """Run the scheduler in the current process until SIGINT/SIGTERM (or the optional
-    `shutdown_event`) triggers a graceful shutdown. Blocks until the scheduler exited."""
+    """Run the scheduler in the current process until SIGINT/SIGTERM stops it at once, or the optional
+    `shutdown_event` starts a forced shutdown of the cluster through its worker managers. Blocks until the scheduler
+    exited."""
 
     loop = asyncio.new_event_loop()
 
@@ -36,7 +38,16 @@ def run_scheduler(
         def _cancel_scheduler_task() -> None:
             loop.call_soon_threadsafe(task.cancel)
 
-        install_async_shutdown_handler(loop, _cancel_scheduler_task, shutdown_event)
+        install_async_shutdown_handler(loop, _cancel_scheduler_task)
+
+        if shutdown_event is not None:
+
+            def _wait_for_shutdown_event() -> None:
+                shutdown_event.wait()
+                asyncio.run_coroutine_threadsafe(scheduler.force_shutdown(), loop)
+
+            threading.Thread(target=_wait_for_shutdown_event, name="ShutdownEventWatcher", daemon=True).start()
+
         await task
 
     run_task_forever(loop, _run())
