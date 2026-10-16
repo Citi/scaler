@@ -145,6 +145,9 @@ class UnitController(Looper, Reporter):
         self._force_shutdown = force
         self._set_if_shut_down()
 
+    def is_shutting_down(self) -> bool:
+        return self._shutting_down
+
     def is_force_shutdown(self) -> bool:
         return self._force_shutdown
 
