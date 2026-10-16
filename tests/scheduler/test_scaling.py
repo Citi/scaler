@@ -31,7 +31,7 @@ from scaler.config.section.native_worker_manager import NativeWorkerManagerConfi
 from scaler.config.section.scheduler import PolicyConfig
 from scaler.config.types.address import AddressConfig
 from scaler.config.types.worker import WorkerCapabilities
-from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
+from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerCommand, WorkerManagerHeartbeat
 from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.static import StaticScalingPolicy
 from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerBounds
@@ -330,7 +330,10 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         task_controller = MagicMock()
         task_controller._task_id_to_task = {}
         self.worker_controller = MagicMock()
-        self.worker_controller._worker_alive_since = {}
+        self.worker_controller._worker_alive_since = {
+            WorkerID(b"w0"): (0.0, _create_mock_worker_heartbeat({})),
+            WorkerID(b"w1"): (0.0, _create_mock_worker_heartbeat({})),
+        }
 
         self.controller.register(binder, task_controller, self.worker_controller)
 
@@ -391,6 +394,48 @@ class TestPendingWorkersStatus(unittest.IsolatedAsyncioTestCase):
         detail = next(d for d in status.workerManagerDetails if d.workerManagerID == manager_id)
         # 2 (empty wildcard) + 3 (cpu subset) - 0 connected = 5; gpu (4) is excluded.
         self.assertEqual(detail.pendingWorkers, 5)
+
+
+class TestManagerSnapshotsCountServingWorkers(unittest.IsolatedAsyncioTestCase):
+    async def test_an_idle_waterfall_tier_does_not_replace_its_draining_workers(self):
+        """A draining worker is not in a manager's worker count, so a holding tier keeps only its serving workers."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
+        from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
+
+        setup_logger()
+        policy_controller = VanillaPolicyController("waterfall_v1", "1,burst,20\n2,warm,8")
+        controller = WorkerManagerController(MagicMock(), policy_controller)
+
+        # burst runs 3 workers, 2 of them draining; warm runs 2 serving workers, above its floor of 0
+        workers_by_manager = {
+            b"burst": {b"burst-0": False, b"burst-1": True, b"burst-2": True},
+            b"warm": {b"warm-0": False, b"warm-1": False},
+        }
+        worker_controller = MagicMock()
+        worker_controller._worker_alive_since = {
+            WorkerID(worker_id): (0.0, _create_mock_worker_heartbeat({}, draining=draining))
+            for workers in workers_by_manager.values()
+            for worker_id, draining in workers.items()
+        }
+        worker_controller.get_workers_by_manager_id.side_effect = lambda manager_id: [
+            WorkerID(worker_id) for worker_id in workers_by_manager[manager_id]
+        ]
+        task_controller = MagicMock()
+        task_controller._task_id_to_task = {}
+        binder = AsyncMock()
+        controller.register(binder, task_controller, worker_controller)
+
+        await controller.on_heartbeat(b"warm-src", _create_worker_manager_heartbeat(b"warm", max_task_concurrency=8))
+        binder.send.reset_mock()
+        await controller.on_heartbeat(b"burst-src", _create_worker_manager_heartbeat(b"burst", max_task_concurrency=20))
+
+        (command,) = [
+            call.args[1] for call in binder.send.call_args_list if isinstance(call.args[1], WorkerManagerCommand)
+        ]
+        (request,) = command.setDesiredTaskConcurrencyRequests
+        self.assertEqual(request.taskConcurrency, 1)
 
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
