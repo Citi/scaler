@@ -1,6 +1,6 @@
 import argparse
 import dataclasses
-from typing import ClassVar
+from typing import ClassVar, Optional
 
 from scaler.config.common.logging import LoggingConfig
 from scaler.config.common.security import SecurityConfig
@@ -20,6 +20,17 @@ class NativeWorkerManagerConfig(ConfigClass):
     security: SecurityConfig = dataclasses.field(default_factory=SecurityConfig)
 
     worker_type: str = dataclasses.field(default="NAT", metadata=dict(help="worker type prefix used in worker IDs"))
+
+    ready_file: Optional[str] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            help=(
+                "path of a file that holds the pid of this worker manager while it is in service: written on the "
+                "first command from its parent, removed once a shutdown has drained every worker and before the "
+                "parent is notified, and on every exit"
+            )
+        ),
+    )
 
     @classmethod
     def configure_parser(cls, parser: argparse.ArgumentParser) -> None:
