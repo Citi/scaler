@@ -120,6 +120,7 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertEqual(set(capabilities_to_dict(requests[0].capabilities).keys()), {"gpu"})
         self.assertEqual(requests[0].taskConcurrency, 1)
 
+
 class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
     """Declarative equivalents of the master-branch capability shutdown tests."""
 
