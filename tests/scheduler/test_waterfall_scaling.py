@@ -334,22 +334,36 @@ class TestAllocate(unittest.TestCase):
     """Floors count as supply first; the rest of the target fills tiers above their floors in priority order."""
 
     def test_a_floor_holds_with_no_demand(self):
-        tiers = [_tier(b"native", cap=8, floor=8), _tier(b"cloud", cap=100)]
+        tiers = [
+            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
+            _tier(b"cloud", max_task_concurrency=100),
+        ]
         self.assertEqual(allocate(0, tiers), {b"native": 8, b"cloud": 0})
 
     def test_demand_under_a_floor_stays_on_the_floor_tier(self):
-        tiers = [_tier(b"native", cap=8, floor=8), _tier(b"cloud", cap=100)]
+        tiers = [
+            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
+            _tier(b"cloud", max_task_concurrency=100),
+        ]
         self.assertEqual(allocate(5, tiers), {b"native": 8, b"cloud": 0})
 
     def test_demand_above_a_full_tier_spills_to_the_next(self):
-        tiers = [_tier(b"native", cap=8, floor=8), _tier(b"cloud", cap=100)]
+        tiers = [
+            _tier(b"native", max_task_concurrency=8, min_task_concurrency=8),
+            _tier(b"cloud", max_task_concurrency=100),
+        ]
         self.assertEqual(allocate(20, tiers), {b"native": 8, b"cloud": 12})
 
     def test_a_floor_below_the_cap_is_a_minimum(self):
-        self.assertEqual(allocate(10, [_tier(b"native", cap=20, floor=2)]), {b"native": 10})
+        self.assertEqual(
+            allocate(10, [_tier(b"native", max_task_concurrency=20, min_task_concurrency=2)]), {b"native": 10}
+        )
 
     def test_a_floor_on_a_lower_tier_counts_as_supply_first(self):
-        tiers = [_tier(b"burst", cap=20), _tier(b"warm", cap=20, floor=8)]
+        tiers = [
+            _tier(b"burst", max_task_concurrency=20),
+            _tier(b"warm", max_task_concurrency=20, min_task_concurrency=8),
+        ]
         for target, burst, warm in ((5, 0, 8), (20, 12, 8), (30, 20, 10), (50, 20, 20)):
             with self.subTest(target=target):
                 self.assertEqual(allocate(target, tiers), {b"burst": burst, b"warm": warm})
@@ -357,15 +371,15 @@ class TestAllocate(unittest.TestCase):
 
 class TestDrainOrder(unittest.TestCase):
     def test_a_tier_holds_while_a_lower_priority_tier_is_above_its_floor(self):
-        warm_draining = _tier(b"warm", cap=8, floor=4, worker_count=6, priority=2)
-        warm_at_floor = _tier(b"warm", cap=8, floor=4, worker_count=4, priority=2)
-        burst = _tier(b"burst", cap=20, worker_count=20)
+        warm_draining = _tier(b"warm", max_task_concurrency=8, min_task_concurrency=4, worker_count=6, priority=2)
+        warm_at_floor = _tier(b"warm", max_task_concurrency=8, min_task_concurrency=4, worker_count=4, priority=2)
+        burst = _tier(b"burst", max_task_concurrency=20, worker_count=20)
         self.assertTrue(lower_priority_tier_above_floor(burst, [burst, warm_draining]))
         self.assertFalse(lower_priority_tier_above_floor(burst, [burst, warm_at_floor]))
 
     def test_a_tier_of_the_same_priority_does_not_hold_it(self):
-        burst = _tier(b"burst", cap=20, worker_count=20)
-        peer = _tier(b"peer", cap=8, worker_count=6)
+        burst = _tier(b"burst", max_task_concurrency=20, worker_count=20)
+        peer = _tier(b"peer", max_task_concurrency=8, worker_count=6)
         self.assertFalse(lower_priority_tier_above_floor(burst, [burst, peer]))
 
 
@@ -819,8 +833,14 @@ def _create_workers(
     return workers
 
 
-def _tier(worker_manager_id: bytes, cap: int, floor: int = 0, worker_count: int = 0, priority: int = 1) -> Tier:
-    return Tier(worker_manager_id, priority, cap, floor, worker_count)
+def _tier(
+    worker_manager_id: bytes,
+    max_task_concurrency: int,
+    min_task_concurrency: int = 0,
+    worker_count: int = 0,
+    priority: int = 1,
+) -> Tier:
+    return Tier(worker_manager_id, priority, max_task_concurrency, min_task_concurrency, worker_count)
 
 
 def _desired_by_manager(

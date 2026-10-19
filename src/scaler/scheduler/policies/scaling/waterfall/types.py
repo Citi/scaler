@@ -15,10 +15,10 @@ class WaterfallRule:
 
 @dataclasses.dataclass(frozen=True)
 class Tier:
-    """An online worker manager's rule, with its cap and floor resolved against the maximum it advertises."""
+    """An online worker manager's rule, with its concurrency limits resolved against the maximum it advertises."""
 
     worker_manager_id: bytes
     priority: int
-    cap: int
-    floor: int
+    max_task_concurrency: int
+    min_task_concurrency: int
     worker_count: int
