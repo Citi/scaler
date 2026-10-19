@@ -148,6 +148,7 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
         self.assertEqual(requests[0].taskConcurrency, 5)
 
+
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     client_id = ClientID.generate_client_id()
     return Task(
