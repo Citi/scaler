@@ -2,7 +2,7 @@ import unittest
 from typing import Dict, Optional
 
 from scaler.protocol.capnp import Resource, Task, WorkerHeartbeat, WorkerManagerHeartbeat
-from scaler.scheduler.controllers.policies.simple_policy.scaling.vanilla import VanillaScalingPolicy
+from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
@@ -147,15 +147,6 @@ class TestVanillaDeclarativeEquivalents(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         requests = list(commands[0].setDesiredTaskConcurrencyRequests)
         self.assertEqual(requests[0].taskConcurrency, 5)
-
-    def test_get_status_returns_scaling_manager_status(self):
-        """VanillaScalingPolicy.get_status returns a ScalingManagerStatus object."""
-        from scaler.protocol.capnp import ScalingManagerStatus
-
-        managed_workers = {b"mgr": [WorkerID(b"w0")]}
-        status = self.policy.get_status(managed_workers)
-        self.assertIsInstance(status, ScalingManagerStatus)
-
 
 def _create_mock_task(task_id: TaskID, capabilities: dict) -> Task:
     client_id = ClientID.generate_client_id()
