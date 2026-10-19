@@ -18,7 +18,7 @@ class AllocatePolicyStrategy(enum.Enum):
 
 
 class ScalingPolicyStrategy(enum.Enum):
-    NO = "no"
+    STATIC = "static"
     VANILLA = "vanilla"
     CAPABILITY = "capability"
 
