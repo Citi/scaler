@@ -22,9 +22,9 @@ from scaler.protocol.capnp import WorkerManagerCommand
 from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
+from scaler.worker_manager.cloud.child_command import format_capabilities, load_requirements_content
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
-from scaler.worker_manager.nested.child_command import format_capabilities, load_requirements_content
 from scaler.worker_manager.runner import WorkerManagerRunner
 
 logger = logging.getLogger(__name__)

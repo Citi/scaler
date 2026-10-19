@@ -66,7 +66,7 @@ def _run_worker_manager(config: WorkerManagerUnion) -> None:
 
         SymphonyWorkerManager(config).run()
     elif isinstance(config, ECSWorkerManagerConfig):
-        from scaler.worker_manager.nested.aws_ecs.worker_manager import ECSWorkerManager
+        from scaler.worker_manager.cloud.aws_ecs.worker_manager import ECSWorkerManager
 
         ECSWorkerManager(config).run()
     elif isinstance(config, AWSBatchWorkerManagerConfig):
@@ -74,11 +74,11 @@ def _run_worker_manager(config: WorkerManagerUnion) -> None:
 
         AWSBatchWorkerManager(config).run()
     elif isinstance(config, ORBAWSEC2WorkerManagerConfig):
-        from scaler.worker_manager.nested.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
+        from scaler.worker_manager.cloud.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
         ORBAWSEC2WorkerManager(config).run()
     elif isinstance(config, OCIRawWorkerManagerConfig):
-        from scaler.worker_manager.nested.oci.worker_manager import OCIInstancesWorkerManager
+        from scaler.worker_manager.cloud.oci.worker_manager import OCIInstancesWorkerManager
 
         OCIInstancesWorkerManager(config).run()
     elif isinstance(config, OCIHPCWorkerManagerConfig):

@@ -14,9 +14,9 @@ import oci
 from scaler.config.section.oci_raw_worker_manager import OCIRawWorkerManagerConfig
 from scaler.config.types.oci_auth_type import OCIAuthType
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
+from scaler.worker_manager.cloud.child_command import format_capabilities, load_requirements_content
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
-from scaler.worker_manager.nested.child_command import format_capabilities, load_requirements_content
 from scaler.worker_manager.runner import WorkerManagerRunner
 
 if TYPE_CHECKING:

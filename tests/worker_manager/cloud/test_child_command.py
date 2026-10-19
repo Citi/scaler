@@ -2,7 +2,7 @@ import os
 import tempfile
 import unittest
 
-from scaler.worker_manager.nested.child_command import load_requirements_content
+from scaler.worker_manager.cloud.child_command import load_requirements_content
 
 
 class TestLoadRequirementsContent(unittest.TestCase):

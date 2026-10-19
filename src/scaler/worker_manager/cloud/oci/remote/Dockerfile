@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 
 COPY --from=uv /uv /usr/local/bin/uv
 
-COPY scaler/worker_manager/nested/oci/remote/entrypoint.sh /app/entrypoint.sh
+COPY scaler/worker_manager/cloud/oci/remote/entrypoint.sh /app/entrypoint.sh
 RUN chmod +x /app/entrypoint.sh
 
 WORKDIR /app

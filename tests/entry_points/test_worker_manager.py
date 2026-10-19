@@ -743,7 +743,7 @@ class TestOCIRawWorkerManagerConfig(unittest.TestCase):
             patch("sys.argv", ["scaler_worker_manager", "oci_raw", *_OCI_RAW_BASE_ARGV]),
             patch("scaler.entry_points.worker_manager.bootstrap_process"),
             patch("scaler.entry_points.worker_manager.register_event_loop"),
-            patch("scaler.worker_manager.nested.oci.worker_manager.OCIInstancesWorkerManager") as mock_mgr,
+            patch("scaler.worker_manager.cloud.oci.worker_manager.OCIInstancesWorkerManager") as mock_mgr,
         ):
             mock_mgr.return_value.run.return_value = None
             from scaler.entry_points.worker_manager import main
@@ -962,7 +962,7 @@ class TestORBAWSEC2CreateUserData(unittest.TestCase):
     """Tests for ORBAWSEC2WorkerManager._create_user_data covering the two environment modes."""
 
     def _make_worker_manager(self, **kwargs):
-        from scaler.worker_manager.nested.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
+        from scaler.worker_manager.cloud.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager
 
         return ORBAWSEC2WorkerManager(_make_orb_config(**kwargs))
 

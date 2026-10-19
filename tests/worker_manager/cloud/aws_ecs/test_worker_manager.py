@@ -3,7 +3,7 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
-from scaler.worker_manager.nested.aws_ecs.worker_manager import ECSWorkerProvisioner
+from scaler.worker_manager.cloud.aws_ecs.worker_manager import ECSWorkerProvisioner
 
 
 def _make_provisioner(max_task_concurrency: int = -1, ecs_task_cpu: int = 4) -> ECSWorkerProvisioner:

@@ -1,6 +1,6 @@
 import unittest
 
-from scaler.worker_manager.nested.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager, _extract_git_url_and_branch
+from scaler.worker_manager.cloud.orb_aws_ec2.worker_manager import ORBAWSEC2WorkerManager, _extract_git_url_and_branch
 
 
 class TestORBAWSEC2WorkerManagerValidateRequirements(unittest.TestCase):

@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from scaler.worker_manager.nested.orb_aws_ec2.worker_manager import ORBWorkerProvisioner
+from scaler.worker_manager.cloud.orb_aws_ec2.worker_manager import ORBWorkerProvisioner
 
 
 def _make_provisioner(workers_per_instance: int = 1, max_instances: int = -1) -> ORBWorkerProvisioner:

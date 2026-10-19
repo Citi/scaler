@@ -9,9 +9,9 @@ import boto3
 
 from scaler.config.section.ecs_worker_manager import ECSWorkerManagerConfig
 from scaler.worker_manager.capacity_coordinator import CapacityCoordinator
+from scaler.worker_manager.cloud.child_command import format_capabilities
 from scaler.worker_manager.desired_concurrency import extract_desired_count
 from scaler.worker_manager.mixins import DeclarativeWorkerProvisioner
-from scaler.worker_manager.nested.child_command import format_capabilities
 from scaler.worker_manager.runner import WorkerManagerRunner
 
 if TYPE_CHECKING:

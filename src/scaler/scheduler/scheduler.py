@@ -291,8 +291,9 @@ class Scheduler:
             ),
         ]
 
+        loop_tasks = [asyncio.ensure_future(loop) for loop in loops]
         try:
-            await asyncio.gather(*loops)
+            await asyncio.gather(*loop_tasks)
         except asyncio.CancelledError:
             pass
         except ClientShutdownException as e:
@@ -303,6 +304,11 @@ class Scheduler:
             logger.exception(f"{self.__class__.__name__}: main loop stopped on a transport/storage error")
         except Exception:
             logger.exception(f"{self.__class__.__name__}: main loop stopped on an unexpected error")
+
+        # gather re-raises the first error but leaves the other loops running: stop them before their sockets go.
+        for loop_task in loop_tasks:
+            loop_task.cancel()
+        await asyncio.gather(*loop_tasks, return_exceptions=True)
 
         self._binder.destroy()
         self._binder_monitor.destroy()
