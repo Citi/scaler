@@ -555,7 +555,7 @@ class TestWaterfallConfigParsing(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "duplicate worker_manager_id"):
             create_policies("waterfall_v1", "1,mgr_a,10\n2,mgr_a,20")
 
-    def test_policy_delegates_to_scaling_policy(self):
+    def test_create_policies_builds_waterfall_scaling_policy(self):
         """Scaling policy emits declarative commands based on waterfall rules."""
         _, scaling_policy = create_policies("waterfall_v1", "1,manager_a,10\n2,manager_b,20")
 
