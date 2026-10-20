@@ -59,9 +59,9 @@ class TaskAllocatePolicy(metaclass=abc.ABCMeta):
 
 class ScalingPolicy(metaclass=abc.ABCMeta):
     """
-    Stateless scaling policy interface.
+    Scaling policy interface.
 
-    All state (managed workers) is owned by WorkerManagerController and passed in as parameters.
+    WorkerManagerController owns the managed workers and passes them in as parameters.
     Policies return a single declarative setDesiredTaskConcurrency command.
     """
 
