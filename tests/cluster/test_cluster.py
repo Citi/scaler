@@ -1,3 +1,4 @@
+import socket
 import unittest
 
 from scaler import Client, SchedulerClusterCombo
@@ -26,3 +27,12 @@ class TestCluster(unittest.TestCase):
             self.assertEqual(future.result(), round(3.14))
 
         combo.shutdown()
+
+    def test_scheduler_listens_once_constructed(self):
+        """The combo returns only after its scheduler accepts connections, so a client with a short timeout fits."""
+        port = get_available_tcp_port()
+        combo = SchedulerClusterCombo(address=f"tcp://127.0.0.1:{port}", n_workers=1)
+        try:
+            socket.create_connection(("127.0.0.1", port)).close()
+        finally:
+            combo.shutdown()

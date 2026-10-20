@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import TYPE_CHECKING, Optional
 
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
@@ -37,6 +38,9 @@ from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
+
+if TYPE_CHECKING:
+    from multiprocessing.synchronize import Event as EventType
 
 logger = logging.getLogger(__name__)
 
@@ -253,8 +257,10 @@ class Scheduler:
 
         logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
-    async def get_loops(self):
+    async def get_loops(self, ready_event: Optional["EventType"] = None):
         await self.__initialize_network()
+        if ready_event is not None:
+            ready_event.set()
 
         # swallow_routine_errors=True: a bug in any single routine must not escape to asyncio.gather and
         # tear the whole scheduler down, taking every connected client and worker with it.
