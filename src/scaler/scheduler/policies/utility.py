@@ -2,7 +2,8 @@ from typing import Optional, Tuple
 
 from scaler.scheduler.policies.allocation.capability import CapabilityAllocatePolicy
 from scaler.scheduler.policies.allocation.even_load import EvenLoadAllocatePolicy
-from scaler.scheduler.policies.mixins import ScalingPolicy, TaskAllocatePolicy
+from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
+from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
 from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
 from scaler.scheduler.policies.scaling.vanilla import VanillaScalingPolicy

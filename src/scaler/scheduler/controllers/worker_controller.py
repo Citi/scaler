@@ -21,7 +21,7 @@ from scaler.protocol.capnp import (
 from scaler.protocol.helpers import capabilities_to_dict, dict_to_capabilities
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController, WorkerController
-from scaler.scheduler.policies.mixins import TaskAllocatePolicy
+from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.mixins import Looper, Reporter
 

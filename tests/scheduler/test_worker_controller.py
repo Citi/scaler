@@ -8,7 +8,7 @@ from scaler.protocol.capnp import Task, WorkerDisconnectNotification
 from scaler.scheduler.controllers.mixins import ConfigController, TaskController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
-from scaler.scheduler.policies.mixins import TaskAllocatePolicy
+from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.identifiers import ClientID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger

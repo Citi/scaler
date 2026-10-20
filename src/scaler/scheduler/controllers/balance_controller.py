@@ -5,7 +5,7 @@ from scaler.io.mixins import AsyncBinder, AsyncPublisher
 from scaler.protocol.capnp import StateBalanceAdvice
 from scaler.scheduler.controllers.config_controller import VanillaConfigController
 from scaler.scheduler.controllers.mixins import TaskController
-from scaler.scheduler.policies.mixins import TaskAllocatePolicy
+from scaler.scheduler.policies.allocation.mixins import TaskAllocatePolicy
 from scaler.utility.identifiers import TaskID, WorkerID
 from scaler.utility.mixins import Looper
 
