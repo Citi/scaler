@@ -32,7 +32,8 @@ NOTE: All contributors must have a contributor license agreement (CLA) on file w
 #### Running tests
 
 ```bash
-python -m unittest discover
+uv pip install -e ".[all]" --group dev
+python -m pytest -n auto tests
 ```
 
 #### Lint checks
