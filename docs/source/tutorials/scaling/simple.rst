@@ -4,7 +4,7 @@ Simple Engine
 ``simple`` requires a semicolon-delimited ``policy_content`` string with exactly two keys:
 
 * ``allocate``: ``even_load`` or ``capability``
-* ``scaling``: ``no``, ``vanilla``, or ``capability``
+* ``scaling``: ``static``, ``vanilla``, or ``capability``
 
 Quick Start (copy/paste)
 ------------------------

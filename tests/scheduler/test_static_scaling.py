@@ -3,8 +3,8 @@ from typing import Optional
 from unittest.mock import MagicMock
 
 from scaler.protocol.capnp import WorkerManagerHeartbeat
-from scaler.scheduler.controllers.policies.simple_policy.scaling.static import StaticScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.simple_policy import SimplePolicy
+from scaler.scheduler.policies.scaling.static import StaticScalingPolicy
+from scaler.scheduler.policies.utility import create_policies
 
 MAX_TASK_CONCURRENCY = 8
 
@@ -29,10 +29,9 @@ class TestStaticScalingPolicy(unittest.TestCase):
         self.assertEqual(_desired_task_concurrency(StaticScalingPolicy(100)), MAX_TASK_CONCURRENCY)
 
 
-class TestSimplePolicyScalingArgument(unittest.TestCase):
+class TestScalingPolicyArgument(unittest.TestCase):
     def __scaling_policy(self, scaling: str) -> Optional[StaticScalingPolicy]:
-        policy = SimplePolicy(f"allocate=even_load; scaling={scaling}")
-        scaling_policy = policy._scaling_policy
+        _, scaling_policy = create_policies("simple", f"allocate=even_load; scaling={scaling}")
         return scaling_policy if isinstance(scaling_policy, StaticScalingPolicy) else None
 
     def test_static_parses_with_and_without_argument(self) -> None:
@@ -48,4 +47,4 @@ class TestSimplePolicyScalingArgument(unittest.TestCase):
         for scaling in ["no", "vanilla:3", "static:many", "static:-1"]:
             with self.subTest(scaling=scaling):
                 with self.assertRaises(ValueError):
-                    SimplePolicy(f"allocate=even_load; scaling={scaling}")
+                    create_policies("simple", f"allocate=even_load; scaling={scaling}")

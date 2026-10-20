@@ -1,9 +1,9 @@
 from typing import Dict, List, Optional
 
-from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.scheduler.controllers.policies.simple_policy.scaling.mixins import ScalingPolicy
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
-from scaler.scheduler.controllers.worker_manager_utilties import build_scaling_manager_status, build_set_desired_command
+from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.policies.scaling.mixins import ScalingPolicy
+from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
+from scaler.scheduler.policies.scaling.utility import build_set_desired_command
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
@@ -28,6 +28,3 @@ class StaticScalingPolicy(ScalingPolicy):
         if self._task_concurrency is not None:
             desired = min(self._task_concurrency, desired)
         return [build_set_desired_command([({}, desired)])]
-
-    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        return build_scaling_manager_status(managed_workers)

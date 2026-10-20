@@ -1,17 +1,17 @@
 import abc
 from typing import Dict, List
 
-from scaler.protocol.capnp import ScalingManagerStatus, WorkerManagerCommand, WorkerManagerHeartbeat
-from scaler.scheduler.controllers.policies.simple_policy.scaling.types import WorkerManagerSnapshot
+from scaler.protocol.capnp import WorkerManagerCommand, WorkerManagerHeartbeat
+from scaler.scheduler.policies.scaling.types import WorkerManagerSnapshot
 from scaler.utility.identifiers import WorkerID
 from scaler.utility.snapshot import InformationSnapshot
 
 
-class ScalingPolicy:
+class ScalingPolicy(metaclass=abc.ABCMeta):
     """
-    Stateless scaling policy interface.
+    Scaling policy interface.
 
-    All state (managed workers) is owned by WorkerManagerController and passed in as parameters.
+    WorkerManagerController owns the managed workers and passes them in as parameters.
     Policies return a single declarative setDesiredTaskConcurrency command.
     """
 
@@ -24,9 +24,4 @@ class ScalingPolicy:
         worker_manager_snapshots: Dict[bytes, WorkerManagerSnapshot],
     ) -> List[WorkerManagerCommand]:
         """Pure function: state in, declarative scaling command out."""
-        raise NotImplementedError()
-
-    @abc.abstractmethod
-    def get_status(self, managed_workers: Dict[bytes, List[WorkerID]]) -> ScalingManagerStatus:
-        """Pure function: state in, status out."""
         raise NotImplementedError()

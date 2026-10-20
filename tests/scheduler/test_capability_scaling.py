@@ -3,7 +3,7 @@ from typing import Dict, Optional
 
 from scaler.protocol.capnp import Task, WorkerManagerHeartbeat
 from scaler.protocol.helpers import capabilities_to_dict
-from scaler.scheduler.controllers.policies.simple_policy.scaling.capability_scaling import CapabilityScalingPolicy
+from scaler.scheduler.policies.scaling.capability import CapabilityScalingPolicy
 from scaler.utility.identifiers import ClientID, ObjectID, TaskID, WorkerID
 from scaler.utility.logging.utility import setup_logger
 from scaler.utility.snapshot import InformationSnapshot
@@ -119,14 +119,6 @@ class TestCapabilityScalingPolicy(unittest.TestCase):
         self.assertEqual(len(requests), 1)
         self.assertEqual(set(capabilities_to_dict(requests[0].capabilities).keys()), {"gpu"})
         self.assertEqual(requests[0].taskConcurrency, 1)
-
-    def test_get_status_returns_scaling_manager_status(self):
-        """CapabilityScalingPolicy.get_status returns a ScalingManagerStatus object."""
-        from scaler.protocol.capnp import ScalingManagerStatus
-
-        managed_workers = {b"mgr": [WorkerID(b"w0")]}
-        status = self.policy.get_status(managed_workers)
-        self.assertIsInstance(status, ScalingManagerStatus)
 
 
 class TestCapabilityDeclarativeEquivalents(unittest.TestCase):
