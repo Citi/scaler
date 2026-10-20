@@ -29,7 +29,7 @@ class TestStaticScalingPolicy(unittest.TestCase):
         self.assertEqual(_desired_task_concurrency(StaticScalingPolicy(100)), MAX_TASK_CONCURRENCY)
 
 
-class TestSimplePolicyScalingArgument(unittest.TestCase):
+class TestScalingPolicyArgument(unittest.TestCase):
     def __scaling_policy(self, scaling: str) -> Optional[StaticScalingPolicy]:
         _, scaling_policy = create_policies("simple", f"allocate=even_load; scaling={scaling}")
         return scaling_policy if isinstance(scaling_policy, StaticScalingPolicy) else None
