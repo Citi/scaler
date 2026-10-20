@@ -31,9 +31,9 @@ from scaler.scheduler.controllers.graph_controller import VanillaGraphTaskContro
 from scaler.scheduler.controllers.information_controller import VanillaInformationController
 from scaler.scheduler.controllers.object_controller import VanillaObjectController
 from scaler.scheduler.controllers.task_controller import VanillaTaskController
-from scaler.scheduler.controllers.vanilla_policy_controller import VanillaPolicyController
 from scaler.scheduler.controllers.worker_controller import VanillaWorkerController
 from scaler.scheduler.controllers.worker_manager_controller import WorkerManagerController
+from scaler.scheduler.policies.utility import create_policies
 from scaler.utility.event_loop import create_async_loop_routine
 from scaler.utility.exceptions import ClientShutdownException, ObjectStorageException
 from scaler.utility.identifiers import ClientID, WorkerID
@@ -59,7 +59,7 @@ class Scheduler:
         )
         self._binder_monitor: AsyncPublisher = self._backend.create_async_publisher(identity=self._identity)
 
-        self._policy_controller = VanillaPolicyController(
+        self._allocation_policy, self._scaling_policy = create_policies(
             config.policy.policy_engine_type, config.policy.policy_content
         )
 
@@ -68,14 +68,14 @@ class Scheduler:
         self._graph_controller = VanillaGraphTaskController(config_controller=self._config_controller)
         self._task_controller = VanillaTaskController(config_controller=self._config_controller)
         self._worker_controller = VanillaWorkerController(
-            config_controller=self._config_controller, policy_controller=self._policy_controller
+            config_controller=self._config_controller, allocation_policy=self._allocation_policy
         )
         self._balance_controller = VanillaBalanceController(
-            config_controller=self._config_controller, policy_controller=self._policy_controller
+            config_controller=self._config_controller, allocation_policy=self._allocation_policy
         )
         self._information_controller = VanillaInformationController(config_controller=self._config_controller)
         self._worker_manager_controller = WorkerManagerController(
-            config_controller=self._config_controller, policy_controller=self._policy_controller
+            config_controller=self._config_controller, scaling_policy=self._scaling_policy
         )
 
         self._client_manager.register(
@@ -291,8 +291,9 @@ class Scheduler:
             ),
         ]
 
+        loop_tasks = [asyncio.ensure_future(loop) for loop in loops]
         try:
-            await asyncio.gather(*loops)
+            await asyncio.gather(*loop_tasks)
         except asyncio.CancelledError:
             pass
         except ClientShutdownException as e:
@@ -303,6 +304,11 @@ class Scheduler:
             logger.exception(f"{self.__class__.__name__}: main loop stopped on a transport/storage error")
         except Exception:
             logger.exception(f"{self.__class__.__name__}: main loop stopped on an unexpected error")
+
+        # gather re-raises the first error but leaves the other loops running: stop them before their sockets go.
+        for loop_task in loop_tasks:
+            loop_task.cancel()
+        await asyncio.gather(*loop_tasks, return_exceptions=True)
 
         self._binder.destroy()
         self._binder_monitor.destroy()
