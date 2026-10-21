@@ -106,11 +106,12 @@ Scaling
 
 The ``scaling`` option controls how worker capacity grows or shrinks.
 
-* ``scaling=static`` or ``scaling=static:N``
+* ``scaling=static``, ``scaling=static:N``, or ``scaling=static[<counts>]``
 
-  * Requests the same task concurrency from every worker manager, whatever the load.
+  * Requests a fixed task concurrency from each worker manager, whatever the load.
   * ``static`` requests the maximum task concurrency each worker manager advertises.
   * ``static:N`` requests ``N``, capped at that maximum. ``static:0`` stops every worker.
+  * ``static[<counts>]`` requests a count per worker manager, see `Static counts`_.
   * Only ``static`` takes an argument.
 
 * ``scaling=vanilla``
@@ -125,6 +126,22 @@ The ``scaling`` option controls how worker capacity grows or shrinks.
   * Groups demand by capability and scales per capability group.
   * Scale up when ``tasks / capable_workers > 5``.
   * Scale down when ``tasks / capable_workers < 0.5``.
+
+Static counts
+-------------
+
+``static`` takes an optional list of counts, one entry per worker manager, separated by ``,``:
+
+.. code-block:: text
+
+    allocate=even_load; scaling=static[native-local:8, ecs-burst:0]
+
+* An entry is ``worker_manager_id:task_concurrency``.
+* Each count is capped at the worker manager's heartbeat ``max_task_concurrency``.
+* A worker manager without an entry gets its heartbeat's ``max_task_concurrency``, as with plain ``static``.
+* ``static:N`` and a list of counts cannot be combined.
+* A ``worker_manager_id`` in the counts cannot contain ``:``, ``,``, ``[``, ``]``, or ``;``.
+* A negative count or a repeated ``worker_manager_id`` is refused at startup.
 
 Notes:
 
