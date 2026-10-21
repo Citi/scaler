@@ -76,6 +76,7 @@ dev = [
     "pyodide-build==0.39.0; python_version >= '3.12'",
     "pytest>=9.1.1",
     "pytest-xdist>=3.8.0",
+    "ray>=2.59.0",
     "shibuya",
     "sphinx-copybutton",
     "sphinx-substitution-extensions",
@@ -159,6 +160,11 @@ exclude = [
     ".*object_storage.*$",
 ]
 
+[[tool.mypy.overrides]]
+# scaler.compat.ray replaces ray's API at runtime, so ray's own types do not describe the calls that run
+module = ["ray", "ray.*"]
+follow_imports = "skip"
+
 [tool.flake8]
 count = true
 statistics = true
@@ -200,10 +206,6 @@ extend_skip_glob = [
     "scripts/*",
     "venv*",
 ]
-
-[tool.pytest.ini_options]
-# unittest discover never collected it (tests/compat has no __init__.py), and it needs ray
-addopts = "--ignore=tests/compat/test_ray_compat.py"
 
 [tool.cibuildwheel]
 skip = "cp38-* cp39-*"
