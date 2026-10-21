@@ -54,9 +54,20 @@ class WorkerManagerConfig(ConfigClass):
         metadata=dict(
             short="-ca",
             help=(
-                "address this worker manager binds for its units to dial, and writes into their start command. "
+                "address this worker manager binds for its units to dial. "
                 "Defaults to a free loopback port. A worker manager whose units are remote resources "
                 "(EC2 instances, ECS tasks, OCI container instances) needs an address those resources can reach."
+            ),
+        ),
+    )
+
+    advertised_children_address: Optional[AddressConfig] = dataclasses.field(
+        default=None,
+        metadata=dict(
+            short="-aca",
+            help=(
+                "address written into the units' start command for them to dial; defaults to children_address. "
+                "Use this when the units reach this worker manager through NAT, e.g. an EC2 public IP."
             ),
         ),
     )

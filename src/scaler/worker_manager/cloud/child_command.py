@@ -39,8 +39,5 @@ def cloud_children_address(worker_manager_config: WorkerManagerConfig) -> Addres
 
 def child_link_arguments(worker_manager_config: WorkerManagerConfig, unit_id: str, task_concurrency: int) -> str:
     """The command line arguments that make a child native manager serve this manager as unit `unit_id`."""
-    return (
-        f"--parent-address {cloud_children_address(worker_manager_config)} "
-        f"--unit-id {unit_id} "
-        f"--max-task-concurrency {task_concurrency}"
-    )
+    parent_address = worker_manager_config.advertised_children_address or cloud_children_address(worker_manager_config)
+    return f"--parent-address {parent_address} --unit-id {unit_id} --max-task-concurrency {task_concurrency}"
