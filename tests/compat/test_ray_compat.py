@@ -212,6 +212,7 @@ class TestRayCompat(unittest.TestCase):
 
     def test_ray_external_cluster(self) -> None:
         combo = SchedulerClusterCombo(n_workers=1)
+        self.addCleanup(combo.shutdown)
 
         # explicitly init scaler's ray interface, passing the address of an existing cluster
         scaler_init(address=combo.get_address())
@@ -232,6 +233,7 @@ class TestRayCompat(unittest.TestCase):
         self.assertFalse(ray.is_initialized())
 
         combo = SchedulerClusterCombo(n_workers=1)
+        self.addCleanup(combo.shutdown)
         scaler_init(address=combo.get_address())
 
         self.assertEqual(ray.get(fn.remote()), 1)
