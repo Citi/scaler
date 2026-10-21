@@ -2,14 +2,12 @@ import asyncio
 import signal
 import sys
 import threading
-from typing import TYPE_CHECKING, Callable, Optional
-
-if TYPE_CHECKING:
-    from multiprocessing.synchronize import Event as EventType
+from multiprocessing.synchronize import Event as EventType
+from typing import Callable, Optional
 
 
 def install_async_shutdown_handler(
-    loop: asyncio.AbstractEventLoop, callback: Callable[[], None], shutdown_event: Optional["EventType"] = None
+    loop: asyncio.AbstractEventLoop, callback: Callable[[], None], shutdown_event: Optional[EventType] = None
 ) -> None:
     """Register `callback` to run on the asyncio event loop when the process receives
     SIGINT or SIGTERM, or when the optional `shutdown_event` is set. Cross-platform:
