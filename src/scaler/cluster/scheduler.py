@@ -1,7 +1,8 @@
 import asyncio
 import multiprocessing
 import multiprocessing.connection
-from typing import TYPE_CHECKING, Callable, Optional, Tuple
+from multiprocessing.synchronize import Event as EventType
+from typing import Callable, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
 from scaler.config.defaults import READINESS_TIMEOUT_SECONDS
@@ -12,16 +13,13 @@ from scaler.utility.event_loop import register_event_loop, run_task_forever
 from scaler.utility.process_bootstrap import bootstrap_process
 from scaler.utility.signal_handler import install_async_shutdown_handler
 
-if TYPE_CHECKING:
-    from multiprocessing.synchronize import Event as EventType
-
 
 def run_scheduler(
     scheduler_config: SchedulerConfig,
     logging_paths: Tuple[str, ...],
     logging_config_file: Optional[str],
     logging_level: str,
-    shutdown_event: Optional["EventType"] = None,
+    shutdown_event: Optional[EventType] = None,
     on_ready: Optional[Callable[[], None]] = None,
 ) -> None:
     """Run the scheduler in the current process until SIGINT/SIGTERM (or the optional
@@ -66,7 +64,7 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         logging_paths: Tuple[str, ...],
         logging_config_file: Optional[str],
         logging_level: str,
-        shutdown_event: Optional["EventType"] = None,
+        shutdown_event: Optional[EventType] = None,
         security_config: Optional[SecurityConfig] = None,
     ):
         super().__init__(name="Scheduler")
