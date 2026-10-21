@@ -5,7 +5,7 @@ from multiprocessing.synchronize import Event as EventType
 from typing import Callable, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
-from scaler.config.defaults import READINESS_TIMEOUT_SECONDS
+from scaler.config.constants import SCHEDULER_READINESS_TIMEOUT_SECONDS
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.scheduler.scheduler import Scheduler
@@ -100,7 +100,9 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         """Blocks until the scheduler listens, so a client connecting next does not race its startup."""
         address = self._scheduler_config.bind_address
         # the sentinel wakes the wait if the scheduler exits first, without polling its exit code
-        ready = multiprocessing.connection.wait([self._ready_receiver, self.sentinel], READINESS_TIMEOUT_SECONDS)
+        ready = multiprocessing.connection.wait(
+            [self._ready_receiver, self.sentinel], SCHEDULER_READINESS_TIMEOUT_SECONDS
+        )
         if self._ready_receiver in ready:
             return
 
@@ -108,7 +110,9 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             self.join()
             raise RuntimeError(f"Scheduler exited with code {self.exitcode} before listening to {address!r}")
 
-        raise TimeoutError(f"Scheduler at {address!r} failed to start within {READINESS_TIMEOUT_SECONDS} seconds")
+        raise TimeoutError(
+            f"Scheduler at {address!r} failed to start within {SCHEDULER_READINESS_TIMEOUT_SECONDS} seconds"
+        )
 
     def run(self) -> None:
         run_scheduler(

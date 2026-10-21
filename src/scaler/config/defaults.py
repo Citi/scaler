@@ -65,9 +65,6 @@ DEFAULT_PER_WORKER_QUEUE_SIZE = 1000
 # Without a bound the status routine would wedge behind a server that never answers.
 STORAGE_TOTALS_TIMEOUT_SECONDS = 5.0
 
-# how long SchedulerProcess.wait_until_ready waits for the scheduler to listen
-READINESS_TIMEOUT_SECONDS = 30
-
 # =======================
 # WORKER SPECIFIC OPTIONS
 
