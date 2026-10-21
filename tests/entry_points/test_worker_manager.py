@@ -171,6 +171,24 @@ _NATIVE_BASE_ARGS = [
 class TestWorkerManagerConfigFields(unittest.TestCase):
     """Tests that the subcommand interface correctly parses per-manager fields from CLI and TOML."""
 
+    def test_unit_startup_timeout_from_cli(self) -> None:
+        from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig
+
+        config = NativeWorkerManagerConfig.parse_with_section(
+            "scaler_worker_manager",
+            {},
+            argv=["--worker-manager-id", "wm-test", "tcp://127.0.0.1:6378", "--unit-startup-timeout-seconds", "1800"],
+        )
+        self.assertEqual(config.worker_manager_config.unit_startup_timeout_seconds, 1800)
+
+    def test_unit_startup_timeout_must_be_positive(self) -> None:
+        with self.assertRaises(ValueError):
+            WorkerManagerConfig(
+                scheduler_address=AddressConfig.from_string("tcp://127.0.0.1:6378"),
+                worker_manager_id="wm-test",
+                unit_startup_timeout_seconds=0,
+            )
+
     @patch("sys.argv", [*_NATIVE_BASE_ARGS, "--logging-level", "DEBUG"])
     def test_logging_level_from_cli(self) -> None:
         from scaler.config.section.native_worker_manager import NativeWorkerManagerConfig

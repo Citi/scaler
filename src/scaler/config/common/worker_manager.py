@@ -60,6 +60,17 @@ class WorkerManagerConfig(ConfigClass):
         ),
     )
 
+    unit_startup_timeout_seconds: int = dataclasses.field(
+        default=defaults.DEFAULT_WORKER_MANAGER_UNIT_STARTUP_TIMEOUT_SECONDS,
+        metadata=dict(
+            short="-usts",
+            help=(
+                "seconds a cloud unit (EC2 instance, ECS task, OCI container instance) may take to send its first "
+                "heartbeat before the worker manager counts it as lost. Raise it when units install scaler from source"
+            ),
+        ),
+    )
+
     children_address: Optional[AddressConfig] = dataclasses.field(
         default=None,
         metadata=dict(
@@ -112,5 +123,7 @@ class WorkerManagerConfig(ConfigClass):
             raise ValueError("scale_down_cooldown_seconds must be a non-negative number.")
         if self.unit_timeout_seconds <= 0:
             raise ValueError("unit_timeout_seconds must be a positive number.")
+        if self.unit_startup_timeout_seconds <= 0:
+            raise ValueError("unit_startup_timeout_seconds must be a positive number.")
         if (self.parent_address is None) != (self.unit_id is None):
             raise ValueError("parent_address and unit_id must be set together.")
