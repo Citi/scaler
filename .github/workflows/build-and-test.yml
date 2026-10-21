@@ -36,15 +36,7 @@ jobs:
         with:
           os: ${{ runner.os }}
 
-      - uses: ./.github/actions/3rd-party-libraries-download
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/3rd-party-libraries-compile
-        with:
-          os: ${{ runner.os }}
-
-      - uses: ./.github/actions/3rd-party-libraries-install
+      - uses: ./.github/actions/3rd-party-libraries
         with:
           os: ${{ runner.os }}
 
