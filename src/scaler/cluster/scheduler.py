@@ -1,10 +1,10 @@
 import asyncio
 import multiprocessing
-import time
-from typing import TYPE_CHECKING, Optional, Tuple
+import multiprocessing.connection
+from typing import TYPE_CHECKING, Callable, Optional, Tuple
 
 from scaler.config.common.security import SecurityConfig
-from scaler.config.defaults import READINESS_POLL_INTERVAL_SECONDS, READINESS_TIMEOUT_SECONDS
+from scaler.config.defaults import READINESS_TIMEOUT_SECONDS
 from scaler.config.section.scheduler import PolicyConfig, SchedulerConfig
 from scaler.config.types.address import AddressConfig
 from scaler.scheduler.scheduler import Scheduler
@@ -22,11 +22,11 @@ def run_scheduler(
     logging_config_file: Optional[str],
     logging_level: str,
     shutdown_event: Optional["EventType"] = None,
-    ready_event: Optional["EventType"] = None,
+    on_ready: Optional[Callable[[], None]] = None,
 ) -> None:
     """Run the scheduler in the current process until SIGINT/SIGTERM (or the optional
     `shutdown_event`) triggers a graceful shutdown. Blocks until the scheduler exited.
-    Sets the optional `ready_event` once the scheduler listens."""
+    Calls the optional `on_ready` once the scheduler listens."""
 
     loop = asyncio.new_event_loop()
 
@@ -35,7 +35,7 @@ def run_scheduler(
         register_event_loop(scheduler_config.event_loop)
 
         scheduler = Scheduler(scheduler_config)
-        task = loop.create_task(scheduler.get_loops(ready_event))
+        task = loop.create_task(scheduler.get_loops(on_ready))
 
         def _cancel_scheduler_task() -> None:
             loop.call_soon_threadsafe(task.cancel)
@@ -96,19 +96,21 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
         self._logging_level = logging_level
 
         self._shutdown_event = shutdown_event
-        self._ready_event = multiprocessing.get_context("spawn").Event()
+        self._ready_receiver, self._ready_sender = multiprocessing.get_context("spawn").Pipe(duplex=False)
 
     def wait_until_ready(self) -> None:
         """Blocks until the scheduler listens, so a client connecting next does not race its startup."""
         address = self._scheduler_config.bind_address
-        deadline = time.monotonic() + READINESS_TIMEOUT_SECONDS
-        while not self._ready_event.wait(READINESS_POLL_INTERVAL_SECONDS):
-            if self.exitcode is not None:
-                raise RuntimeError(f"Scheduler exited with code {self.exitcode} before listening to {address!r}")
-            if time.monotonic() > deadline:
-                raise TimeoutError(
-                    f"Scheduler at {address!r} failed to start within {READINESS_TIMEOUT_SECONDS} seconds"
-                )
+        # the sentinel wakes the wait if the scheduler exits first, without polling its exit code
+        ready = multiprocessing.connection.wait([self._ready_receiver, self.sentinel], READINESS_TIMEOUT_SECONDS)
+        if self._ready_receiver in ready:
+            return
+
+        if self.sentinel in ready:
+            self.join()
+            raise RuntimeError(f"Scheduler exited with code {self.exitcode} before listening to {address!r}")
+
+        raise TimeoutError(f"Scheduler at {address!r} failed to start within {READINESS_TIMEOUT_SECONDS} seconds")
 
     def run(self) -> None:
         run_scheduler(
@@ -117,5 +119,5 @@ class SchedulerProcess(multiprocessing.get_context("spawn").Process):  # type: i
             self._logging_config_file,
             self._logging_level,
             self._shutdown_event,
-            self._ready_event,
+            lambda: self._ready_sender.send(True),
         )

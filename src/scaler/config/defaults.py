@@ -68,9 +68,6 @@ STORAGE_TOTALS_TIMEOUT_SECONDS = 5.0
 # how long SchedulerProcess.wait_until_ready waits for the scheduler to listen
 READINESS_TIMEOUT_SECONDS = 30
 
-# how often SchedulerProcess.wait_until_ready checks that the scheduler process is still alive
-READINESS_POLL_INTERVAL_SECONDS = 0.1
-
 # =======================
 # WORKER SPECIFIC OPTIONS
 
