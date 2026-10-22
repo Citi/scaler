@@ -1,9 +1,9 @@
+import multiprocessing
 import os
 import signal
 import sys
 import time
 import unittest
-from multiprocessing import Process
 from typing import Dict, Optional
 
 from scaler import Client
@@ -92,7 +92,9 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
+        manager_process = multiprocessing.get_context("spawn").Process(
+            target=_run_native_worker_manager, args=(self.scheduler_address,)
+        )
         manager_process.start()
 
         with Client(self.scheduler_address) as client:
@@ -145,7 +147,9 @@ class TestScaling(unittest.TestCase):
         )
         scheduler.start()
 
-        manager_process = Process(target=_run_native_worker_manager, args=(self.scheduler_address,))
+        manager_process = multiprocessing.get_context("spawn").Process(
+            target=_run_native_worker_manager, args=(self.scheduler_address,)
+        )
         manager_process.start()
 
         with Client(self.scheduler_address) as client:

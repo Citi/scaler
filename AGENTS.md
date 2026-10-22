@@ -45,7 +45,7 @@ The gate, run by CI on Linux, macOS, and Windows, before every commit that touch
 python_dirs="src tests examples benchmarks docs/source"    # "." would also scan virtualenvs and build directories
 isort $python_dirs && black $python_dirs && pflake8 $python_dirs && mypy .
 clang-format --Werror --dry-run <the .cpp and .h files you changed>
-python -m unittest discover -v tests -t .
+python -m pytest -n auto tests
 ./scripts/test.sh                               # C++
 ```
 

@@ -4,6 +4,7 @@ It allows users familiar with Ray's API to interact with Scaler in a similar fas
 including remote function execution, object referencing, and waiting for task completion.
 """
 
+import atexit
 import concurrent.futures
 import inspect
 import sys
@@ -11,6 +12,7 @@ from typing import Any, Callable, Dict, Generic, Iterator, List, Optional, Tuple
 from unittest.mock import Mock, patch
 
 import psutil
+import ray._private.worker
 
 if sys.version_info >= (3, 10):
     from typing import ParamSpec
@@ -61,6 +63,7 @@ class NotImplementedMock(Mock):
 # ray from being initialized or shut down, which can cause issues with our
 # compatibility layer, especially during atexit.
 patch("ray._private.worker.init", new=_no_op).start()
+atexit.unregister(ray._private.worker.shutdown)  # ray registers it on import, out of the patch's reach
 patch("ray._private.worker.shutdown", new=_no_op).start()
 
 # Prevent the import of a module that causes issues during ray shutdown
@@ -78,7 +81,7 @@ patch("ray.dag.compiled_dag_node", new=Mock()).start()
 # Add no-op, mock, or not-implemented patches for various ray functions and modules
 patch("ray.init", new=_no_op).start()
 patch("ray.method", new=_not_implemented).start()
-patch("ray.actor", new=Mock()).start()
+patch("ray.actor", new=NotImplementedMock()).start()
 patch("ray.runtime_context", new=NotImplementedMock()).start()
 patch("ray.cross_language", new=NotImplementedMock()).start()
 patch("ray.get_actor", new=_no_op).start()
