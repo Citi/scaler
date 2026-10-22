@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Callable, Optional
 
 from scaler.config.defaults import CLEANUP_INTERVAL_SECONDS
 from scaler.config.section.scheduler import SchedulerConfig
@@ -253,8 +254,10 @@ class Scheduler:
 
         logger.error(f"{self.__class__.__name__}: unknown message from {source=}: {message}")
 
-    async def get_loops(self):
+    async def get_loops(self, on_ready: Optional[Callable[[], None]] = None) -> None:
         await self.__initialize_network()
+        if on_ready is not None:
+            on_ready()
 
         # swallow_routine_errors=True: a bug in any single routine must not escape to asyncio.gather and
         # tear the whole scheduler down, taking every connected client and worker with it.

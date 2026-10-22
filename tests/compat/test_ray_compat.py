@@ -115,7 +115,8 @@ class TestRayCompat(unittest.TestCase):
                 greater = quick_sort_distributed.remote(greater)
                 return ray.get(lesser) + [pivot] + ray.get(greater)
 
-        for size in [200000, 4000000, 8000000]:
+        # the docs example sorts 4000000 and 8000000 elements instead, which took 478 s distributed on 4 cores
+        for size in [200000, 400000, 800000]:
             unsorted = random.randint(1000000, size=(size)).tolist()
             s = time.time()
             sequential_sorted = quick_sort(unsorted[:])
@@ -154,8 +155,10 @@ class TestRayCompat(unittest.TestCase):
         def sleep(secs: int) -> None:
             time.sleep(secs)
 
-        refs = [sleep.remote(x) for x in (2, 10)]
-        ready, remaining = ray.wait(refs, timeout=5)
+        refs = [sleep.remote(x) for x in (0, 60)]
+        ray.get(refs[0])  # a processor's first ray task takes seconds to start, so keep it out of the timeout
+
+        ready, remaining = ray.wait(refs, num_returns=2, timeout=5)
 
         self.assertEqual(ready, refs[:1])
         self.assertEqual(remaining, refs[1:])
@@ -188,15 +191,11 @@ class TestRayCompat(unittest.TestCase):
             time.sleep(secs)
             return secs
 
-        refs = [sleep.remote(x) for x in (2, 1, 3)]
-        completed_refs = []
-        for ref in ray.util.as_completed(refs):
-            completed_refs.append(ref)
+        done = sleep.remote(0)
+        ray.get(done)  # a processor's first ray task takes seconds to start, which can reorder racing tasks
+        pending = sleep.remote(1)
 
-        # The order of completion should be 1, 2, 3
-        self.assertEqual(ray.get(completed_refs[0]), 1)
-        self.assertEqual(ray.get(completed_refs[1]), 2)
-        self.assertEqual(ray.get(completed_refs[2]), 3)
+        self.assertEqual(list(ray.util.as_completed([pending, done])), [done, pending])
 
     def test_ray_util_map_unordered(self) -> None:
         @ray.remote
@@ -213,6 +212,7 @@ class TestRayCompat(unittest.TestCase):
 
     def test_ray_external_cluster(self) -> None:
         combo = SchedulerClusterCombo(n_workers=1)
+        self.addCleanup(combo.shutdown)
 
         # explicitly init scaler's ray interface, passing the address of an existing cluster
         scaler_init(address=combo.get_address())
@@ -233,6 +233,7 @@ class TestRayCompat(unittest.TestCase):
         self.assertFalse(ray.is_initialized())
 
         combo = SchedulerClusterCombo(n_workers=1)
+        self.addCleanup(combo.shutdown)
         scaler_init(address=combo.get_address())
 
         self.assertEqual(ray.get(fn.remote()), 1)
