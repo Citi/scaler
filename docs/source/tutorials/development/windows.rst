@@ -65,5 +65,5 @@ Set up ``uv``, install the package in editable mode, and run the unit tests:
 .. code:: powershell
 
     pip install uv
-    python -m pip install -e .
-    python -m unittest discover -v tests -t .
+    python -m pip install -e . --group dev
+    python -m pytest -n auto tests

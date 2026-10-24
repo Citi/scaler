@@ -74,6 +74,9 @@ dev = [
     "mypy>=1.14.1",
     "nbsphinx",
     "pyodide-build==0.39.0; python_version >= '3.12'",
+    "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
+    "ray>=2.59.0",
     "shibuya",
     "sphinx-copybutton",
     "sphinx-substitution-extensions",
@@ -156,6 +159,11 @@ exclude = [
     "^scripts.*$",
     ".*object_storage.*$",
 ]
+
+[[tool.mypy.overrides]]
+# scaler.compat.ray replaces ray's API at runtime, so ray's own types do not describe the calls that run
+module = ["ray", "ray.*"]
+follow_imports = "skip"
 
 [tool.flake8]
 count = true

@@ -788,6 +788,8 @@ class Client:
         if self._connector_agent is not None:
             self._connector_agent.destroy()
 
+        self._backend.destroy()
+
     @staticmethod
     def __get_parent_task_priority() -> Optional[int]:
         """If the client is running inside a Scaler processor, returns the priority of the associated task."""
