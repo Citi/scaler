@@ -136,7 +136,9 @@ class NativeWorkerProvisioner(DeclarativeWorkerProvisioner):
         return len(self._workers)
 
     def _reap_exited_workers(self) -> None:
-        for worker in [worker for worker in self._workers if not worker.is_alive()]:
+        for worker in list(self._workers):
+            if worker.is_alive():
+                continue
             worker.join()
             self._workers.remove(worker)
             logger.warning(
